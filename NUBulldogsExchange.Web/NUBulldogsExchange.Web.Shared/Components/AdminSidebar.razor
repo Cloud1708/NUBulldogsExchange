@@ -1,0 +1,101 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<aside class="admin-sidebar @(_collapsed ? "is-collapsed" : "") @(_mobileOpen ? "is-mobile-open" : "")">
+    <div class="admin-brand">
+        <div class="admin-brand-icon">NU</div>
+        <div class="admin-brand-text">
+            <strong>Bulldogs</strong>
+            <span>Admin Portal</span>
+        </div>
+    </div>
+
+    <nav class="admin-nav" aria-label="Admin">
+        @foreach (var item in NavItems)
+        {
+            <a href="@item.Href"
+               class="admin-nav-item @(IsActive(item.Key) ? "active" : "")"
+               title="@item.Label"
+               @onclick="CloseMobile">
+                <Icon Name="@item.Icon" Size="18" />
+                <span>@item.Label</span>
+            </a>
+        }
+    </nav>
+
+    <div class="admin-sidebar-footer">
+        <button type="button" class="admin-nav-item admin-logout" @onclick="Logout">
+            <Icon Name="log-out" Size="18" />
+            <span>Logout</span>
+        </button>
+        <button type="button"
+                class="admin-collapse-btn"
+                title="@(_collapsed ? "Expand sidebar" : "Collapse sidebar")"
+                aria-label="@(_collapsed ? "Expand sidebar" : "Collapse sidebar")"
+                @onclick="ToggleCollapsed">
+            <Icon Name="menu" Size="18" />
+        </button>
+    </div>
+</aside>
+
+@if (_mobileOpen)
+{
+    <div class="admin-sidebar-backdrop" @onclick="CloseMobile"></div>
+}
+
+@code {
+    [Parameter] public string Active { get; set; } = "dashboard";
+    [Parameter] public EventCallback<bool> OnMobileChanged { get; set; }
+
+    private bool _collapsed;
+    private bool _mobileOpen;
+
+    private static readonly (string Key, string Label, string Href, string Icon)[] NavItems =
+    [
+        ("dashboard", "Dashboard", "/admin/dashboard", "layout-dashboard"),
+        ("products", "Products", "/admin/products", "package"),
+        ("categories", "Categories", "/admin/categories", "layers"),
+        ("orders", "Orders", "/admin/orders", "shopping-bag"),
+        ("inventory", "Inventory", "/admin/inventory", "warehouse"),
+        ("customers", "Customers", "/admin/customers", "users"),
+        ("staff", "Staff", "/admin/staff", "user"),
+        ("promotions", "Promotions", "/admin/promotions", "tag"),
+        ("reports", "Reports", "/admin/reports", "bar-chart"),
+        ("notifications", "Notifications", "/admin/notifications", "bell"),
+        ("settings", "Settings", "/admin/settings", "settings")
+    ];
+
+    protected override void OnInitialized() => Auth.OnChange += Refresh;
+
+    private bool IsActive(string key) =>
+        string.Equals(Active, key, StringComparison.OrdinalIgnoreCase);
+
+    private void ToggleCollapsed() => _collapsed = !_collapsed;
+
+    public async Task OpenMobile()
+    {
+        _mobileOpen = true;
+        await OnMobileChanged.InvokeAsync(true);
+        StateHasChanged();
+    }
+
+    private async Task CloseMobile()
+    {
+        if (!_mobileOpen) return;
+        _mobileOpen = false;
+        await OnMobileChanged.InvokeAsync(false);
+    }
+
+    private async Task Logout()
+    {
+        await Auth.LogoutAsync(JS);
+        Navigation.NavigateTo("/login");
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => Auth.OnChange -= Refresh;
+}

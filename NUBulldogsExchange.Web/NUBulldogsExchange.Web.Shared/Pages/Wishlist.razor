@@ -10,45 +10,51 @@
 
 @if (!Auth.IsLoggedIn)
 {
-    <section class="section section-light auth-gate-section">
+    <section class="wishlist-guest-section">
         <div class="container">
-            <div class="auth-gate">
-                <div class="auth-gate-icon">
-                    <Icon Name="user" Size="48" />
+            <div class="wishlist-guest">
+                <div class="wishlist-guest-icon" aria-hidden="true">
+                    <Icon Name="user-round" Size="34" />
                 </div>
                 <h1>Sign in to view your account</h1>
                 <p>Track orders, manage your wishlist, and more.</p>
-                <a href="/login?returnUrl=%2Fwishlist" class="btn btn-navy auth-gate-btn">Sign In</a>
+                <a href="/login?returnUrl=%2Fwishlist&redirect=%2Fwishlist" class="btn btn-navy wishlist-signin-btn">Sign In</a>
             </div>
         </div>
     </section>
 }
 else
 {
-    <PageBanner Title="Wishlist"
-                Subtitle="Items you've saved for later" />
+    <AccountShell Active="wishlist">
+        <div class="wishlist-panel">
+            <h1>My Wishlist (@ItemCountLabel)</h1>
 
-    <section class="section section-light">
-        <div class="container">
             @if (!_products.Any())
             {
-                <div class="empty-state">
-                    <Icon Name="heart" Size="40" />
+                <div class="wishlist-empty">
+                    <div class="wishlist-empty-icon" aria-hidden="true">
+                        <Icon Name="heart" Size="42" />
+                    </div>
                     <h2>Your wishlist is empty</h2>
-                    <p>Tap the heart on any product to save it here.</p>
-                    <a href="/shop" class="btn btn-navy">Explore Products</a>
+                    <p>Save items you love to your wishlist.</p>
+                    <a href="/shop" class="btn btn-navy wishlist-browse-btn">Browse Products</a>
                 </div>
             }
             else
             {
-                <ProductGrid Products="_products" />
+                <div class="wishlist-product-grid">
+                    <ProductGrid Products="_products" />
+                </div>
             }
         </div>
-    </section>
+    </AccountShell>
 }
 
 @code {
     private IEnumerable<Product> _products = [];
+
+    private string ItemCountLabel =>
+        WishlistService.Count == 1 ? "1 item" : $"{WishlistService.Count} items";
 
     protected override void OnInitialized()
     {

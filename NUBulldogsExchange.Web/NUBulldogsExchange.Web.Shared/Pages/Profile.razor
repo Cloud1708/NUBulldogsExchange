@@ -1,0 +1,117 @@
+@page "/profile"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject ToastService Toast
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>My Profile | NU Bulldogs Exchange</PageTitle>
+
+@if (!Auth.IsLoggedIn || Auth.CurrentUser is null)
+{
+    <section class="wishlist-guest-section">
+        <div class="container">
+            <div class="wishlist-guest">
+                <div class="wishlist-guest-icon" aria-hidden="true">
+                    <Icon Name="user-round" Size="34" />
+                </div>
+                <h1>Sign in to view your account</h1>
+                <p>Track orders, manage your wishlist, and more.</p>
+                <a href="/login?returnUrl=%2Fprofile" class="btn btn-navy wishlist-signin-btn">Sign In</a>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <AccountShell Active="profile">
+        <div class="account-panel account-profile-panel">
+            <h1>My Profile</h1>
+
+            <form class="profile-form" @onsubmit="Save" @onsubmit:preventDefault="true">
+                <div class="profile-form-grid">
+                    <label class="profile-field">
+                        <span>First Name</span>
+                        <input type="text" @bind="_firstName" @bind:event="oninput" autocomplete="given-name" />
+                    </label>
+                    <label class="profile-field">
+                        <span>Last Name</span>
+                        <input type="text" @bind="_lastName" @bind:event="oninput" autocomplete="family-name" />
+                    </label>
+                    <label class="profile-field">
+                        <span>Email</span>
+                        <input type="email" @bind="_email" @bind:event="oninput" autocomplete="email" />
+                    </label>
+                    <label class="profile-field">
+                        <span>Contact Number</span>
+                        <input type="tel" @bind="_phone" @bind:event="oninput" autocomplete="tel" />
+                    </label>
+                    <label class="profile-field">
+                        <span>Student / Employee ID</span>
+                        <input type="text" @bind="_studentId" @bind:event="oninput" />
+                    </label>
+                    <label class="profile-field">
+                        <span>College / Department</span>
+                        <input type="text" @bind="_college" @bind:event="oninput" />
+                    </label>
+                    <label class="profile-field profile-field-full">
+                        <span>Address</span>
+                        <input type="text" @bind="_address" @bind:event="oninput" autocomplete="street-address" />
+                    </label>
+                </div>
+
+                <div class="profile-form-actions">
+                    <button type="submit" class="btn btn-navy">Save Changes</button>
+                    <button type="button" class="btn btn-outline-navy" @onclick="Reset">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </AccountShell>
+}
+
+@code {
+    private string _firstName = string.Empty;
+    private string _lastName = string.Empty;
+    private string _email = string.Empty;
+    private string _phone = string.Empty;
+    private string _studentId = string.Empty;
+    private string _college = string.Empty;
+    private string _address = string.Empty;
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += Refresh;
+        Reset();
+    }
+
+    private void Refresh()
+    {
+        Reset();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void Reset()
+    {
+        var user = Auth.CurrentUser;
+        if (user is null)
+            return;
+
+        _firstName = user.FirstName;
+        _lastName = user.LastName;
+        _email = user.Email;
+        _phone = user.Phone;
+        _studentId = user.StudentId;
+        _college = user.College;
+        _address = user.Address;
+    }
+
+    private async Task Save()
+    {
+        Auth.UpdateProfile(_firstName, _lastName, _email, _phone, _studentId, _college, _address);
+        await Auth.PersistAsync(JS);
+        Toast.Show("Profile changes saved.");
+    }
+
+    public void Dispose() => Auth.OnChange -= Refresh;
+}

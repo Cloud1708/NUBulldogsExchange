@@ -1,0 +1,978 @@
+@page "/admin/products"
+@layout AdminLayout
+@using Microsoft.AspNetCore.Components.Forms
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminProductService ProductService
+@inject AdminCategoryService CategoryService
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Products | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-products">
+    <header class="admin-products-header">
+        <div>
+            <h1>Products</h1>
+            <p>Manage your merchandise catalog</p>
+        </div>
+        <button type="button" class="btn btn-navy admin-add-product-btn" @onclick="OpenAddModal">
+            <Icon Name="plus" Size="16" />
+            Add Product
+        </button>
+    </header>
+
+    <section class="admin-products-toolbar">
+        <div class="admin-products-search">
+            <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+            <input type="search"
+                   placeholder="Search products..."
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+        </div>
+        <select class="admin-products-select" value="@_category" @onchange="OnCategoryChange">
+            <option value="All">All</option>
+            @foreach (var category in AdminProductService.Categories)
+            {
+                <option value="@category">@category</option>
+            }
+        </select>
+        <select class="admin-products-select" value="@_status" @onchange="OnStatusChange">
+            @foreach (var status in AdminProductService.StatusFilters)
+            {
+                <option value="@status">@status</option>
+            }
+        </select>
+    </section>
+
+    @if (_selectedIds.Count > 0)
+    {
+        <div class="admin-bulk-bar">
+            <span>@_selectedIds.Count product@(_selectedIds.Count == 1 ? "" : "s") selected</span>
+            <div class="admin-bulk-actions">
+                <button type="button" class="btn btn-outline-navy admin-bulk-btn" @onclick='() => BulkSetStatus("Active")'>Set Active</button>
+                <button type="button" class="btn btn-outline-navy admin-bulk-btn" @onclick='() => BulkSetStatus("Inactive")'>Set Inactive</button>
+                <button type="button" class="btn admin-bulk-btn admin-bulk-delete" @onclick="ConfirmBulkDelete">Delete</button>
+            </div>
+        </div>
+    }
+
+    <section class="admin-products-table-card">
+        @if (!Filtered.Any())
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="package" Size="36" />
+                </div>
+                <h2>No products found.</h2>
+                <p>Try changing your search or filters.</p>
+                <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
+            </div>
+        }
+        else
+        {
+            <div class="admin-products-table-wrap">
+                <table class="admin-products-table">
+                    <thead>
+                        <tr>
+                            <th class="col-check">
+                                <input type="checkbox"
+                                       checked="@AllVisibleSelected"
+                                       @onchange="ToggleSelectAll"
+                                       aria-label="Select all products" />
+                            </th>
+                            <th class="col-image">Image</th>
+                            <th class="col-sku">SKU</th>
+                            <th class="col-name">Product Name</th>
+                            <th class="col-category">Category</th>
+                            <th class="col-price">Price</th>
+                            <th class="col-stock">Stock</th>
+                            <th class="col-sold">Sold</th>
+                            <th class="col-status">Status</th>
+                            <th class="col-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @if (!Paged.Any())
+                        {
+                            <tr>
+                                <td colspan="10" class="admin-products-empty-page">No products on this page.</td>
+                            </tr>
+                        }
+                        else
+                        {
+                            @foreach (var product in Paged)
+                            {
+                                <tr class="@(_selectedIds.Contains(product.Id) ? "is-selected" : "")">
+                                    <td class="col-check">
+                                        <input type="checkbox"
+                                               checked="@_selectedIds.Contains(product.Id)"
+                                               @onchange="e => ToggleRow(product.Id, e)"
+                                               aria-label="@($"Select {product.Name}")" />
+                                    </td>
+                                    <td class="col-image">
+                                        <img src="@product.ImageUrl"
+                                             alt="@product.Name"
+                                             loading="lazy"
+                                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                    </td>
+                                    <td class="col-sku"><code>@product.Sku</code></td>
+                                    <td class="col-name">
+                                        <strong title="@product.Name">@product.Name</strong>
+                                    </td>
+                                    <td class="col-category">@product.Category</td>
+                                    <td class="col-price"><strong>₱@product.Price.ToString("N0")</strong></td>
+                                    <td class="col-stock">
+                                        <div class="admin-stock-cell">
+                                            <strong>@product.Stock</strong>
+                                            <span class="admin-stock-badge stock-@product.StockStateKey">@product.StockState</span>
+                                        </div>
+                                    </td>
+                                    <td class="col-sold">@product.Sold.ToString("N0")</td>
+                                    <td class="col-status">
+                                        <span class="admin-product-status @product.StatusCssClass">
+                                            @product.Status
+                                        </span>
+                                    </td>
+                                    <td class="col-actions">
+                                        <div class="admin-row-menu-wrap">
+                                            <button type="button"
+                                                    class="admin-row-action"
+                                                    title="Actions"
+                                                    aria-label="Product actions"
+                                                    @onclick="() => ToggleMenu(product.Id)"
+                                                    @onclick:stopPropagation="true">
+                                                <Icon Name="more-horizontal" Size="16" />
+                                            </button>
+
+                                            @if (_openMenuId == product.Id)
+                                            {
+                                                <div class="admin-row-menu" role="menu" @onclick:stopPropagation="true">
+                                                    <button type="button" class="admin-row-menu-item" @onclick="() => ViewProduct(product.Id)">
+                                                        <Icon Name="eye" Size="14" /> View Product
+                                                    </button>
+                                                    <button type="button" class="admin-row-menu-item" @onclick="() => EditProduct(product.Id)">
+                                                        <Icon Name="pencil" Size="14" /> Edit Product
+                                                    </button>
+                                                    <button type="button" class="admin-row-menu-item" @onclick="() => DuplicateProduct(product.Id)">
+                                                        <Icon Name="copy" Size="14" /> Duplicate Product
+                                                    </button>
+                                                    <button type="button" class="admin-row-menu-item" @onclick="() => ToggleStatus(product)">
+                                                        <Icon Name="refresh" Size="14" />
+                                                        @(product.IsActive ? "Set Inactive" : "Set Active")
+                                                    </button>
+                                                    <div class="admin-row-menu-sep"></div>
+                                                    <button type="button" class="admin-row-menu-item danger" @onclick="() => ConfirmDelete(product)">
+                                                        <Icon Name="trash" Size="14" /> Delete Product
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="admin-products-footer">
+                <span>Showing @Paged.Count() of @Filtered.Count() products</span>
+                <div class="admin-pagination">
+                    @for (var page = 1; page <= PageButtonCount; page++)
+                    {
+                        var pageNumber = page;
+                        <button type="button"
+                                class="admin-page-btn @(_currentPage == pageNumber ? "active" : "")"
+                                @onclick="() => GoToPage(pageNumber)">
+                            @pageNumber
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+    </section>
+</div>
+
+@if (_openMenuId is not null)
+{
+    <div class="admin-menu-backdrop" @onclick="CloseMenu"></div>
+}
+
+@if (_addModalOpen)
+{
+    <div class="admin-modal-backdrop admin-product-modal-backdrop" @onclick="RequestCloseAddModal">
+        <div class="admin-product-modal" role="dialog" aria-modal="true" aria-labelledby="add-product-title" @onclick:stopPropagation="true">
+            <header class="admin-product-modal-header">
+                <h2 id="add-product-title">Add New Product</h2>
+                <button type="button" class="admin-product-modal-close" aria-label="Close" @onclick="RequestCloseAddModal">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </header>
+
+            <div class="admin-product-modal-body">
+                <label class="admin-field">
+                    <span>Product Name</span>
+                    <input type="text"
+                           value="@_formName"
+                           @oninput="OnNameInput"
+                           placeholder="NU Bulldogs Classic Shirt" />
+                    @if (_formErrors.ContainsKey("name"))
+                    {
+                        <em>@_formErrors["name"]</em>
+                    }
+                </label>
+
+                <label class="admin-field">
+                    <span>Description</span>
+                    <textarea rows="4"
+                              value="@_formDescription"
+                              @oninput="OnDescriptionInput"
+                              placeholder="Product description..."></textarea>
+                </label>
+
+                <div class="admin-product-modal-grid">
+                    <label class="admin-field">
+                        <span>Category</span>
+                        <select value="@_formCategory" @onchange="OnCategorySelect">
+                            <option value="">Select category</option>
+                            @foreach (var category in AdminProductService.Categories)
+                            {
+                                <option value="@category">@category</option>
+                            }
+                        </select>
+                        @if (_formErrors.ContainsKey("category"))
+                        {
+                            <em>@_formErrors["category"]</em>
+                        }
+                    </label>
+
+                    <label class="admin-field">
+                        <span>Status</span>
+                        <select value="@_formStatus" @onchange="OnStatusSelect">
+                            <option value="Active">Active</option>
+                            <option value="Inactive">Inactive</option>
+                        </select>
+                        @if (_formErrors.ContainsKey("status"))
+                        {
+                            <em>@_formErrors["status"]</em>
+                        }
+                    </label>
+                </div>
+
+                <div class="admin-product-modal-grid">
+                    <label class="admin-field">
+                        <span>Price (₱)</span>
+                        <input type="number"
+                               min="0"
+                               step="1"
+                               value="@_formPriceText"
+                               @oninput="OnPriceInput"
+                               placeholder="499" />
+                        @if (_formErrors.ContainsKey("price"))
+                        {
+                            <em>@_formErrors["price"]</em>
+                        }
+                    </label>
+
+                    <label class="admin-field">
+                        <span>SKU</span>
+                        <input type="text"
+                               value="@_formSku"
+                               @oninput="OnSkuInput"
+                               placeholder="NUBE-TS-XXX" />
+                        @if (_formErrors.ContainsKey("sku"))
+                        {
+                            <em>@_formErrors["sku"]</em>
+                        }
+                    </label>
+                </div>
+
+                <label class="admin-field admin-product-stock-field">
+                    <span>Stock Quantity</span>
+                    <input type="number"
+                           min="0"
+                           step="1"
+                           value="@_formStockText"
+                           @oninput="OnStockInput"
+                           placeholder="100" />
+                    @if (_formErrors.ContainsKey("stock"))
+                    {
+                        <em>@_formErrors["stock"]</em>
+                    }
+                </label>
+
+                <div class="admin-field">
+                    <span>Product Images</span>
+                    <div class="admin-product-upload @( _isDragOver ? "is-dragover" : "" )"
+                         @ondragenter="OnDragEnter"
+                         @ondragenter:preventDefault
+                         @ondragover="OnDragOver"
+                         @ondragover:preventDefault
+                         @ondragleave="OnDragLeave">
+                        <InputFile OnChange="OnImagesSelected"
+                                   accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                   multiple
+                                   class="admin-product-upload-input" />
+                        <div class="admin-product-upload-content" aria-hidden="true">
+                            <Icon Name="upload" Size="28" CssClass="admin-product-upload-icon" />
+                            <p>Drag &amp; drop images here, or click to upload</p>
+                            <small>PNG, JPG up to 10MB each</small>
+                        </div>
+                    </div>
+                    @if (_formErrors.ContainsKey("images"))
+                    {
+                        <em>@_formErrors["images"]</em>
+                    }
+
+                    @if (_previewImages.Count > 0)
+                    {
+                        <div class="admin-product-previews">
+                            @for (var i = 0; i < _previewImages.Count; i++)
+                            {
+                                var index = i;
+                                var preview = _previewImages[index];
+                                <div class="admin-product-preview">
+                                    <img src="@preview.DataUrl" alt="@($"Product image {index + 1}")" />
+                                    @if (index == 0)
+                                    {
+                                        <span class="admin-product-preview-main">Main</span>
+                                    }
+                                    <button type="button"
+                                            class="admin-product-preview-remove"
+                                            aria-label="Remove image"
+                                            @onclick="() => RemoveImage(index)">
+                                        <Icon Name="x" Size="12" />
+                                    </button>
+                                </div>
+                            }
+                        </div>
+                    }
+                </div>
+            </div>
+
+            <footer class="admin-product-modal-footer">
+                <button type="button" class="btn btn-navy admin-product-save-btn" @onclick="SaveProduct">
+                    Save Product
+                </button>
+                <button type="button" class="btn btn-outline-navy" @onclick="SaveDraft">
+                    Save Draft
+                </button>
+                <button type="button" class="btn btn-outline-navy" @onclick="RequestCloseAddModal">
+                    Cancel
+                </button>
+            </footer>
+        </div>
+    </div>
+}
+
+@if (_discardConfirm)
+{
+    <div class="admin-modal-backdrop admin-product-modal-backdrop" style="z-index: 90;" @onclick="KeepEditing">
+        <div class="admin-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Discard unsaved product?</h2>
+            <p>Your changes will be lost if you close this form.</p>
+            <p class="admin-modal-note">This action cannot be undone.</p>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="KeepEditing">Keep Editing</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="DiscardAndClose">Discard</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_deleteTarget is not null || _bulkDelete)
+{
+    <div class="admin-modal-backdrop" @onclick="CancelDelete">
+        <div class="admin-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Delete Product@(_bulkDelete ? "s" : "")?</h2>
+            @if (_bulkDelete)
+            {
+                <p>Are you sure you want to delete <strong>@_selectedIds.Count</strong> selected products?</p>
+            }
+            else if (_deleteTarget is not null)
+            {
+                <p>Are you sure you want to delete <strong>"@_deleteTarget.Name"</strong>?</p>
+            }
+            <p class="admin-modal-note">This action cannot be undone.</p>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="CancelDelete">Cancel</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDeleteAction">Delete Product@(_bulkDelete ? "s" : "")</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const long MaxImageBytes = 10 * 1024 * 1024;
+
+    private string _search = string.Empty;
+    private string _category = "All";
+    private string _status = "All";
+    private int _currentPage = 1;
+    private int? _openMenuId;
+    private AdminProduct? _deleteTarget;
+    private bool _bulkDelete;
+    private readonly HashSet<int> _selectedIds = [];
+
+    private bool _addModalOpen;
+    private bool _discardConfirm;
+    private bool _isDragOver;
+    private bool _skuTouched;
+    private bool _formDirty;
+
+    private string _formName = string.Empty;
+    private string _formDescription = string.Empty;
+    private string _formCategory = string.Empty;
+    private string _formStatus = "Active";
+    private string _formPriceText = string.Empty;
+    private string _formSku = string.Empty;
+    private string _formStockText = string.Empty;
+    private readonly List<ImagePreview> _previewImages = [];
+    private readonly Dictionary<string, string> _formErrors = new(StringComparer.Ordinal);
+
+    private List<AdminProduct> Filtered =>
+        ProductService.Filter(_search, _category, _status).ToList();
+
+    private int TotalPages
+    {
+        get
+        {
+            var count = Filtered.Count;
+            if (count == 0) return 1;
+            return (int)Math.Ceiling(count / (double)AdminProductService.PageSize);
+        }
+    }
+
+    private int PageButtonCount => Math.Max(TotalPages, Filtered.Count > 0 ? 3 : 1);
+
+    private IEnumerable<AdminProduct> Paged
+    {
+        get
+        {
+            var list = Filtered;
+            var start = (_currentPage - 1) * AdminProductService.PageSize;
+            if (start < 0 || start >= list.Count)
+                return [];
+            return list.Skip(start).Take(AdminProductService.PageSize);
+        }
+    }
+
+    private bool AllVisibleSelected
+    {
+        get
+        {
+            var visible = Paged.ToList();
+            return visible.Count > 0 && visible.All(p => _selectedIds.Contains(p.Id));
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        ProductService.OnChange += Refresh;
+        Navigation.LocationChanged += OnLocationChanged;
+        SyncCategoryFromQuery();
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        SyncCategoryFromQuery();
+        CloseMenu();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SyncCategoryFromQuery()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var category = GetQueryValue(uri, "category");
+        if (string.IsNullOrWhiteSpace(category))
+            return;
+
+        _category = category;
+        _currentPage = 1;
+    }
+
+    private static string? GetQueryValue(Uri uri, string key)
+    {
+        var query = uri.Query.TrimStart('?');
+        if (string.IsNullOrEmpty(query)) return null;
+
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length == 0) continue;
+            if (!string.Equals(Uri.UnescapeDataString(pair[0]), key, StringComparison.OrdinalIgnoreCase))
+                continue;
+            return pair.Length > 1 ? Uri.UnescapeDataString(pair[1]) : string.Empty;
+        }
+
+        return null;
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void OnCategoryChange(ChangeEventArgs e)
+    {
+        _category = e.Value?.ToString() ?? "All";
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void OnStatusChange(ChangeEventArgs e)
+    {
+        _status = e.Value?.ToString() ?? "All";
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void ClearFilters()
+    {
+        _search = string.Empty;
+        _category = "All";
+        _status = "All";
+        _currentPage = 1;
+        _selectedIds.Clear();
+        CloseMenu();
+    }
+
+    private void GoToPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, PageButtonCount);
+        CloseMenu();
+    }
+
+    private void ToggleSelectAll(ChangeEventArgs e)
+    {
+        var select = e.Value is bool b && b;
+        var visibleIds = Paged.Select(p => p.Id).ToList();
+        if (select)
+        {
+            foreach (var id in visibleIds)
+                _selectedIds.Add(id);
+        }
+        else
+        {
+            foreach (var id in visibleIds)
+                _selectedIds.Remove(id);
+        }
+    }
+
+    private void ToggleRow(int id, ChangeEventArgs e)
+    {
+        var selected = e.Value is bool b && b;
+        if (selected) _selectedIds.Add(id);
+        else _selectedIds.Remove(id);
+    }
+
+    private void ToggleMenu(int id) =>
+        _openMenuId = _openMenuId == id ? null : id;
+
+    private void CloseMenu() => _openMenuId = null;
+
+    private void ViewProduct(int id)
+    {
+        CloseMenu();
+        Navigation.NavigateTo($"/admin/products/{id}");
+    }
+
+    private void EditProduct(int id)
+    {
+        CloseMenu();
+        Navigation.NavigateTo($"/admin/products/{id}/edit");
+    }
+
+    private void DuplicateProduct(int id)
+    {
+        CloseMenu();
+        var copy = ProductService.Duplicate(id);
+        if (copy is not null)
+        {
+            CategoryService.AdjustProductCount(copy.Category, 1);
+            Toast.Show("Product duplicated.");
+        }
+    }
+
+    private void ToggleStatus(AdminProduct product)
+    {
+        CloseMenu();
+        var next = product.IsActive ? "Inactive" : "Active";
+        ProductService.SetStatus(product.Id, next);
+        Toast.Show($"Product set to {next}.");
+    }
+
+    private void ConfirmDelete(AdminProduct product)
+    {
+        CloseMenu();
+        _bulkDelete = false;
+        _deleteTarget = product;
+    }
+
+    private void ConfirmBulkDelete()
+    {
+        _bulkDelete = true;
+        _deleteTarget = null;
+    }
+
+    private void CancelDelete()
+    {
+        _deleteTarget = null;
+        _bulkDelete = false;
+    }
+
+    private void ConfirmDeleteAction()
+    {
+        if (_bulkDelete)
+        {
+            var toDelete = ProductService.All.Where(p => _selectedIds.Contains(p.Id)).ToList();
+            foreach (var group in toDelete.GroupBy(p => p.Category))
+                CategoryService.AdjustProductCount(group.Key, -group.Count());
+
+            var count = ProductService.DeleteMany(_selectedIds);
+            _selectedIds.Clear();
+            Toast.Show($"{count} product{(count == 1 ? "" : "s")} deleted.");
+        }
+        else if (_deleteTarget is not null)
+        {
+            var name = _deleteTarget.Name;
+            var category = _deleteTarget.Category;
+            ProductService.Delete(_deleteTarget.Id);
+            CategoryService.AdjustProductCount(category, -1);
+            _selectedIds.Remove(_deleteTarget.Id);
+            Toast.Show($"Deleted \"{name}\".");
+        }
+
+        CancelDelete();
+        if (_currentPage > PageButtonCount)
+            _currentPage = PageButtonCount;
+    }
+
+    private void BulkSetStatus(string status)
+    {
+        ProductService.SetStatusMany(_selectedIds, status);
+        Toast.Show($"Selected products set to {status}.");
+    }
+
+    private async Task OpenAddModal()
+    {
+        CloseMenu();
+        ResetForm();
+        _addModalOpen = true;
+        _discardConfirm = false;
+        await SetBodyScrollLock(true);
+    }
+
+    private void RequestCloseAddModal()
+    {
+        if (_formDirty)
+        {
+            _discardConfirm = true;
+            return;
+        }
+
+        _ = CloseAddModalAsync();
+    }
+
+    private void KeepEditing() => _discardConfirm = false;
+
+    private void DiscardAndClose()
+    {
+        _discardConfirm = false;
+        _ = CloseAddModalAsync();
+    }
+
+    private async Task CloseAddModalAsync()
+    {
+        _addModalOpen = false;
+        _discardConfirm = false;
+        ResetForm();
+        await SetBodyScrollLock(false);
+    }
+
+    private void ResetForm()
+    {
+        _formName = string.Empty;
+        _formDescription = string.Empty;
+        _formCategory = string.Empty;
+        _formStatus = "Active";
+        _formPriceText = string.Empty;
+        _formSku = string.Empty;
+        _formStockText = string.Empty;
+        _previewImages.Clear();
+        _formErrors.Clear();
+        _skuTouched = false;
+        _formDirty = false;
+        _isDragOver = false;
+    }
+
+    private void MarkDirty() => _formDirty = true;
+
+    private void OnNameInput(ChangeEventArgs e)
+    {
+        _formName = e.Value?.ToString() ?? string.Empty;
+        MarkDirty();
+        _formErrors.Remove("name");
+    }
+
+    private void OnDescriptionInput(ChangeEventArgs e)
+    {
+        _formDescription = e.Value?.ToString() ?? string.Empty;
+        MarkDirty();
+    }
+
+    private void OnCategorySelect(ChangeEventArgs e)
+    {
+        _formCategory = e.Value?.ToString() ?? string.Empty;
+        MarkDirty();
+        _formErrors.Remove("category");
+
+        if (!_skuTouched && !string.IsNullOrWhiteSpace(_formCategory))
+            _formSku = ProductService.SuggestSku(_formCategory);
+    }
+
+    private void OnStatusSelect(ChangeEventArgs e)
+    {
+        _formStatus = e.Value?.ToString() ?? "Active";
+        MarkDirty();
+        _formErrors.Remove("status");
+    }
+
+    private void OnPriceInput(ChangeEventArgs e)
+    {
+        _formPriceText = e.Value?.ToString() ?? string.Empty;
+        MarkDirty();
+        _formErrors.Remove("price");
+    }
+
+    private void OnSkuInput(ChangeEventArgs e)
+    {
+        _formSku = e.Value?.ToString() ?? string.Empty;
+        _skuTouched = true;
+        MarkDirty();
+        _formErrors.Remove("sku");
+    }
+
+    private void OnStockInput(ChangeEventArgs e)
+    {
+        _formStockText = e.Value?.ToString() ?? string.Empty;
+        MarkDirty();
+        _formErrors.Remove("stock");
+    }
+
+    private void OnDragEnter(DragEventArgs _) => _isDragOver = true;
+    private void OnDragOver(DragEventArgs _) => _isDragOver = true;
+    private void OnDragLeave(DragEventArgs _) => _isDragOver = false;
+
+    private async Task OnImagesSelected(InputFileChangeEventArgs e)
+    {
+        _isDragOver = false;
+        _formErrors.Remove("images");
+        MarkDirty();
+
+        foreach (var file in e.GetMultipleFiles(12))
+        {
+            var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
+            var name = file.Name?.ToLowerInvariant() ?? string.Empty;
+            var isPng = contentType is "image/png" || name.EndsWith(".png");
+            var isJpg = contentType is "image/jpeg" or "image/jpg" ||
+                        name.EndsWith(".jpg") || name.EndsWith(".jpeg");
+
+            if (!isPng && !isJpg)
+            {
+                _formErrors["images"] = "Image must be PNG or JPG.";
+                continue;
+            }
+
+            if (file.Size > MaxImageBytes)
+            {
+                _formErrors["images"] = "Image must not exceed 10MB.";
+                continue;
+            }
+
+            try
+            {
+                await using var stream = file.OpenReadStream(MaxImageBytes);
+                using var ms = new MemoryStream();
+                await stream.CopyToAsync(ms);
+                var bytes = ms.ToArray();
+                if (bytes.Length == 0) continue;
+
+                var mime = isPng ? "image/png" : "image/jpeg";
+                var dataUrl = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+                _previewImages.Add(new ImagePreview(dataUrl));
+            }
+            catch
+            {
+                _formErrors["images"] = "Image must not exceed 10MB.";
+            }
+        }
+    }
+
+    private void RemoveImage(int index)
+    {
+        if (index < 0 || index >= _previewImages.Count) return;
+        _previewImages.RemoveAt(index);
+        MarkDirty();
+        if (_previewImages.Count > 0)
+            _formErrors.Remove("images");
+    }
+
+    private bool ValidateForm(bool requireImages)
+    {
+        _formErrors.Clear();
+
+        if (string.IsNullOrWhiteSpace(_formName))
+            _formErrors["name"] = "Product name is required.";
+
+        if (string.IsNullOrWhiteSpace(_formCategory))
+            _formErrors["category"] = "Please select a category.";
+
+        if (string.IsNullOrWhiteSpace(_formStatus))
+            _formErrors["status"] = "Status is required.";
+
+        if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
+            _formErrors["price"] = "Price must be greater than 0.";
+        else if (price <= 0)
+            _formErrors["price"] = "Price must be greater than 0.";
+
+        if (string.IsNullOrWhiteSpace(_formSku))
+            _formErrors["sku"] = "SKU is required.";
+        else if (ProductService.SkuExists(_formSku))
+            _formErrors["sku"] = "This SKU already exists.";
+
+        if (!int.TryParse(_formStockText, out var stock))
+            _formErrors["stock"] = "Stock quantity is required.";
+        else if (stock < 0)
+            _formErrors["stock"] = "Stock quantity cannot be negative.";
+
+        if (requireImages && _previewImages.Count == 0)
+            _formErrors["images"] = "Please add at least one product image.";
+
+        return _formErrors.Count == 0;
+    }
+
+    private async Task SaveProduct()
+    {
+        if (!ValidateForm(requireImages: true))
+            return;
+
+        PersistProduct(_formStatus);
+        Toast.Show("Product added successfully.");
+        await CloseAddModalAsync();
+    }
+
+    private async Task SaveDraft()
+    {
+        // Draft allows incomplete fields except a usable name when possible;
+        // still validate core fields so the catalog stays coherent.
+        if (string.IsNullOrWhiteSpace(_formName))
+        {
+            _formErrors.Clear();
+            _formErrors["name"] = "Product name is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_formCategory))
+        {
+            _formErrors.Clear();
+            _formErrors["category"] = "Please select a category.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_formSku))
+        {
+            if (!string.IsNullOrWhiteSpace(_formCategory))
+                _formSku = ProductService.SuggestSku(_formCategory);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_formSku) && ProductService.SkuExists(_formSku))
+        {
+            _formErrors.Clear();
+            _formErrors["sku"] = "This SKU already exists.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_formPriceText))
+            _formPriceText = "0";
+        if (string.IsNullOrWhiteSpace(_formStockText))
+            _formStockText = "0";
+
+                if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
+        {
+            _formErrors.Clear();
+            _formErrors["price"] = "Price cannot be negative.";
+            return;
+        }
+
+        if (!int.TryParse(_formStockText, out var stock) || stock < 0)
+        {
+            _formErrors.Clear();
+            _formErrors["stock"] = "Stock quantity cannot be negative.";
+            return;
+        }
+
+        PersistProduct("Draft");
+        Toast.Show("Product saved as draft.");
+        await CloseAddModalAsync();
+    }
+
+    private void PersistProduct(string status)
+    {
+        decimal.TryParse(_formPriceText, out var price);
+        int.TryParse(_formStockText, out var stock);
+        price = Math.Max(0, price);
+        stock = Math.Max(0, stock);
+
+        var images = _previewImages.Select(p => p.DataUrl).ToList();
+        var model = new AdminProduct
+        {
+            Name = _formName.Trim(),
+            Description = _formDescription.Trim(),
+            Category = _formCategory.Trim(),
+            Status = status,
+            Price = price,
+            Sku = string.IsNullOrWhiteSpace(_formSku)
+                ? ProductService.SuggestSku(_formCategory)
+                : _formSku.Trim().ToUpperInvariant(),
+            Stock = stock,
+            Sold = 0,
+            Images = images,
+            ImageUrl = images.Count > 0 ? images[0] : MockData.PlaceholderImage,
+            CreatedAt = DateTime.Now
+        };
+
+        ProductService.Add(model);
+        CategoryService.AdjustProductCount(model.Category, 1);
+        _currentPage = 1;
+    }
+
+    private async Task SetBodyScrollLock(bool locked)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("nubeSetBodyScrollLock", locked);
+        }
+        catch
+        {
+            // Ignore JS failures in design-time / prerender.
+        }
+    }
+
+    public void Dispose()
+    {
+        ProductService.OnChange -= Refresh;
+        Navigation.LocationChanged -= OnLocationChanged;
+        _ = SetBodyScrollLock(false);
+    }
+
+    private sealed record ImagePreview(string DataUrl);
+}

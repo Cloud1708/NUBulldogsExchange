@@ -1,0 +1,163 @@
+@page "/admin/customers/{Id}"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminCustomerService CustomerService
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>@(Customer?.Name ?? "Customer") | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-customer-details">
+    @if (Customer is null)
+    {
+        <div class="admin-card admin-placeholder-card">
+            <h2>Customer not found</h2>
+            <p>This customer may have been removed from the mock catalog.</p>
+            <a href="/admin/customers" class="btn btn-navy">Back to Customers</a>
+        </div>
+    }
+    else
+    {
+        <header class="admin-products-header">
+            <div>
+                <h1>@Customer.Name</h1>
+                <p>Customer details · @Customer.Id</p>
+            </div>
+            <a href="/admin/customers" class="btn btn-outline-navy">Back to Customers</a>
+        </header>
+
+        <div class="admin-customer-details-stats">
+            <article class="admin-inventory-stat">
+                <div class="admin-inventory-stat-icon tone-blue"><Icon Name="shopping-bag" Size="18" /></div>
+                <div>
+                    <strong>@Customer.TotalOrders</strong>
+                    <span>Total Orders</span>
+                </div>
+            </article>
+            <article class="admin-inventory-stat">
+                <div class="admin-inventory-stat-icon tone-purple"><Icon Name="wallet" Size="18" /></div>
+                <div>
+                    <strong>@Customer.TotalSpentLabel</strong>
+                    <span>Total Spent</span>
+                </div>
+            </article>
+            <article class="admin-inventory-stat">
+                <div class="admin-inventory-stat-icon tone-gold"><Icon Name="clock" Size="18" /></div>
+                <div>
+                    <strong>@CustomerService.ActiveOrderCount(Customer.Id)</strong>
+                    <span>Active Orders</span>
+                </div>
+            </article>
+            <article class="admin-inventory-stat">
+                <div class="admin-inventory-stat-icon tone-green"><Icon Name="check-circle" Size="18" /></div>
+                <div>
+                    <strong>@CustomerService.CompletedOrderCount(Customer.Id)</strong>
+                    <span>Completed Orders</span>
+                </div>
+            </article>
+        </div>
+
+        <div class="admin-customer-details-grid">
+            <section class="admin-card admin-customer-info">
+                <h2>Customer Information</h2>
+                <div class="admin-customer-profile">
+                    <span class="admin-customer-avatar lg" aria-hidden="true">@Customer.Initial</span>
+                    <div>
+                        <strong>@Customer.Name</strong>
+                        <span>@Customer.Email</span>
+                    </div>
+                </div>
+                <dl>
+                    <div><dt>Customer ID</dt><dd><code>@Customer.Id</code></dd></div>
+                    <div><dt>Contact Number</dt><dd>@Customer.Contact</dd></div>
+                    <div><dt>Date Joined</dt><dd>@Customer.DateJoinedLabel</dd></div>
+                    <div>
+                        <dt>Status</dt>
+                        <dd><span class="admin-customer-status status-@Customer.StatusKey">@Customer.Status</span></dd>
+                    </div>
+                </dl>
+            </section>
+
+            <section class="admin-card admin-customer-status-panel">
+                <h2>Account Status</h2>
+                <p class="admin-modal-note">Deactivate accounts instead of deleting them. Changes apply to this frontend demo only.</p>
+                <label class="admin-field">
+                    <span>Status</span>
+                    <select value="@Customer.Status" @onchange="OnStatusChange">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                        <option value="Suspended">Suspended</option>
+                    </select>
+                </label>
+            </section>
+
+            <section class="admin-card admin-customer-orders">
+                <h2>Order History</h2>
+                @{
+                    var orders = CustomerService.OrdersForCustomer(Customer.Id);
+                }
+                @if (!orders.Any())
+                {
+                    <p class="admin-modal-note">No orders found for this customer.</p>
+                }
+                else
+                {
+                    <div class="admin-customers-table-wrap">
+                        <table class="admin-customers-table admin-customer-orders-table">
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Date</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var order in orders)
+                                {
+                                    <tr>
+                                        <td><code>@order.Id</code></td>
+                                        <td>@order.Date.ToString("MMM d, yyyy")</td>
+                                        <td><strong>₱@order.Total.ToString("N0")</strong></td>
+                                        <td><span class="order-status status-@order.StatusKey">@order.Status</span></td>
+                                        <td>
+                                            <a href="@($"/admin/orders/{order.Id}")" class="btn btn-outline-navy admin-customer-view-btn">
+                                                View
+                                            </a>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter] public string Id { get; set; } = string.Empty;
+
+    private AdminCustomer? Customer => CustomerService.GetById(Id);
+
+    protected override void OnInitialized() => CustomerService.OnChange += Refresh;
+
+    private void OnStatusChange(ChangeEventArgs e)
+    {
+        var status = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(status) || Customer is null)
+            return;
+
+        if (CustomerService.SetStatus(Customer.Id, status))
+            Toast.Show($"Customer status updated to {status}.");
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => CustomerService.OnChange -= Refresh;
+}

@@ -3,9 +3,14 @@
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Services
 @inject CartService CartService
+@inject WishlistService Wishlist
+@inject AuthService Auth
+@inject ToastService Toast
+@inject AdminPromotionService PromotionService
+@inject NavigationManager Navigation
 @implements IDisposable
 
-<PageTitle>Cart | NU Bulldogs Exchange</PageTitle>
+<PageTitle>My Shopping Cart | NU Bulldogs Exchange</PageTitle>
 
 @if (!CartService.Items.Any())
 {
@@ -24,66 +29,162 @@
 }
 else
 {
-    <PageBanner Title="Shopping Cart"
-                Subtitle="Review your selected merch before checkout" />
-
-    <section class="section section-light">
+    <section class="cart-page">
         <div class="container">
+            <nav class="shop-breadcrumb" aria-label="Breadcrumb">
+                <a href="/">Home</a>
+                <Icon Name="chevron-right" Size="14" />
+                <span>My Shopping Cart</span>
+            </nav>
+
+            <div class="cart-title-row">
+                <h1>My Shopping Cart</h1>
+                <span>@QuantityLabel(CartService.TotalCount)</span>
+            </div>
+
             <div class="cart-layout">
                 <div class="cart-list">
+                    <div class="cart-select-all">
+                        <label>
+                            <input type="checkbox"
+                                   checked="@AllSelected"
+                                   @onchange="OnSelectAllChanged" />
+                            <span>Select All (@LineItemLabel(CartService.Items.Count))</span>
+                        </label>
+                    </div>
+
                     @foreach (var item in CartService.Items)
                     {
-                        <div class="cart-item">
-                            <img src="@item.Product.ImageUrl"
-                                 alt="@item.Product.Name"
-                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                            <div class="cart-item-info">
-                                <small>@item.Product.Category</small>
-                                <a href="/product/@item.Product.Id"><h3>@item.Product.Name</h3></a>
-                                @if (!string.IsNullOrWhiteSpace(item.SelectedColor) || !string.IsNullOrWhiteSpace(item.SelectedSize))
-                                {
-                                    <p class="cart-item-variant">
-                                        @if (!string.IsNullOrWhiteSpace(item.SelectedColor))
-                                        {
-                                            <span>@MockData.FormatColorName(item.SelectedColor)</span>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(item.SelectedColor) && !string.IsNullOrWhiteSpace(item.SelectedSize))
-                                        {
-                                            <span>·</span>
-                                        }
-                                        @if (!string.IsNullOrWhiteSpace(item.SelectedSize))
-                                        {
-                                            <span>@item.SelectedSize</span>
-                                        }
-                                    </p>
-                                }
-                                <strong>₱@item.Product.Price.ToString("N0")</strong>
+                        var selected = _selected.Contains(item.Key);
+                        var maxStock = item.Product.Stock > 0 ? item.Product.Stock : int.MaxValue;
+                        var lineTotal = item.Product.Price * item.Quantity;
+
+                        <article class="cart-item @(selected ? "selected" : "")">
+                            <label class="cart-item-check">
+                                <input type="checkbox"
+                                       checked="@selected"
+                                       @onchange="() => ToggleSelected(item.Key)" />
+                            </label>
+
+                            <a href="/product/@item.Product.Id" class="cart-item-image">
+                                <img src="@item.Product.ImageUrl"
+                                     alt="@item.Product.Name"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                            </a>
+
+                            <div class="cart-item-body">
+                                <div class="cart-item-top">
+                                    <div class="cart-item-info">
+                                        <small>@item.Product.Category</small>
+                                        <a href="/product/@item.Product.Id"><h3>@item.Product.Name</h3></a>
+                                        <p class="cart-item-variant">
+                                            @if (!string.IsNullOrWhiteSpace(item.SelectedSize))
+                                            {
+                                                <span>Size: @item.SelectedSize</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(item.SelectedSize) && !string.IsNullOrWhiteSpace(item.SelectedColor))
+                                            {
+                                                <span>·</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(item.SelectedColor))
+                                            {
+                                                <span class="cart-item-color">
+                                                    Color:
+                                                    <span class="dot @item.SelectedColor" title="@MockData.FormatColorName(item.SelectedColor)"></span>
+                                                </span>
+                                            }
+                                        </p>
+                                    </div>
+                                    <strong class="cart-item-price">₱@item.Product.Price.ToString("N0")</strong>
+                                </div>
+
+                                <div class="qty-controls cart-item-qty">
+                                    <button type="button"
+                                            disabled="@(item.Quantity <= 1)"
+                                            aria-label="Decrease quantity"
+                                            @onclick="() => CartService.UpdateQuantity(item.Key, item.Quantity - 1)">
+                                        <Icon Name="minus" Size="14" />
+                                    </button>
+                                    <span>@item.Quantity</span>
+                                    <button type="button"
+                                            disabled="@(item.Quantity >= maxStock)"
+                                            aria-label="Increase quantity"
+                                            @onclick="() => CartService.UpdateQuantity(item.Key, item.Quantity + 1)">
+                                        <Icon Name="plus" Size="14" />
+                                    </button>
+                                </div>
+
+                                <div class="cart-item-bottom">
+                                    <span class="cart-item-subtotal">Subtotal: ₱@lineTotal.ToString("N0")</span>
+                                    <div class="cart-item-actions">
+                                        <button type="button"
+                                                class="cart-icon-btn @(Auth.IsLoggedIn && Wishlist.Contains(item.Product.Id) ? "active" : "")"
+                                                title="Wishlist"
+                                                @onclick="() => ToggleWishlist(item.Product)">
+                                            <Icon Name="heart" Size="16" />
+                                        </button>
+                                        <button type="button"
+                                                class="cart-icon-btn cart-icon-remove"
+                                                title="Remove"
+                                                @onclick="() => RemoveItem(item.Key)">
+                                            <Icon Name="trash" Size="16" />
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <div class="qty-controls">
-                                <button type="button" @onclick="() => CartService.UpdateQuantity(item.Key, item.Quantity - 1)">
-                                    <Icon Name="minus" Size="14" />
-                                </button>
-                                <span>@item.Quantity</span>
-                                <button type="button" @onclick="() => CartService.UpdateQuantity(item.Key, item.Quantity + 1)">
-                                    <Icon Name="plus" Size="14" />
-                                </button>
-                            </div>
-                            <button type="button" class="link-danger" @onclick="() => CartService.Remove(item.Key)">Remove</button>
-                        </div>
+                        </article>
                     }
+
+                    <a href="/shop" class="cart-continue-link">
+                        <Icon Name="arrow-left" Size="16" />
+                        Continue Shopping
+                    </a>
                 </div>
+
                 <aside class="cart-summary">
                     <h3>Order Summary</h3>
-                    <div class="summary-row"><span>Items</span><span>@CartService.TotalCount</span></div>
-                    <div class="summary-row"><span>Subtotal</span><strong>₱@CartService.Subtotal.ToString("N0")</strong></div>
-                    <div class="summary-row"><span>Campus Pickup</span><span class="text-success">Free</span></div>
-                    <div class="summary-total"><span>Total</span><strong>₱@CartService.Subtotal.ToString("N0")</strong></div>
-                    <button type="button" class="btn btn-gold btn-block" @onclick="CheckoutDemo">Proceed to Checkout</button>
-                    <p class="summary-note">Frontend demo only — no payment is processed.</p>
-                    @if (!string.IsNullOrEmpty(_checkoutMsg))
+
+                    <div class="summary-row">
+                        <span>Subtotal (@LineItemLabel(SelectedItems.Count()))</span>
+                        <span>₱@SelectedSubtotal.ToString("N0")</span>
+                    </div>
+                    <div class="summary-row">
+                        <span>Pickup Fee</span>
+                        <span class="text-success">Free</span>
+                    </div>
+                    @if (_promoApplied && _appliedPromo is not null)
                     {
-                        <p class="newsletter-success">@_checkoutMsg</p>
+                        <div class="summary-row">
+                            <span>Promo (@_appliedPromo.Code)</span>
+                            <span class="text-success">-₱@Discount.ToString("N0")</span>
+                        </div>
                     }
+
+                    <div class="summary-total">
+                        <span>Estimated Total</span>
+                        <strong>₱@EstimatedTotal.ToString("N0")</strong>
+                    </div>
+
+                    <div class="cart-promo">
+                        <input type="text"
+                               placeholder="Promo code"
+                               value="@_promoCode"
+                               @oninput="OnPromoInput" />
+                        <button type="button" class="btn btn-navy cart-promo-btn" @onclick="ApplyPromo">Apply</button>
+                    </div>
+                    <p class="cart-promo-hint">Try: BULLDOG10 or SUMMER50</p>
+                    @if (!string.IsNullOrWhiteSpace(_promoMessage))
+                    {
+                        <p class="@(_promoApplied ? "cart-promo-success" : "cart-promo-error")">@_promoMessage</p>
+                    }
+
+                    <button type="button"
+                            class="btn btn-navy btn-block cart-checkout-btn"
+                            disabled="@(!SelectedItems.Any())"
+                            @onclick="ProceedToCheckout">
+                        Proceed to Checkout
+                    </button>
+                    <a href="/shop" class="btn btn-outline-navy btn-block">Continue Shopping</a>
                 </aside>
             </div>
         </div>
@@ -91,16 +192,143 @@ else
 }
 
 @code {
-    private string? _checkoutMsg;
+    private readonly HashSet<string> _selected = [];
+    private readonly HashSet<string> _knownKeys = [];
+    private string _promoCode = string.Empty;
+    private bool _promoApplied;
+    private string? _promoMessage;
+    private AdminPromotion? _appliedPromo;
 
-    protected override void OnInitialized() => CartService.OnChange += Refresh;
-    private void Refresh() => InvokeAsync(StateHasChanged);
+    private IEnumerable<CartItem> SelectedItems =>
+        CartService.Items.Where(i => _selected.Contains(i.Key));
 
-    private void CheckoutDemo()
+    private bool AllSelected =>
+        CartService.Items.Count > 0 && CartService.Items.All(i => _selected.Contains(i.Key));
+
+    private decimal SelectedSubtotal =>
+        SelectedItems.Sum(i => i.Product.Price * i.Quantity);
+
+    private decimal Discount =>
+        _promoApplied && _appliedPromo is not null
+            ? _appliedPromo.CalculateDiscount(SelectedSubtotal)
+            : 0;
+
+    private decimal EstimatedTotal => Math.Max(0, SelectedSubtotal - Discount);
+
+    protected override void OnInitialized()
     {
-        _checkoutMsg = "Checkout mockup complete. In a real app, this would continue to payment.";
-        CartService.Clear();
+        CartService.OnChange += Refresh;
+        Wishlist.OnChange += Refresh;
+        Auth.OnChange += Refresh;
+        SyncSelection();
     }
 
-    public void Dispose() => CartService.OnChange -= Refresh;
+    private void Refresh()
+    {
+        SyncSelection();
+        if (_promoApplied && _appliedPromo is not null)
+        {
+            var (success, message, promo, _) = PromotionService.ValidateForCart(_appliedPromo.Code, SelectedSubtotal);
+            _promoApplied = success;
+            _appliedPromo = success ? promo : null;
+            if (!success)
+                _promoMessage = message;
+        }
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SyncSelection()
+    {
+        var keys = CartService.Items.Select(i => i.Key).ToHashSet();
+        _selected.RemoveWhere(k => !keys.Contains(k));
+
+        foreach (var key in keys)
+        {
+            if (_knownKeys.Add(key))
+                _selected.Add(key);
+        }
+
+        _knownKeys.RemoveWhere(k => !keys.Contains(k));
+    }
+
+    private void OnSelectAllChanged(ChangeEventArgs e)
+    {
+        var check = e.Value is bool b && b
+                    || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+        _selected.Clear();
+        if (check)
+        {
+            foreach (var item in CartService.Items)
+                _selected.Add(item.Key);
+        }
+    }
+
+    private void ToggleSelected(string key)
+    {
+        if (!_selected.Add(key))
+            _selected.Remove(key);
+    }
+
+    private void RemoveItem(string key)
+    {
+        _selected.Remove(key);
+        CartService.Remove(key);
+    }
+
+    private void ToggleWishlist(Product product)
+    {
+        if (!Auth.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/wishlist");
+            return;
+        }
+
+        Wishlist.Toggle(product.Id);
+        Toast.Show(Wishlist.Contains(product.Id) ? "Added to wishlist." : "Removed from wishlist.");
+    }
+
+    private void OnPromoInput(ChangeEventArgs e)
+    {
+        _promoCode = e.Value?.ToString() ?? string.Empty;
+        _promoMessage = null;
+        _promoApplied = false;
+        _appliedPromo = null;
+    }
+
+    private void ApplyPromo()
+    {
+        var (success, message, promo, _) = PromotionService.ValidateForCart(_promoCode, SelectedSubtotal);
+        _promoApplied = success;
+        _appliedPromo = success ? promo : null;
+        _promoMessage = message;
+    }
+
+    private void ProceedToCheckout()
+    {
+        if (!SelectedItems.Any())
+            return;
+
+        if (!Auth.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login?returnUrl=%2Fcheckout&redirect=%2Fcheckout");
+            return;
+        }
+
+        Navigation.NavigateTo("/checkout");
+    }
+
+    private static string QuantityLabel(int count) =>
+        count == 1 ? "1 item" : $"{count} items";
+
+    private static string LineItemLabel(int count) =>
+        count == 1 ? "1 item" : $"{count} items";
+
+    public void Dispose()
+    {
+        CartService.OnChange -= Refresh;
+        Wishlist.OnChange -= Refresh;
+        Auth.OnChange -= Refresh;
+    }
 }

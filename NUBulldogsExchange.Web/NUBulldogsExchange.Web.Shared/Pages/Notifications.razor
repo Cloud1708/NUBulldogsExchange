@@ -1,0 +1,76 @@
+@page "/notifications"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject NotificationService NotificationService
+@implements IDisposable
+
+<PageTitle>Notifications | NU Bulldogs Exchange</PageTitle>
+
+@if (!Auth.IsLoggedIn || Auth.CurrentUser is null)
+{
+    <section class="wishlist-guest-section">
+        <div class="container">
+            <div class="wishlist-guest">
+                <div class="wishlist-guest-icon" aria-hidden="true">
+                    <Icon Name="bell" Size="34" />
+                </div>
+                <h1>Sign in to view your account</h1>
+                <p>Track orders, manage your wishlist, and more.</p>
+                <a href="/login?returnUrl=%2Fnotifications" class="btn btn-navy wishlist-signin-btn">Sign In</a>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <AccountShell Active="notifications">
+        <div class="account-panel account-notifications-panel">
+            <div class="account-panel-head">
+                <h1>Notifications</h1>
+                <button type="button"
+                        class="account-mark-read"
+                        disabled="@(NotificationService.UnreadCount == 0)"
+                        @onclick="NotificationService.MarkAllAsRead">
+                    Mark All as Read
+                </button>
+            </div>
+
+            <div class="notification-list">
+                @foreach (var note in NotificationService.Items)
+                {
+                    <article class="notification-card @(note.IsRead ? "is-read" : "is-unread")">
+                        <div class="notification-icon tone-@note.Tone" aria-hidden="true">
+                            <Icon Name="@note.Icon" Size="18" />
+                        </div>
+                        <div class="notification-body">
+                            <strong>@note.Title</strong>
+                            <p>@note.Message</p>
+                            <span>@note.TimeAgo</span>
+                        </div>
+                        @if (!note.IsRead)
+                        {
+                            <span class="notification-dot" aria-label="Unread"></span>
+                        }
+                    </article>
+                }
+            </div>
+        </div>
+    </AccountShell>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += Refresh;
+        NotificationService.OnChange += Refresh;
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Auth.OnChange -= Refresh;
+        NotificationService.OnChange -= Refresh;
+    }
+}

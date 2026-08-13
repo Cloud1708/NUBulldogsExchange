@@ -1,0 +1,256 @@
+@page "/admin/products/new"
+@page "/admin/products/{Id:int}/edit"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminProductService ProductService
+@inject ToastService Toast
+@inject NavigationManager Navigation
+
+<PageTitle>@(IsEdit ? "Edit Product" : "Add Product") | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-product-form-page">
+    <header class="admin-products-header">
+        <div>
+            <h1>@(IsEdit ? "Edit Product" : "Add Product")</h1>
+            <p>@(IsEdit ? "Update merchandise details." : "Create a new catalog item.")</p>
+        </div>
+        <a href="/admin/products" class="btn btn-outline-navy">Back to Products</a>
+    </header>
+
+    @if (_notFound)
+    {
+        <div class="admin-card admin-placeholder-card">
+            <h2>Product not found</h2>
+            <p>This product may have been deleted.</p>
+            <a href="/admin/products" class="btn btn-navy">Back to Products</a>
+        </div>
+    }
+    else
+    {
+        <form class="admin-card admin-product-form" @onsubmit="Save" @onsubmit:preventDefault="true">
+            <div class="admin-form-grid">
+                <label class="admin-field">
+                    <span>Product Name *</span>
+                    <input type="text" @bind="_name" @bind:event="oninput" placeholder="NU Bulldogs Classic Shirt" />
+                    @if (_errors.ContainsKey(nameof(_name)))
+                    {
+                        <em>@_errors[nameof(_name)]</em>
+                    }
+                </label>
+
+                <label class="admin-field">
+                    <span>SKU *</span>
+                    <input type="text" @bind="_sku" @bind:event="oninput" placeholder="NUBE-TS-001" />
+                    @if (_errors.ContainsKey(nameof(_sku)))
+                    {
+                        <em>@_errors[nameof(_sku)]</em>
+                    }
+                </label>
+
+                <label class="admin-field">
+                    <span>Category *</span>
+                    <select @bind="_category">
+                        <option value="">Select category</option>
+                        @foreach (var category in AdminProductService.Categories)
+                        {
+                            <option value="@category">@category</option>
+                        }
+                    </select>
+                    @if (_errors.ContainsKey(nameof(_category)))
+                    {
+                        <em>@_errors[nameof(_category)]</em>
+                    }
+                </label>
+
+                <label class="admin-field">
+                    <span>Status *</span>
+                    <select @bind="_status">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </label>
+
+                <label class="admin-field">
+                    <span>Price *</span>
+                    <input type="number" min="0" step="1" @bind="_price" @bind:event="oninput" />
+                    @if (_errors.ContainsKey(nameof(_price)))
+                    {
+                        <em>@_errors[nameof(_price)]</em>
+                    }
+                </label>
+
+                <label class="admin-field">
+                    <span>Stock *</span>
+                    <input type="number" min="0" step="1" @bind="_stock" @bind:event="oninput" />
+                    @if (_errors.ContainsKey(nameof(_stock)))
+                    {
+                        <em>@_errors[nameof(_stock)]</em>
+                    }
+                </label>
+
+                <label class="admin-field admin-field-full">
+                    <span>Image URL</span>
+                    <input type="url" @bind="_imageUrl" @bind:event="oninput" placeholder="https://..." />
+                </label>
+
+                <label class="admin-field admin-field-full">
+                    <span>Description</span>
+                    <textarea rows="4" @bind="_description" @bind:event="oninput" placeholder="Product description"></textarea>
+                </label>
+
+                <label class="admin-field">
+                    <span>Colors (comma-separated)</span>
+                    <input type="text" @bind="_colors" @bind:event="oninput" placeholder="navy, gold, white" />
+                </label>
+
+                <label class="admin-field">
+                    <span>Sizes (comma-separated)</span>
+                    <input type="text" @bind="_sizes" @bind:event="oninput" placeholder="S, M, L, XL" />
+                </label>
+            </div>
+
+            @if (!string.IsNullOrWhiteSpace(_imageUrl))
+            {
+                <div class="admin-form-preview">
+                    <span>Image preview</span>
+                    <img src="@_imageUrl"
+                         alt="Preview"
+                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                </div>
+            }
+
+            <div class="admin-form-actions">
+                <button type="submit" class="btn btn-navy">@(IsEdit ? "Save Changes" : "Add Product")</button>
+                <a href="/admin/products" class="btn btn-outline-navy">Cancel</a>
+            </div>
+        </form>
+    }
+</div>
+
+@code {
+    [Parameter] public int? Id { get; set; }
+
+    private bool IsEdit => Id is > 0;
+    private bool _notFound;
+    private int _editId;
+
+    private string _name = string.Empty;
+    private string _sku = string.Empty;
+    private string _category = string.Empty;
+    private string _status = "Active";
+    private decimal _price;
+    private int _stock;
+    private string _imageUrl = string.Empty;
+    private string _description = string.Empty;
+    private string _colors = string.Empty;
+    private string _sizes = string.Empty;
+    private int _sold;
+    private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
+
+    protected override void OnParametersSet()
+    {
+        _errors.Clear();
+        _notFound = false;
+
+        if (!IsEdit)
+        {
+            _editId = 0;
+            _name = string.Empty;
+            _sku = string.Empty;
+            _category = string.Empty;
+            _status = "Active";
+            _price = 0;
+            _stock = 0;
+            _sold = 0;
+            _imageUrl = string.Empty;
+            _description = string.Empty;
+            _colors = string.Empty;
+            _sizes = string.Empty;
+            return;
+        }
+
+        var product = ProductService.GetById(Id!.Value);
+        if (product is null)
+        {
+            _notFound = true;
+            return;
+        }
+
+        _editId = product.Id;
+        _name = product.Name;
+        _sku = product.Sku;
+        _category = product.Category;
+        _status = product.Status;
+        _price = product.Price;
+        _stock = product.Stock;
+        _sold = product.Sold;
+        _imageUrl = product.ImageUrl;
+        _description = product.Description;
+        _colors = string.Join(", ", product.Colors);
+        _sizes = string.Join(", ", product.Sizes);
+    }
+
+    private bool Validate()
+    {
+        _errors.Clear();
+
+        if (string.IsNullOrWhiteSpace(_name))
+            _errors[nameof(_name)] = "Product name is required.";
+        if (string.IsNullOrWhiteSpace(_sku))
+            _errors[nameof(_sku)] = "SKU is required.";
+        if (string.IsNullOrWhiteSpace(_category))
+            _errors[nameof(_category)] = "Category is required.";
+        if (_price <= 0)
+            _errors[nameof(_price)] = "Price must be greater than 0.";
+        if (_stock < 0)
+            _errors[nameof(_stock)] = "Stock must be 0 or greater.";
+
+        return _errors.Count == 0;
+    }
+
+    private void Save()
+    {
+        if (!Validate()) return;
+
+        var model = new AdminProduct
+        {
+            Id = _editId,
+            Name = _name.Trim(),
+            Sku = _sku.Trim().ToUpperInvariant(),
+            Category = _category,
+            Status = _status,
+            Price = _price,
+            Stock = _stock,
+            Sold = _sold,
+            ImageUrl = string.IsNullOrWhiteSpace(_imageUrl) ? MockData.PlaceholderImage : _imageUrl.Trim(),
+            Description = _description.Trim(),
+            Colors = SplitList(_colors),
+            Sizes = SplitList(_sizes)
+        };
+
+        if (IsEdit)
+        {
+            if (!ProductService.Update(model))
+            {
+                _notFound = true;
+                return;
+            }
+
+            Toast.Show("Product updated successfully.");
+        }
+        else
+        {
+            ProductService.Add(model);
+            Toast.Show("Product added successfully.");
+        }
+
+        Navigation.NavigateTo("/admin/products");
+    }
+
+    private static List<string> SplitList(string value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+}

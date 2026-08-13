@@ -1,0 +1,106 @@
+@page "/checkout"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject CartService Cart
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Checkout | NU Bulldogs Exchange</PageTitle>
+
+@if (!Auth.IsLoggedIn)
+{
+    <section class="wishlist-guest-section">
+        <div class="container">
+            <div class="wishlist-guest">
+                <div class="wishlist-guest-icon" aria-hidden="true">
+                    <Icon Name="lock" Size="34" />
+                </div>
+                <h1>Sign in to checkout</h1>
+                <p>Create or sign in to your account to complete this mock order.</p>
+                <a href="/login?returnUrl=%2Fcheckout&redirect=%2Fcheckout" class="btn btn-navy wishlist-signin-btn">Sign In</a>
+            </div>
+        </div>
+    </section>
+}
+else if (!Cart.Items.Any())
+{
+    <section class="empty-cart-section">
+        <div class="container">
+            <div class="empty-cart">
+                <div class="empty-cart-icon">
+                    <Icon Name="shopping-bag" Size="40" />
+                </div>
+                <h1>Your cart is empty.</h1>
+                <p>Add merch before continuing to checkout.</p>
+                <a href="/shop" class="btn btn-navy empty-cart-btn">Start Shopping</a>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <section class="cart-page">
+        <div class="container">
+            <nav class="shop-breadcrumb" aria-label="Breadcrumb">
+                <a href="/">Home</a>
+                <Icon Name="chevron-right" Size="14" />
+                <a href="/cart">My Shopping Cart</a>
+                <Icon Name="chevron-right" Size="14" />
+                <span>Checkout</span>
+            </nav>
+
+            <h1 class="cart-checkout-title">Checkout</h1>
+            <p class="account-overview-lead">Frontend demo only. No payment is processed.</p>
+
+            <div class="cart-layout">
+                <div class="wishlist-panel">
+                    <h2 class="checkout-panel-title">Pickup details</h2>
+                    <p>Campus pickup at the NU Manila Merchandise Center (Building A, Ground Floor).</p>
+                    <p>Pickup hours: Monday–Friday, 8:00 AM–5:00 PM.</p>
+                </div>
+                <aside class="cart-summary">
+                    <h3>Order Summary</h3>
+                    <div class="summary-row"><span>Items</span><span>@Cart.TotalCount</span></div>
+                    <div class="summary-row"><span>Subtotal</span><strong>₱@Cart.Subtotal.ToString("N0")</strong></div>
+                    <div class="summary-row"><span>Pickup Fee</span><span class="text-success">Free</span></div>
+                    <div class="summary-total"><span>Estimated Total</span><strong>₱@Cart.Subtotal.ToString("N0")</strong></div>
+                    <button type="button" class="btn btn-navy btn-block cart-checkout-btn" @onclick="PlaceOrder">Place Order</button>
+                    <a href="/cart" class="btn btn-outline-navy btn-block">Back to Cart</a>
+                    @if (!string.IsNullOrWhiteSpace(_message))
+                    {
+                        <p class="cart-promo-success">@_message</p>
+                    }
+                </aside>
+            </div>
+        </div>
+    </section>
+}
+
+@code {
+    private string? _message;
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += Refresh;
+        Cart.OnChange += Refresh;
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void PlaceOrder()
+    {
+        _message = "Order placed. This is a frontend demo only.";
+        Toast.Show("Mock order placed.");
+        Cart.Clear();
+        Navigation.NavigateTo("/");
+    }
+
+    public void Dispose()
+    {
+        Auth.OnChange -= Refresh;
+        Cart.OnChange -= Refresh;
+    }
+}

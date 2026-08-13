@@ -1,0 +1,51 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject WishlistService Wishlist
+@inject IJSRuntime JS
+@implements IDisposable
+
+@code {
+    private bool _restored;
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += OnAuthChanged;
+        Wishlist.OnChange += OnWishlistChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _restored)
+            return;
+
+        _restored = true;
+        await Auth.RestoreAsync(JS);
+        if (Auth.IsLoggedIn)
+            await Wishlist.RestoreAsync(JS, Auth.Email);
+    }
+
+    private void OnAuthChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (Auth.IsLoggedIn)
+                await Wishlist.RestoreAsync(JS, Auth.Email);
+        });
+    }
+
+    private void OnWishlistChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (Auth.IsLoggedIn)
+                await Wishlist.PersistAsync(JS, Auth.Email);
+        });
+    }
+
+    public void Dispose()
+    {
+        Auth.OnChange -= OnAuthChanged;
+        Wishlist.OnChange -= OnWishlistChanged;
+    }
+}

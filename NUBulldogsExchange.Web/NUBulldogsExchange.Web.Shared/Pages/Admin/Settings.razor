@@ -1,0 +1,484 @@
+@page "/admin/settings"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminSettingsService SettingsService
+@inject ToastService Toast
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Settings | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-settings">
+    <header class="admin-products-header">
+        <div>
+            <h1>Settings</h1>
+            <p>Configure your store preferences</p>
+        </div>
+    </header>
+
+    <div class="admin-settings-layout">
+        <aside class="admin-settings-nav" aria-label="Settings sections">
+            @foreach (var tab in AdminSettingsService.Tabs)
+            {
+                <button type="button"
+                        class="admin-settings-nav-item @(_tab == tab.Key ? "active" : "")"
+                        @onclick="() => SwitchTab(tab.Key)">
+                    <Icon Name="@tab.Icon" Size="16" />
+                    <span>@tab.Label</span>
+                </button>
+            }
+        </aside>
+
+        <div class="admin-settings-main">
+            @if (_tab == "store")
+            {
+                <section class="admin-card admin-settings-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h2>Store Information</h2>
+                            <p>Basic details about your store</p>
+                        </div>
+                    </div>
+
+                    <div class="admin-settings-form">
+                        <label class="admin-settings-row">
+                            <span>Store Name</span>
+                            <input value="@Draft.Store.Name" @oninput="e => OnStore(s => s.Name = Val(e))" />
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>Store Email</span>
+                            <input type="email" value="@Draft.Store.Email" @oninput="e => OnStore(s => s.Email = Val(e))" />
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>Contact Number</span>
+                            <input value="@Draft.Store.Contact" @oninput="e => OnStore(s => s.Contact = Val(e))" />
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>Store Address</span>
+                            <input value="@Draft.Store.Address" @oninput="e => OnStore(s => s.Address = Val(e))" />
+                        </label>
+                    </div>
+                </section>
+            }
+            else if (_tab == "branding")
+            {
+                <section class="admin-card admin-settings-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h2>Branding</h2>
+                            <p>Customize the appearance of your store</p>
+                        </div>
+                    </div>
+                    <div class="admin-settings-form">
+                        <div class="admin-settings-row">
+                            <span>Store Logo</span>
+                            <div class="admin-settings-logo">
+                                <div class="admin-settings-logo-preview" style="@($"background:{Draft.Branding.PrimaryColor}")">NU</div>
+                                <button type="button" class="btn btn-outline-navy" @onclick="NotifyLogoDemo">
+                                    Change Logo
+                                </button>
+                            </div>
+                        </div>
+                        <label class="admin-settings-row">
+                            <span>Primary Color</span>
+                            <div class="admin-settings-color">
+                                <input type="color" value="@Draft.Branding.PrimaryColor" @oninput="e => OnBrand(b => b.PrimaryColor = Val(e))" />
+                                <input value="@Draft.Branding.PrimaryColor" @oninput="e => OnBrand(b => b.PrimaryColor = Val(e))" />
+                            </div>
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>Accent Color</span>
+                            <div class="admin-settings-color">
+                                <input type="color" value="@Draft.Branding.AccentColor" @oninput="e => OnBrand(b => b.AccentColor = Val(e))" />
+                                <input value="@Draft.Branding.AccentColor" @oninput="e => OnBrand(b => b.AccentColor = Val(e))" />
+                            </div>
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>Store Tagline</span>
+                            <input value="@Draft.Branding.Tagline" @oninput="e => OnBrand(b => b.Tagline = Val(e))" />
+                        </label>
+                        <div class="admin-settings-preview" style="@($"--preview-navy:{Draft.Branding.PrimaryColor};--preview-gold:{Draft.Branding.AccentColor}")">
+                            <strong>Preview</strong>
+                            <p>@Draft.Branding.Tagline</p>
+                        </div>
+                    </div>
+                </section>
+            }
+            else if (_tab == "orders")
+            {
+                <section class="admin-card admin-settings-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h2>Order Settings</h2>
+                            <p>Configure how customer orders are processed</p>
+                        </div>
+                    </div>
+                    <div class="admin-settings-form">
+                        <div class="admin-settings-row">
+                            <span>Allow Campus Pickup</span>
+                            <label class="admin-toggle">
+                                <input type="checkbox" checked="@Draft.Orders.CampusPickup" @onchange="e => OnOrders(o => o.CampusPickup = Bool(e))" />
+                                <span></span>
+                            </label>
+                        </div>
+                        <div class="admin-settings-row">
+                            <span>Allow Delivery</span>
+                            <label class="admin-toggle">
+                                <input type="checkbox" checked="@Draft.Orders.Delivery" @onchange="e => OnOrders(o => o.Delivery = Bool(e))" />
+                                <span></span>
+                            </label>
+                        </div>
+                        <label class="admin-settings-row">
+                            <span>Default Fulfillment Method</span>
+                            <select value="@Draft.Orders.DefaultFulfillment" @onchange="e => OnOrders(o => o.DefaultFulfillment = Val(e))">
+                                <option>Campus Pickup</option>
+                                <option>Delivery</option>
+                            </select>
+                        </label>
+                        <div class="admin-settings-row">
+                            <span>Order Cancellation</span>
+                            <label class="admin-toggle">
+                                <input type="checkbox" checked="@Draft.Orders.AllowCancellation" @onchange="e => OnOrders(o => o.AllowCancellation = Bool(e))" />
+                                <span></span>
+                            </label>
+                        </div>
+                        <label class="admin-settings-row">
+                            <span>Cancellation Time Limit (hours)</span>
+                            <input type="number" min="1" value="@Draft.Orders.CancellationHours" @oninput="e => OnOrders(o => o.CancellationHours = Int(e, 24))" />
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>Minimum Order Amount</span>
+                            <input type="number" min="0" value="@Draft.Orders.MinimumOrder" @oninput="e => OnOrders(o => o.MinimumOrder = Dec(e))" />
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>Order Processing Time</span>
+                            <input value="@Draft.Orders.ProcessingTime" @oninput="e => OnOrders(o => o.ProcessingTime = Val(e))" />
+                        </label>
+                    </div>
+                </section>
+            }
+            else if (_tab == "inventory")
+            {
+                <section class="admin-card admin-settings-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h2>Inventory Settings</h2>
+                            <p>Configure stock monitoring preferences</p>
+                        </div>
+                    </div>
+                    <div class="admin-settings-form">
+                        <label class="admin-settings-row">
+                            <span>Default Low Stock Threshold</span>
+                            <input type="number" min="1" value="@Draft.Inventory.LowStockThreshold" @oninput="e => OnInventory(i => i.LowStockThreshold = Int(e, 20))" />
+                        </label>
+                        <div class="admin-settings-row">
+                            <span>Allow Backorders</span>
+                            <label class="admin-toggle">
+                                <input type="checkbox" checked="@Draft.Inventory.AllowBackorders" @onchange="e => OnInventory(i => i.AllowBackorders = Bool(e))" />
+                                <span></span>
+                            </label>
+                        </div>
+                        <div class="admin-settings-row">
+                            <span>Notify When Low Stock</span>
+                            <label class="admin-toggle">
+                                <input type="checkbox" checked="@Draft.Inventory.LowStockAlerts" @onchange="e => OnInventory(i => i.LowStockAlerts = Bool(e))" />
+                                <span></span>
+                            </label>
+                        </div>
+                        <div class="admin-settings-row">
+                            <span>Notify When Out of Stock</span>
+                            <label class="admin-toggle">
+                                <input type="checkbox" checked="@Draft.Inventory.OutOfStockAlerts" @onchange="e => OnInventory(i => i.OutOfStockAlerts = Bool(e))" />
+                                <span></span>
+                            </label>
+                        </div>
+                        <div class="admin-settings-row">
+                            <span>Reserve Stock for Pending Orders</span>
+                            <label class="admin-toggle">
+                                <input type="checkbox" checked="@Draft.Inventory.ReservePendingStock" @onchange="e => OnInventory(i => i.ReservePendingStock = Bool(e))" />
+                                <span></span>
+                            </label>
+                        </div>
+                    </div>
+                </section>
+            }
+            else if (_tab == "notifications")
+            {
+                <section class="admin-card admin-settings-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h2>Notification Settings</h2>
+                            <p>Choose which store activities generate notifications</p>
+                        </div>
+                    </div>
+                    <div class="admin-settings-form">
+                        @RenderToggle("New Orders", Draft.Notifications.NewOrders, v => OnNotifs(n => n.NewOrders = v))
+                        @RenderToggle("Order Cancellations", Draft.Notifications.CancelledOrders, v => OnNotifs(n => n.CancelledOrders = v))
+                        @RenderToggle("Order Ready for Pickup", Draft.Notifications.ReadyForPickup, v => OnNotifs(n => n.ReadyForPickup = v))
+                        @RenderToggle("Low Stock", Draft.Notifications.LowStock, v => OnNotifs(n => n.LowStock = v))
+                        @RenderToggle("Out of Stock", Draft.Notifications.OutOfStock, v => OnNotifs(n => n.OutOfStock = v))
+                        @RenderToggle("New Customer Registrations", Draft.Notifications.NewCustomers, v => OnNotifs(n => n.NewCustomers = v))
+                        @RenderToggle("Promotion Expiry", Draft.Notifications.PromotionExpiry, v => OnNotifs(n => n.PromotionExpiry = v))
+                        @RenderToggle("Staff Activity", Draft.Notifications.StaffActivity, v => OnNotifs(n => n.StaffActivity = v))
+                    </div>
+                </section>
+            }
+            else if (_tab == "security")
+            {
+                <section class="admin-card admin-settings-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h2>Security</h2>
+                            <p>Manage Admin Portal security preferences</p>
+                        </div>
+                    </div>
+                    <div class="admin-settings-form">
+                        @RenderToggle("Two-Factor Authentication", Draft.Security.TwoFactor, v => OnSecurity(s => s.TwoFactor = v))
+                        @RenderToggle("Login Notifications", Draft.Security.LoginAlerts, v => OnSecurity(s => s.LoginAlerts = v))
+                        <label class="admin-settings-row">
+                            <span>Session Timeout (minutes)</span>
+                            <input type="number" min="5" value="@Draft.Security.SessionTimeout" @oninput="e => OnSecurity(s => s.SessionTimeout = Int(e, 30))" />
+                        </label>
+                        @RenderToggle("Require Strong Passwords", Draft.Security.StrongPasswords, v => OnSecurity(s => s.StrongPasswords = v))
+                    </div>
+                </section>
+
+                <section class="admin-card admin-settings-card">
+                    <div class="admin-card-head">
+                        <div>
+                            <h2>Change Password</h2>
+                            <p>Frontend demo only — passwords are not stored.</p>
+                        </div>
+                    </div>
+                    <div class="admin-settings-form">
+                        <label class="admin-settings-row">
+                            <span>Current Password</span>
+                            <input type="password" @bind="_currentPassword" @bind:event="oninput" autocomplete="current-password" />
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>New Password</span>
+                            <input type="password" @bind="_newPassword" @bind:event="oninput" autocomplete="new-password" />
+                        </label>
+                        <label class="admin-settings-row">
+                            <span>Confirm New Password</span>
+                            <input type="password" @bind="_confirmPassword" @bind:event="oninput" autocomplete="new-password" />
+                        </label>
+                        @if (!string.IsNullOrEmpty(_passwordError))
+                        {
+                            <p class="admin-staff-error">@_passwordError</p>
+                        }
+                        <div class="admin-settings-password-actions">
+                            <button type="button" class="btn btn-navy" @onclick="UpdatePassword">Update Password</button>
+                        </div>
+                    </div>
+                </section>
+            }
+
+            <div class="admin-settings-footer">
+                <button type="button"
+                        class="btn btn-outline-navy"
+                        disabled="@(!SettingsService.HasUnsavedChanges)"
+                        @onclick="Discard">
+                    Discard Changes
+                </button>
+                <button type="button"
+                        class="btn btn-navy admin-settings-save"
+                        disabled="@(!SettingsService.HasUnsavedChanges)"
+                        @onclick="Save">
+                    <Icon Name="save" Size="15" />
+                    Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+@if (_showUnsavedPrompt)
+{
+    <div class="admin-modal-backdrop" @onclick="KeepEditing">
+        <div class="admin-modal admin-promo-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>You have unsaved changes.</h2>
+            <p class="admin-modal-note">Save before switching tabs, or discard your edits.</p>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="DiscardAndSwitch">Discard</button>
+                <button type="button" class="btn btn-outline-navy" @onclick="KeepEditing">Keep Editing</button>
+                <button type="button" class="btn btn-navy" @onclick="SaveAndSwitch">Save</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _tab = "store";
+    private string? _pendingTab;
+    private bool _showUnsavedPrompt;
+    private bool _storageLoaded;
+
+    private string _currentPassword = string.Empty;
+    private string _newPassword = string.Empty;
+    private string _confirmPassword = string.Empty;
+    private string? _passwordError;
+
+    private AdminPortalSettings Draft => SettingsService.Draft;
+
+    protected override void OnInitialized() => SettingsService.OnChange += Refresh;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender || _storageLoaded) return;
+        _storageLoaded = true;
+        try
+        {
+            var json = await JS.InvokeAsync<string?>("localStorage.getItem", AdminSettingsService.StorageKey);
+            SettingsService.LoadFromStorageJson(json);
+        }
+        catch
+        {
+            // localStorage may be unavailable.
+        }
+    }
+
+    private RenderFragment RenderToggle(string label, bool value, Action<bool> set) => __builder =>
+    {
+        <div class="admin-settings-row">
+            <span>@label</span>
+            <label class="admin-toggle">
+                <input type="checkbox" checked="@value" @onchange="e => { set(Bool(e)); NotifyDraft(); }" />
+                <span></span>
+            </label>
+        </div>
+    };
+
+    private void SwitchTab(string key)
+    {
+        if (key == _tab) return;
+        if (SettingsService.HasUnsavedChanges)
+        {
+            _pendingTab = key;
+            _showUnsavedPrompt = true;
+            return;
+        }
+
+        _tab = key;
+    }
+
+    private void KeepEditing()
+    {
+        _showUnsavedPrompt = false;
+        _pendingTab = null;
+    }
+
+    private async Task DiscardAndSwitch()
+    {
+        Discard();
+        if (!string.IsNullOrWhiteSpace(_pendingTab))
+            _tab = _pendingTab;
+        KeepEditing();
+        await Task.CompletedTask;
+    }
+
+    private async Task SaveAndSwitch()
+    {
+        await Save();
+        if (!SettingsService.HasUnsavedChanges && !string.IsNullOrWhiteSpace(_pendingTab))
+            _tab = _pendingTab;
+        KeepEditing();
+    }
+
+    private void NotifyLogoDemo() => Toast.Show("Logo upload is frontend-only for now.");
+
+    private void Discard()
+    {
+        SettingsService.Discard();
+        Toast.Show("Changes discarded.");
+    }
+
+    private async Task Save()
+    {
+        var (success, message) = SettingsService.Save();
+        if (!success)
+        {
+            Toast.Show(message);
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("localStorage.setItem", AdminSettingsService.StorageKey, SettingsService.ToStorageJson());
+        }
+        catch
+        {
+            // Ignore storage failures in demo.
+        }
+
+        Toast.Show(message);
+    }
+
+    private void UpdatePassword()
+    {
+        var (success, message) = SettingsService.ValidatePasswordChange(_currentPassword, _newPassword, _confirmPassword);
+        _passwordError = success ? null : message;
+        if (!success) return;
+
+        _currentPassword = string.Empty;
+        _newPassword = string.Empty;
+        _confirmPassword = string.Empty;
+        Toast.Show(message);
+    }
+
+    private void OnStore(Action<AdminStoreSettings> mutate)
+    {
+        mutate(Draft.Store);
+        NotifyDraft();
+    }
+
+    private void OnBrand(Action<AdminBrandingSettings> mutate)
+    {
+        mutate(Draft.Branding);
+        NotifyDraft();
+    }
+
+    private void OnOrders(Action<AdminOrderSettings> mutate)
+    {
+        mutate(Draft.Orders);
+        NotifyDraft();
+    }
+
+    private void OnInventory(Action<AdminInventorySettings> mutate)
+    {
+        mutate(Draft.Inventory);
+        NotifyDraft();
+    }
+
+    private void OnNotifs(Action<AdminNotificationSettings> mutate)
+    {
+        mutate(Draft.Notifications);
+        NotifyDraft();
+    }
+
+    private void OnSecurity(Action<AdminSecuritySettings> mutate)
+    {
+        mutate(Draft.Security);
+        NotifyDraft();
+    }
+
+    private void NotifyDraft() => SettingsService.ReplaceDraft(Draft);
+
+    private static string Val(ChangeEventArgs e) => e.Value?.ToString() ?? string.Empty;
+
+    private static bool Bool(ChangeEventArgs e) =>
+        e.Value is bool b
+            ? b
+            : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+
+    private static int Int(ChangeEventArgs e, int fallback) =>
+        int.TryParse(e.Value?.ToString(), out var n) ? n : fallback;
+
+    private static decimal Dec(ChangeEventArgs e) =>
+        decimal.TryParse(e.Value?.ToString(), out var n) ? n : 0;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => SettingsService.OnChange -= Refresh;
+}

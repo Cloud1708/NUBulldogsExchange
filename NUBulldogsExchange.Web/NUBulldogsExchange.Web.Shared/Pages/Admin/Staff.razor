@@ -1,0 +1,352 @@
+@page "/admin/staff"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminStaffService StaffService
+@inject AuthService Auth
+@inject ToastService Toast
+@implements IDisposable
+
+<PageTitle>Staff Management | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-staff">
+    <header class="admin-products-header">
+        <div>
+            <h1>Staff Management</h1>
+            <p>Manage team members and their access</p>
+        </div>
+        <button type="button" class="btn btn-navy admin-staff-add-btn" @onclick="OpenAdd">
+            <Icon Name="plus" Size="15" />
+            Add Staff
+        </button>
+    </header>
+
+    <div class="admin-staff-stats">
+        <article class="admin-staff-stat">
+            <strong>@StaffService.TotalStaff</strong>
+            <span>Total Staff</span>
+        </article>
+        <article class="admin-staff-stat">
+            <strong>@StaffService.AdminCount</strong>
+            <span>Admins</span>
+        </article>
+        <article class="admin-staff-stat">
+            <strong>@StaffService.ActiveCount</strong>
+            <span>Active</span>
+        </article>
+    </div>
+
+    <section class="admin-staff-table-card">
+        @if (!StaffService.All.Any())
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="users" Size="36" />
+                </div>
+                <h2>No staff members found.</h2>
+                <p>Add staff members to help manage the NU Bulldogs Exchange store.</p>
+                <button type="button" class="btn btn-navy" @onclick="OpenAdd">Add Staff</button>
+            </div>
+        }
+        else
+        {
+            <div class="admin-staff-table-wrap">
+                <table class="admin-staff-table">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Last Login</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var member in StaffService.All)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="admin-staff-name">
+                                        <span class="admin-staff-avatar @(member.IsAdmin ? "is-admin" : "")"
+                                              aria-hidden="true">@member.Initial</span>
+                                        <strong>@member.FullName</strong>
+                                    </div>
+                                </td>
+                                <td><span class="admin-staff-email">@member.Email</span></td>
+                                <td>
+                                    <span class="admin-staff-role role-@member.RoleKey">
+                                        <Icon Name="@(member.IsAdmin ? "shield" : "users")" Size="12" />
+                                        @member.Role
+                                    </span>
+                                </td>
+                                <td>
+                                    <span class="admin-customer-status status-@member.StatusKey">@member.Status</span>
+                                </td>
+                                <td><span class="admin-staff-login">@member.LastLoginLabel</span></td>
+                                <td>
+                                    <div class="admin-staff-actions">
+                                        <button type="button"
+                                                class="admin-staff-action-btn"
+                                                title="Manage Permissions"
+                                                aria-label="@($"Manage permissions for {member.FullName}")"
+                                                @onclick="() => OpenPermissions(member)">
+                                            <Icon Name="shield" Size="15" />
+                                        </button>
+                                        <button type="button"
+                                                class="admin-staff-action-btn"
+                                                title="Edit Staff"
+                                                aria-label="@($"Edit {member.FullName}")"
+                                                @onclick="() => OpenEdit(member)">
+                                            <Icon Name="pencil" Size="15" />
+                                        </button>
+                                        @if (!member.IsPrimaryAdmin)
+                                        {
+                                            <button type="button"
+                                                    class="admin-staff-action-btn is-danger"
+                                                    title="Delete Staff"
+                                                    aria-label="@($"Delete {member.FullName}")"
+                                                    @onclick="() => OpenDelete(member)">
+                                                <Icon Name="trash" Size="15" />
+                                            </button>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@if (_showAdd || _editMember is not null)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseForm">
+        <div class="admin-modal admin-staff-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>@(_editMember is null ? "Add Staff Member" : "Edit Staff")</h2>
+            <form class="admin-category-form" @onsubmit="SaveForm" @onsubmit:preventDefault="true">
+                <div class="admin-staff-form-grid">
+                    <label class="admin-field">
+                        <span>First Name</span>
+                        <input @bind="_firstName" @bind:event="oninput" />
+                    </label>
+                    <label class="admin-field">
+                        <span>Last Name</span>
+                        <input @bind="_lastName" @bind:event="oninput" />
+                    </label>
+                </div>
+                <label class="admin-field">
+                    <span>Email Address</span>
+                    <input type="email"
+                           @bind="_email"
+                           @bind:event="oninput"
+                           disabled="@(_editMember?.IsPrimaryAdmin == true)" />
+                </label>
+                <div class="admin-staff-form-grid">
+                    <label class="admin-field">
+                        <span>Role</span>
+                        <select @bind="_role" disabled="@(_editMember?.IsPrimaryAdmin == true)">
+                            @foreach (var role in AdminStaffService.Roles)
+                            {
+                                <option value="@role">@role</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="admin-field">
+                        <span>Status</span>
+                        <select @bind="_status" disabled="@(_editMember?.IsPrimaryAdmin == true)">
+                            @foreach (var status in AdminStaffService.Statuses)
+                            {
+                                <option value="@status">@status</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <p class="admin-staff-error">@_formError</p>
+                }
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseForm">Cancel</button>
+                    <button type="submit" class="btn btn-navy">
+                        @(_editMember is null ? "Add Staff" : "Save Changes")
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@if (_permissionsMember is not null && _permDraft is not null)
+{
+    <div class="admin-modal-backdrop" @onclick="ClosePermissions">
+        <div class="admin-modal admin-staff-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Manage Permissions</h2>
+            <p class="admin-inventory-modal-product">@_permissionsMember.FullName</p>
+            <p class="admin-modal-note">@_permissionsMember.Role</p>
+
+            @if (_permissionsMember.IsAdmin)
+            {
+                <p class="admin-modal-note">Admin accounts have full access to all modules.</p>
+            }
+            else
+            {
+                <div class="admin-staff-permissions">
+                    <span class="admin-staff-permissions-label">Permissions</span>
+                    @foreach (var option in AdminStaffService.PermissionOptions)
+                    {
+                        var key = option.Key;
+                        var label = option.Label;
+                        <label class="admin-staff-check">
+                            <input type="checkbox"
+                                   checked="@AdminStaffService.GetPermission(_permDraft, key)"
+                                   @onchange="e => OnPermissionToggle(key, e)" />
+                            <span>@label</span>
+                        </label>
+                    }
+                </div>
+            }
+
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="ClosePermissions">Cancel</button>
+                <button type="button" class="btn btn-navy" @onclick="SavePermissions">Save Permissions</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_deleteMember is not null)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseDelete">
+        <div class="admin-modal admin-staff-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Remove Staff Member?</h2>
+            <p>Are you sure you want to remove <strong>@_deleteMember.FullName</strong> from the Admin Portal?</p>
+            <p class="admin-modal-note">This staff member will no longer have access.</p>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="CloseDelete">Cancel</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDelete">Remove Staff</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _showAdd;
+    private AdminStaffMember? _editMember;
+    private AdminStaffMember? _permissionsMember;
+    private AdminStaffMember? _deleteMember;
+    private AdminStaffPermissions? _permDraft;
+
+    private string _firstName = string.Empty;
+    private string _lastName = string.Empty;
+    private string _email = string.Empty;
+    private string _role = "Staff";
+    private string _status = "Active";
+    private string? _formError;
+
+    protected override void OnInitialized() => StaffService.OnChange += Refresh;
+
+    private void OpenAdd()
+    {
+        _showAdd = true;
+        _editMember = null;
+        _firstName = string.Empty;
+        _lastName = string.Empty;
+        _email = string.Empty;
+        _role = "Staff";
+        _status = "Active";
+        _formError = null;
+    }
+
+    private void OpenEdit(AdminStaffMember member)
+    {
+        _showAdd = false;
+        _editMember = member;
+        _firstName = member.FirstName;
+        _lastName = member.LastName;
+        _email = member.Email;
+        _role = member.Role;
+        _status = member.Status;
+        _formError = null;
+    }
+
+    private void CloseForm()
+    {
+        _showAdd = false;
+        _editMember = null;
+        _formError = null;
+    }
+
+    private void SaveForm()
+    {
+        _formError = null;
+
+        if (_editMember is null)
+        {
+            var (success, message) = StaffService.Add(_firstName, _lastName, _email, _role, _status);
+            if (!success)
+            {
+                _formError = message;
+                return;
+            }
+
+            Toast.Show(message);
+            CloseForm();
+            return;
+        }
+
+        var (ok, msg) = StaffService.Update(_editMember.Id, _firstName, _lastName, _email, _role, _status);
+        if (!ok)
+        {
+            _formError = msg;
+            return;
+        }
+
+        Toast.Show(msg);
+        CloseForm();
+    }
+
+    private void OpenPermissions(AdminStaffMember member)
+    {
+        _permissionsMember = member;
+        _permDraft = member.Permissions.Clone();
+    }
+
+    private void ClosePermissions()
+    {
+        _permissionsMember = null;
+        _permDraft = null;
+    }
+
+    private void OnPermissionToggle(string key, ChangeEventArgs e)
+    {
+        if (_permDraft is null) return;
+        var value = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        AdminStaffService.SetPermission(_permDraft, key, value);
+    }
+
+    private void SavePermissions()
+    {
+        if (_permissionsMember is null || _permDraft is null) return;
+        var (success, message) = StaffService.UpdatePermissions(_permissionsMember.Id, _permDraft);
+        Toast.Show(message);
+        if (success) ClosePermissions();
+    }
+
+    private void OpenDelete(AdminStaffMember member) => _deleteMember = member;
+    private void CloseDelete() => _deleteMember = null;
+
+    private void ConfirmDelete()
+    {
+        if (_deleteMember is null) return;
+        var (success, message) = StaffService.Delete(_deleteMember.Id, Auth.CurrentUser?.Email);
+        Toast.Show(message);
+        if (success) CloseDelete();
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => StaffService.OnChange -= Refresh;
+}

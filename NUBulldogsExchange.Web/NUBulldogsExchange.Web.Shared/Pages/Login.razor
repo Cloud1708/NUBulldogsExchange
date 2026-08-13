@@ -7,6 +7,7 @@
 @inject AuthService Auth
 @inject ToastService Toast
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Login | NU Bulldogs Exchange</PageTitle>
@@ -69,14 +70,23 @@
             {
                 <h1>You're signed in</h1>
                 <p class="auth-subtitle">
-                    Signed in as <strong>@Auth.Email</strong>
-                    @if (Auth.Role == "admin")
+                    Signed in as <strong>@Auth.DisplayName</strong>
+                    <br />
+                    <span>@Auth.Email</span>
+                    @if (Auth.IsAdmin)
                     {
                         <span class="auth-role-pill">Admin</span>
                     }
                 </p>
-                <a href="/wishlist" class="btn btn-navy btn-block auth-primary-btn">View Wishlist</a>
-                <a href="/" class="btn btn-outline-navy btn-block">Continue Shopping</a>
+                @if (Auth.IsAdmin)
+                {
+                    <a href="/admin/dashboard" class="btn btn-navy btn-block auth-primary-btn">Go to Admin Portal</a>
+                }
+                else
+                {
+                    <a href="/wishlist" class="btn btn-navy btn-block auth-primary-btn">View Wishlist</a>
+                    <a href="/" class="btn btn-outline-navy btn-block">Continue Shopping</a>
+                }
                 <button type="button" class="btn btn-outline-navy btn-block" @onclick="Logout">Logout</button>
             }
             else
@@ -249,8 +259,9 @@
         {
             await Task.Delay(450);
             Auth.Login(email, _rememberMe);
-            Toast.Show(Auth.Role == "admin" ? "Signed in as admin." : "Welcome back!");
-            Navigation.NavigateTo(GetReturnUrl());
+            await Auth.PersistAsync(JS);
+            Toast.Show(Auth.IsAdmin ? "Signed in as admin." : "Welcome back!");
+            Navigation.NavigateTo(Auth.IsAdmin ? "/admin/dashboard" : GetReturnUrl());
         }
         finally
         {
@@ -260,9 +271,9 @@
 
     private void ContinueAsGuest() => Navigation.NavigateTo("/");
 
-    private void Logout()
+    private async Task Logout()
     {
-        Auth.Logout();
+        await Auth.LogoutAsync(JS);
         Toast.Show("Signed out.");
     }
 
@@ -277,7 +288,8 @@
         {
             var pair = part.Split('=', 2);
             if (pair.Length == 0) continue;
-            if (!string.Equals(Uri.UnescapeDataString(pair[0]), "returnUrl", StringComparison.OrdinalIgnoreCase))
+            if (!string.Equals(Uri.UnescapeDataString(pair[0]), "returnUrl", StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(Uri.UnescapeDataString(pair[0]), "redirect", StringComparison.OrdinalIgnoreCase))
                 continue;
 
             var value = pair.Length > 1 ? Uri.UnescapeDataString(pair[1]) : "/";

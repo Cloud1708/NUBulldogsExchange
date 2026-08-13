@@ -4,6 +4,8 @@
 @inject CartService Cart
 @inject WishlistService Wishlist
 @inject AuthService Auth
+@inject NotificationService Notifications
+@inject IJSRuntime JS
 @implements IDisposable
 
 <div class="top-header container">
@@ -11,7 +13,7 @@
         <Icon Name="menu" Size="22" />
     </button>
 
-    <a href="/" class="brand" @onclick="CloseMobile">
+    <a href="/" class="brand" @onclick="CloseMenus">
         <div class="brand-icon">NU</div>
         <div>
             <div class="brand-title">NU Bulldogs</div>
@@ -33,14 +35,18 @@
     <div class="header-actions">
         <a href="/wishlist" class="icon-button" title="Wishlist" aria-label="Wishlist">
             <Icon Name="heart" Size="20" />
-            @if (Wishlist.Count > 0)
+            @if (Auth.IsLoggedIn && Wishlist.Count > 0)
             {
                 <span class="badge-count">@Wishlist.Count</span>
             }
         </a>
-        <button type="button" class="icon-button" title="Notifications" aria-label="Notifications">
+        <a href="/notifications" class="icon-button" title="Notifications" aria-label="Notifications">
             <Icon Name="bell" Size="20" />
-        </button>
+            @if (Auth.IsLoggedIn && Notifications.UnreadCount > 0)
+            {
+                <span class="badge-count">@Notifications.UnreadCount</span>
+            }
+        </a>
         <a href="/cart" class="icon-button" title="Cart" aria-label="Shopping cart">
             <Icon Name="cart" Size="20" />
             @if (Cart.TotalCount > 0)
@@ -49,14 +55,55 @@
             }
         </a>
 
-        @if (Auth.IsLoggedIn)
+        @if (Auth.IsLoggedIn && Auth.CurrentUser is not null)
         {
-            <div class="header-user">
-                <a href="/login" class="login-button login-button-user" title="@Auth.Email">
-                    <Icon Name="user" Size="16" />
-                    <span>@Auth.DisplayName</span>
-                </a>
-                <button type="button" class="header-logout" title="Logout" @onclick="Logout">Logout</button>
+            <div class="header-profile">
+                <button type="button"
+                        class="header-avatar-btn @(_isProfileMenuOpen ? "open" : "")"
+                        title="@Auth.DisplayName"
+                        aria-label="Account menu"
+                        aria-expanded="@_isProfileMenuOpen"
+                        @onclick="ToggleProfileMenu"
+                        @onclick:stopPropagation="true">
+                    <span class="header-avatar">@Auth.Initial</span>
+                    <Icon Name="chevron-down" Size="14" CssClass="header-avatar-chevron" />
+                </button>
+
+                @if (_isProfileMenuOpen)
+                {
+                    <div class="profile-menu" role="menu" @onclick:stopPropagation="true">
+                        <div class="profile-menu-user">
+                            <strong>@Auth.DisplayName</strong>
+                            <span>@Auth.Email</span>
+                        </div>
+
+                        @if (Auth.IsCustomer)
+                        {
+                            <a href="/account" class="profile-menu-item" role="menuitem" @onclick="CloseProfileMenu">
+                                <Icon Name="user" Size="16" />
+                                My Account
+                            </a>
+                            <a href="/orders" class="profile-menu-item" role="menuitem" @onclick="CloseProfileMenu">
+                                <Icon Name="package" Size="16" />
+                                My Orders
+                            </a>
+                        }
+                        else if (Auth.IsAdmin)
+                        {
+                            <a href="/admin/dashboard" class="profile-menu-item" role="menuitem" @onclick="CloseProfileMenu">
+                                <Icon Name="layout-dashboard" Size="16" />
+                                Admin Portal
+                            </a>
+                        }
+
+                        <div class="profile-menu-sep"></div>
+
+                        <button type="button" class="profile-menu-item profile-menu-logout" role="menuitem" @onclick="Logout">
+                            <Icon Name="log-out" Size="16" />
+                            Logout
+                        </button>
+                    </div>
+                }
             </div>
         }
         else
@@ -65,6 +112,11 @@
         }
     </div>
 </div>
+
+@if (_isProfileMenuOpen)
+{
+    <div class="profile-menu-backdrop" @onclick="CloseProfileMenu" @onkeydown="OnEscape"></div>
+}
 
 @if (_mobileOpen)
 {
@@ -86,9 +138,17 @@
             <a href="/school-essentials" @onclick="CloseMobile">School Essentials</a>
             <a href="/wishlist" @onclick="CloseMobile">Wishlist</a>
             <a href="/cart" @onclick="CloseMobile">Cart</a>
-            @if (Auth.IsLoggedIn)
+            @if (Auth.IsLoggedIn && Auth.CurrentUser is not null)
             {
-                <a href="/login" @onclick="CloseMobile">Account</a>
+                <div class="mobile-user-block">
+                    <strong>@Auth.DisplayName</strong>
+                    <span>@Auth.Email</span>
+                </div>
+                @if (Auth.IsCustomer)
+                {
+                    <a href="/account" @onclick="CloseMobile">My Account</a>
+                    <a href="/orders" @onclick="CloseMobile">My Orders</a>
+                }
                 <button type="button" class="mobile-logout-btn" @onclick="LogoutMobile">Logout</button>
             }
             else
@@ -102,6 +162,7 @@
 @code {
     private string _query = string.Empty;
     private bool _mobileOpen;
+    private bool _isProfileMenuOpen;
 
     private string LoginHref
     {
@@ -124,6 +185,7 @@
         Cart.OnChange += Refresh;
         Wishlist.OnChange += Refresh;
         Auth.OnChange += Refresh;
+        Notifications.OnChange += Refresh;
         Navigation.LocationChanged += OnLocationChanged;
         SyncQueryFromUrl();
     }
@@ -132,6 +194,7 @@
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
+        _isProfileMenuOpen = false;
         SyncQueryFromUrl();
         InvokeAsync(StateHasChanged);
     }
@@ -161,8 +224,32 @@
         return null;
     }
 
-    private void ToggleMobile() => _mobileOpen = !_mobileOpen;
+    private void ToggleMobile()
+    {
+        _mobileOpen = !_mobileOpen;
+        _isProfileMenuOpen = false;
+    }
+
     private void CloseMobile() => _mobileOpen = false;
+    private void CloseProfileMenu() => _isProfileMenuOpen = false;
+
+    private void CloseMenus()
+    {
+        _mobileOpen = false;
+        _isProfileMenuOpen = false;
+    }
+
+    private void ToggleProfileMenu()
+    {
+        _isProfileMenuOpen = !_isProfileMenuOpen;
+        _mobileOpen = false;
+    }
+
+    private void OnEscape(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+            CloseProfileMenu();
+    }
 
     private void OnSearchInput(ChangeEventArgs e) =>
         _query = e.Value?.ToString() ?? string.Empty;
@@ -171,6 +258,8 @@
     {
         if (e.Key == "Enter")
             SubmitSearch();
+        if (e.Key == "Escape")
+            CloseProfileMenu();
     }
 
     private void SubmitSearch()
@@ -186,16 +275,18 @@
         Navigation.NavigateTo($"/shop?q={Uri.EscapeDataString(trimmed)}");
     }
 
-    private void Logout()
+    private async Task Logout()
     {
-        Auth.Logout();
-        CloseMobile();
+        CloseMenus();
+        await Auth.LogoutAsync(JS);
+        Navigation.NavigateTo("/");
     }
 
-    private void LogoutMobile()
+    private async Task LogoutMobile()
     {
-        Auth.Logout();
-        CloseMobile();
+        CloseMenus();
+        await Auth.LogoutAsync(JS);
+        Navigation.NavigateTo("/");
     }
 
     public void Dispose()
@@ -203,6 +294,7 @@
         Cart.OnChange -= Refresh;
         Wishlist.OnChange -= Refresh;
         Auth.OnChange -= Refresh;
+        Notifications.OnChange -= Refresh;
         Navigation.LocationChanged -= OnLocationChanged;
     }
 }

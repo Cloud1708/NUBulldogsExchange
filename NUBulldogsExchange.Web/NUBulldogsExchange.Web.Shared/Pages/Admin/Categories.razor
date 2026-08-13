@@ -1,0 +1,300 @@
+@page "/admin/categories"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminCategoryService CategoryService
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Categories | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-categories">
+    <header class="admin-products-header">
+        <div>
+            <h1>Categories</h1>
+            <p>Organize your merchandise catalog</p>
+        </div>
+        <button type="button" class="btn btn-navy admin-add-product-btn" @onclick="OpenAddModal">
+            <Icon Name="plus" Size="16" />
+            Add Category
+        </button>
+    </header>
+
+    <div class="admin-category-stats">
+        <article class="admin-category-stat">
+            <strong>@CategoryService.TotalCount</strong>
+            <span>Total Categories</span>
+        </article>
+        <article class="admin-category-stat">
+            <strong>@CategoryService.ActiveCount</strong>
+            <span>Active</span>
+        </article>
+        <article class="admin-category-stat">
+            <strong>@CategoryService.InactiveCount</strong>
+            <span>Inactive</span>
+        </article>
+        <article class="admin-category-stat">
+            <strong>@CategoryService.TotalProducts</strong>
+            <span>Total Products</span>
+        </article>
+    </div>
+
+    @if (!CategoryService.All.Any())
+    {
+        <div class="admin-card admin-categories-empty">
+            <div class="admin-products-empty-icon" aria-hidden="true">
+                <Icon Name="tag" Size="36" />
+            </div>
+            <h2>No categories yet.</h2>
+            <p>Create your first merchandise category.</p>
+            <button type="button" class="btn btn-navy" @onclick="OpenAddModal">Add Category</button>
+        </div>
+    }
+    else
+    {
+        <div class="admin-category-grid">
+            @foreach (var category in CategoryService.All)
+            {
+                <article class="admin-category-card">
+                    <a class="admin-category-media"
+                       href="@($"/admin/products?category={Uri.EscapeDataString(category.Name)}")"
+                       title="@($"View {category.Name} products")">
+                        <img src="@category.ImageUrl"
+                             alt="@category.Name"
+                             loading="lazy"
+                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                        <span class="admin-product-status @(category.IsActive ? "is-active" : "is-inactive")">
+                            @category.Status
+                        </span>
+                    </a>
+
+                    <div class="admin-category-body">
+                        <a class="admin-category-info"
+                           href="@($"/admin/products?category={Uri.EscapeDataString(category.Name)}")">
+                            <div class="admin-category-title">
+                                <Icon Name="tag" Size="15" />
+                                <strong>@category.Name</strong>
+                            </div>
+                            <span>@category.ProductCountLabel</span>
+                        </a>
+
+                        <div class="admin-category-actions">
+                            <button type="button"
+                                    class="admin-category-icon-btn"
+                                    title="Edit category"
+                                    aria-label="@($"Edit {category.Name}")"
+                                    @onclick="() => OpenEditModal(category)">
+                                <Icon Name="pencil" Size="15" />
+                            </button>
+                            <button type="button"
+                                    class="admin-category-icon-btn danger"
+                                    title="Delete category"
+                                    aria-label="@($"Delete {category.Name}")"
+                                    @onclick="() => OpenDeleteModal(category)">
+                                <Icon Name="trash" Size="15" />
+                            </button>
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+@if (_formOpen)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseForm">
+        <div class="admin-modal admin-category-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>@(_isEdit ? "Edit Category" : "Add Category")</h2>
+
+            <form class="admin-category-form" @onsubmit="SaveCategory" @onsubmit:preventDefault="true">
+                <label class="admin-field">
+                    <span>Category Name *</span>
+                    <input type="text" @bind="_name" @bind:event="oninput" placeholder="T-Shirts" />
+                    @if (!string.IsNullOrEmpty(_nameError))
+                    {
+                        <em>@_nameError</em>
+                    }
+                </label>
+
+                <label class="admin-field">
+                    <span>Slug</span>
+                    <input type="text" @bind="_slug" @bind:event="oninput" placeholder="t-shirts" />
+                </label>
+
+                <label class="admin-field">
+                    <span>Category Image URL</span>
+                    <input type="url" @bind="_imageUrl" @bind:event="oninput" placeholder="https://..." />
+                </label>
+
+                <label class="admin-field">
+                    <span>Description</span>
+                    <textarea rows="3" @bind="_description" @bind:event="oninput" placeholder="Category description"></textarea>
+                </label>
+
+                <label class="admin-field">
+                    <span>Status</span>
+                    <select @bind="_status">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                </label>
+
+                @if (!string.IsNullOrWhiteSpace(_imageUrl))
+                {
+                    <div class="admin-form-preview">
+                        <span>Image preview</span>
+                        <img src="@_imageUrl"
+                             alt="Preview"
+                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                    </div>
+                }
+
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseForm">Cancel</button>
+                    <button type="submit" class="btn btn-navy">@(_isEdit ? "Save Changes" : "Add Category")</button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@if (_deleteTarget is not null)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseDelete">
+        <div class="admin-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Delete Category?</h2>
+            <p>Are you sure you want to delete <strong>"@_deleteTarget.Name"</strong>?</p>
+            @if (_deleteTarget.ProductCount > 0)
+            {
+                <p>This category contains <strong>@_deleteTarget.ProductCount</strong> products.</p>
+                <p class="admin-modal-note">Move or remove the products in this category first.</p>
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseDelete">Cancel</button>
+                    <button type="button" class="btn btn-navy" @onclick="CloseDelete">Got it</button>
+                </div>
+            }
+            else
+            {
+                <p class="admin-modal-note">This action cannot be undone.</p>
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseDelete">Cancel</button>
+                    <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDelete">Delete Category</button>
+                </div>
+            }
+        </div>
+    </div>
+}
+
+@code {
+    private bool _formOpen;
+    private bool _isEdit;
+    private string? _editId;
+    private string _name = string.Empty;
+    private string _slug = string.Empty;
+    private string _imageUrl = string.Empty;
+    private string _description = string.Empty;
+    private string _status = "Active";
+    private string? _nameError;
+    private AdminCategory? _deleteTarget;
+
+    protected override void OnInitialized() => CategoryService.OnChange += Refresh;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OpenAddModal()
+    {
+        _isEdit = false;
+        _editId = null;
+        _name = string.Empty;
+        _slug = string.Empty;
+        _imageUrl = string.Empty;
+        _description = string.Empty;
+        _status = "Active";
+        _nameError = null;
+        _formOpen = true;
+    }
+
+    private void OpenEditModal(AdminCategory category)
+    {
+        _isEdit = true;
+        _editId = category.Id;
+        _name = category.Name;
+        _slug = category.Slug;
+        _imageUrl = category.ImageUrl;
+        _description = category.Description;
+        _status = category.Status;
+        _nameError = null;
+        _formOpen = true;
+    }
+
+    private void CloseForm()
+    {
+        _formOpen = false;
+        _nameError = null;
+    }
+
+    private void SaveCategory()
+    {
+        _nameError = null;
+        if (string.IsNullOrWhiteSpace(_name))
+        {
+            _nameError = "Category name is required.";
+            return;
+        }
+
+        if (_isEdit && !string.IsNullOrWhiteSpace(_editId))
+        {
+            var updated = new AdminCategory
+            {
+                Id = _editId,
+                Name = _name,
+                Slug = _slug,
+                ImageUrl = _imageUrl,
+                Description = _description,
+                Status = _status
+            };
+
+            if (!CategoryService.Update(updated))
+            {
+                Toast.Show("Category not found.");
+                return;
+            }
+
+            Toast.Show("Category updated successfully.");
+        }
+        else
+        {
+            CategoryService.Add(new AdminCategory
+            {
+                Name = _name,
+                Slug = _slug,
+                ImageUrl = _imageUrl,
+                Description = _description,
+                Status = _status,
+                ProductCount = 0
+            });
+            Toast.Show("Category added successfully.");
+        }
+
+        CloseForm();
+    }
+
+    private void OpenDeleteModal(AdminCategory category) => _deleteTarget = category;
+
+    private void CloseDelete() => _deleteTarget = null;
+
+    private void ConfirmDelete()
+    {
+        if (_deleteTarget is null) return;
+
+        var (success, message) = CategoryService.TryDelete(_deleteTarget.Id);
+        Toast.Show(message);
+        CloseDelete();
+        if (!success) return;
+    }
+
+    public void Dispose() => CategoryService.OnChange -= Refresh;
+}

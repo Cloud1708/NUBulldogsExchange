@@ -1,0 +1,331 @@
+@page "/admin/promotions"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminPromotionService PromotionService
+@inject ToastService Toast
+@inject IJSRuntime JS
+@implements IDisposable
+
+<PageTitle>Promotions | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-promos">
+    <header class="admin-products-header">
+        <div>
+            <h1>Promotions</h1>
+            <p>Manage discount codes and offers</p>
+        </div>
+        <button type="button" class="btn btn-navy admin-staff-add-btn" @onclick="OpenCreate">
+            <Icon Name="plus" Size="15" />
+            Create Promotion
+        </button>
+    </header>
+
+    <div class="admin-promos-stats">
+        <article class="admin-staff-stat">
+            <strong>@PromotionService.TotalPromos</strong>
+            <span>Total Promos</span>
+        </article>
+        <article class="admin-staff-stat">
+            <strong>@PromotionService.ActiveCount</strong>
+            <span>Active</span>
+        </article>
+        <article class="admin-staff-stat">
+            <strong>@PromotionService.TotalUses.ToString("N0")</strong>
+            <span>Total Uses</span>
+        </article>
+        <article class="admin-staff-stat">
+            <strong>@PromotionService.ExpiredCount</strong>
+            <span>Expired</span>
+        </article>
+    </div>
+
+    @if (!PromotionService.All.Any())
+    {
+        <section class="admin-promos-empty admin-card">
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="tag" Size="36" />
+                </div>
+                <h2>No promotions yet.</h2>
+                <p>Create discount codes to boost campus store sales.</p>
+                <button type="button" class="btn btn-navy" @onclick="OpenCreate">Create Promotion</button>
+            </div>
+        </section>
+    }
+    else
+    {
+        <div class="admin-promos-grid">
+            @foreach (var promo in PromotionService.All)
+            {
+                <article class="admin-promo-card @(promo.IsMuted ? "is-muted" : "")">
+                    <div class="admin-promo-card-top">
+                        <h2>@promo.Name</h2>
+                        <div class="admin-staff-actions">
+                            <button type="button"
+                                    class="admin-staff-action-btn"
+                                    title="Edit Promotion"
+                                    aria-label="@($"Edit {promo.Name}")"
+                                    @onclick="() => OpenEdit(promo)">
+                                <Icon Name="pencil" Size="15" />
+                            </button>
+                            <button type="button"
+                                    class="admin-staff-action-btn is-danger"
+                                    title="Delete Promotion"
+                                    aria-label="@($"Delete {promo.Name}")"
+                                    @onclick="() => OpenDelete(promo)">
+                                <Icon Name="trash" Size="15" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="admin-promo-meta">
+                        <button type="button"
+                                class="admin-promo-code"
+                                title="Copy promo code"
+                                @onclick="() => CopyCode(promo.Code)">
+                            <Icon Name="tag" Size="13" />
+                            <span>@promo.Code</span>
+                            <Icon Name="copy" Size="13" />
+                        </button>
+                        <span class="admin-promo-status status-@promo.StatusKey">@promo.Status</span>
+                    </div>
+
+                    <div class="admin-promo-metrics">
+                        <div class="admin-promo-metric">
+                            <strong>@promo.DiscountLabel</strong>
+                            <span>Discount</span>
+                        </div>
+                        <div class="admin-promo-metric">
+                            <strong>@promo.UsedLabel</strong>
+                            <span>Used</span>
+                        </div>
+                        <div class="admin-promo-metric">
+                            <strong>@promo.MinimumOrderLabel</strong>
+                            <span>Min. Order</span>
+                        </div>
+                    </div>
+
+                    <div class="admin-promo-progress" aria-hidden="true">
+                        <div class="admin-promo-progress-fill" style="@($"width:{promo.UsagePercent:0.##}%")"></div>
+                    </div>
+
+                    <div class="admin-promo-dates">
+                        <Icon Name="calendar" Size="14" />
+                        <span>@promo.DateRangeLabel</span>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+@if (_showForm)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseForm">
+        <div class="admin-modal admin-promo-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>@(_editingId is null ? "Create Promotion" : "Edit Promotion")</h2>
+            <form class="admin-category-form" @onsubmit="SaveForm" @onsubmit:preventDefault="true">
+                <label class="admin-field">
+                    <span>Promotion Name</span>
+                    <input @bind="_name" @bind:event="oninput" />
+                </label>
+                <label class="admin-field">
+                    <span>Promo Code</span>
+                    <input @bind="_code" @bind:event="oninput" />
+                </label>
+                <div class="admin-staff-form-grid">
+                    <label class="admin-field">
+                        <span>Discount Type</span>
+                        <select @bind="_discountType">
+                            <option value="percentage">Percentage</option>
+                            <option value="fixed">Fixed Amount</option>
+                        </select>
+                    </label>
+                    <label class="admin-field">
+                        <span>Discount Value</span>
+                        <input type="number" min="0" step="1" @bind="_discountValue" @bind:event="oninput" />
+                    </label>
+                </div>
+                <div class="admin-staff-form-grid">
+                    <label class="admin-field">
+                        <span>Minimum Order Amount</span>
+                        <input type="number" min="0" step="1" @bind="_minimumOrder" @bind:event="oninput" />
+                    </label>
+                    <label class="admin-field">
+                        <span>Usage Limit</span>
+                        <input type="number" min="1" step="1" @bind="_usageLimit" @bind:event="oninput" />
+                    </label>
+                </div>
+                <div class="admin-staff-form-grid">
+                    <label class="admin-field">
+                        <span>Start Date</span>
+                        <input type="date" @bind="_startDate" />
+                    </label>
+                    <label class="admin-field">
+                        <span>End Date</span>
+                        <input type="date" @bind="_endDate" />
+                    </label>
+                </div>
+                <label class="admin-field">
+                    <span>Status</span>
+                    <select @bind="_manualStatus">
+                        @foreach (var status in AdminPromotionService.ManualStatuses)
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </select>
+                </label>
+                <label class="admin-field">
+                    <span>Description (optional)</span>
+                    <textarea rows="2" @bind="_description" @bind:event="oninput"></textarea>
+                </label>
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <p class="admin-staff-error">@_formError</p>
+                }
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseForm">Cancel</button>
+                    <button type="submit" class="btn btn-navy">
+                        @(_editingId is null ? "Create Promotion" : "Save Changes")
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@if (_deletePromo is not null)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseDelete">
+        <div class="admin-modal admin-promo-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Delete Promotion?</h2>
+            <p>Are you sure you want to delete <strong>"@_deletePromo.Name"</strong>?</p>
+            <p class="admin-modal-note">Promo Code: @_deletePromo.Code</p>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="CloseDelete">Cancel</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDelete">Delete Promotion</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _showForm;
+    private string? _editingId;
+    private AdminPromotion? _deletePromo;
+    private string? _formError;
+
+    private string _name = string.Empty;
+    private string _code = string.Empty;
+    private string _discountType = "percentage";
+    private decimal _discountValue;
+    private decimal _minimumOrder;
+    private int _usageLimit = 100;
+    private DateTime _startDate = DateTime.Today;
+    private DateTime _endDate = DateTime.Today.AddMonths(1);
+    private string _manualStatus = "Active";
+    private string _description = string.Empty;
+
+    protected override void OnInitialized() => PromotionService.OnChange += Refresh;
+
+    private void OpenCreate()
+    {
+        _showForm = true;
+        _editingId = null;
+        _formError = null;
+        _name = string.Empty;
+        _code = string.Empty;
+        _discountType = "percentage";
+        _discountValue = 10;
+        _minimumOrder = 0;
+        _usageLimit = 100;
+        _startDate = DateTime.Today;
+        _endDate = DateTime.Today.AddMonths(1);
+        _manualStatus = "Active";
+        _description = string.Empty;
+    }
+
+    private void OpenEdit(AdminPromotion promo)
+    {
+        _showForm = true;
+        _editingId = promo.Id;
+        _formError = null;
+        _name = promo.Name;
+        _code = promo.Code;
+        _discountType = promo.DiscountType;
+        _discountValue = promo.DiscountValue;
+        _minimumOrder = promo.MinimumOrder;
+        _usageLimit = promo.UsageLimit;
+        _startDate = promo.StartDate;
+        _endDate = promo.EndDate;
+        _manualStatus = promo.Enabled ? "Active" : "Inactive";
+        _description = promo.Description;
+    }
+
+    private void CloseForm()
+    {
+        _showForm = false;
+        _editingId = null;
+        _formError = null;
+    }
+
+    private void SaveForm()
+    {
+        _formError = null;
+        var model = new AdminPromotion
+        {
+            Name = _name,
+            Code = _code,
+            DiscountType = _discountType,
+            DiscountValue = _discountValue,
+            MinimumOrder = _minimumOrder,
+            UsageLimit = _usageLimit,
+            StartDate = _startDate,
+            EndDate = _endDate,
+            Enabled = _manualStatus.Equals("Active", StringComparison.OrdinalIgnoreCase),
+            Description = _description
+        };
+
+        var (success, message) = _editingId is null
+            ? PromotionService.Create(model)
+            : PromotionService.Update(_editingId, model);
+
+        if (!success)
+        {
+            _formError = message;
+            return;
+        }
+
+        Toast.Show(message);
+        CloseForm();
+    }
+
+    private void OpenDelete(AdminPromotion promo) => _deletePromo = promo;
+    private void CloseDelete() => _deletePromo = null;
+
+    private void ConfirmDelete()
+    {
+        if (_deletePromo is null) return;
+        var (success, message) = PromotionService.Delete(_deletePromo.Id);
+        Toast.Show(message);
+        if (success) CloseDelete();
+    }
+
+    private async Task CopyCode(string code)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", code);
+            Toast.Show("Promo code copied.");
+        }
+        catch
+        {
+            Toast.Show($"Code: {code}");
+        }
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => PromotionService.OnChange -= Refresh;
+}

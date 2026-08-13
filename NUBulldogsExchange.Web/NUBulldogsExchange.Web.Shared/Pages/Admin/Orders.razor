@@ -1,0 +1,174 @@
+@page "/admin/orders"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminOrderService OrderService
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Orders | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-orders">
+    <header class="admin-products-header">
+        <div>
+            <h1>Orders</h1>
+            <p>Manage and track all customer orders</p>
+        </div>
+    </header>
+
+    <nav class="admin-order-tabs" aria-label="Order status">
+        @foreach (var tab in AdminOrderService.StatusTabs)
+        {
+            <button type="button"
+                    class="admin-order-tab @(_statusTab == tab ? "active" : "")"
+                    @onclick="() => SelectTab(tab)">
+                <span>@tab</span>
+                <strong>@OrderService.CountByStatus(tab)</strong>
+            </button>
+        }
+    </nav>
+
+    <section class="admin-orders-toolbar">
+        <div class="admin-products-search">
+            <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+            <input type="search"
+                   placeholder="Search by Order ID or Customer..."
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+        </div>
+        <select class="admin-products-select" value="@_payment" @onchange="OnPaymentChange">
+            @foreach (var option in AdminOrderService.PaymentFilters)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="admin-products-select" value="@_fulfillment" @onchange="OnFulfillmentChange">
+            @foreach (var option in AdminOrderService.FulfillmentFilters)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+    </section>
+
+    <section class="admin-orders-table-card">
+        @if (!Filtered.Any())
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="shopping-bag" Size="36" />
+                </div>
+                <h2>No orders found.</h2>
+                <p>Try changing your search or filters.</p>
+                <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
+            </div>
+        }
+        else
+        {
+            <div class="admin-orders-table-wrap">
+                <table class="admin-orders-table">
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Customer</th>
+                            <th>Date</th>
+                            <th>Products</th>
+                            <th>Total</th>
+                            <th>Payment</th>
+                            <th>Fulfillment</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var order in Filtered)
+                        {
+                            <tr>
+                                <td>
+                                    <a class="admin-order-id" href="@($"/admin/orders/{order.Id}")">@order.Id</a>
+                                </td>
+                                <td>
+                                    <div class="admin-order-customer">
+                                        <strong>@order.CustomerName</strong>
+                                        <span>@order.CustomerEmail</span>
+                                    </div>
+                                </td>
+                                <td>@order.DateLabel</td>
+                                <td>
+                                    <div class="admin-order-products">
+                                        <div class="admin-order-thumbs" aria-hidden="true">
+                                            @foreach (var item in order.Items.SelectMany(i => Enumerable.Repeat(i, i.Quantity)).Take(3))
+                                            {
+                                                <img src="@item.ImageUrl"
+                                                     alt=""
+                                                     loading="lazy"
+                                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                            }
+                                        </div>
+                                        <span>@order.ItemCountLabel</span>
+                                    </div>
+                                </td>
+                                <td><strong class="admin-order-total">₱@order.Total.ToString("N0")</strong></td>
+                                <td>
+                                    <span class="admin-payment-badge payment-@order.PaymentKey">@order.PaymentStatus</span>
+                                </td>
+                                <td>@order.Fulfillment</td>
+                                <td>
+                                    <span class="order-status status-@order.StatusKey">@order.Status</span>
+                                </td>
+                                <td>
+                                    <a href="@($"/admin/orders/{order.Id}")" class="btn btn-navy admin-order-view-btn">
+                                        <Icon Name="eye" Size="14" />
+                                        View
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="admin-orders-footer">
+                <span>Showing @Filtered.Count() of @OrderService.All.Count orders</span>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private string _statusTab = "All Orders";
+    private string _search = string.Empty;
+    private string _payment = "All Payments";
+    private string _fulfillment = "All Fulfillment";
+
+    private List<AdminOrder> Filtered =>
+        OrderService.Filter(_statusTab, _search, _payment, _fulfillment).ToList();
+
+    protected override void OnInitialized() => OrderService.OnChange += Refresh;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void SelectTab(string tab)
+    {
+        _statusTab = tab;
+    }
+
+    private void OnSearchInput(ChangeEventArgs e) =>
+        _search = e.Value?.ToString() ?? string.Empty;
+
+    private void OnPaymentChange(ChangeEventArgs e) =>
+        _payment = e.Value?.ToString() ?? "All Payments";
+
+    private void OnFulfillmentChange(ChangeEventArgs e) =>
+        _fulfillment = e.Value?.ToString() ?? "All Fulfillment";
+
+    private void ClearFilters()
+    {
+        _statusTab = "All Orders";
+        _search = string.Empty;
+        _payment = "All Payments";
+        _fulfillment = "All Fulfillment";
+    }
+
+    public void Dispose() => OrderService.OnChange -= Refresh;
+}

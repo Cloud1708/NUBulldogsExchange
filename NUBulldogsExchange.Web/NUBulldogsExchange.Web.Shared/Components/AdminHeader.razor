@@ -1,0 +1,107 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject AdminNotificationService NotificationHub
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<header class="admin-topbar">
+    <button type="button" class="admin-mobile-menu" aria-label="Open menu" @onclick="OnMenuClick">
+        <Icon Name="menu" Size="20" />
+    </button>
+
+    <div class="admin-search">
+        <Icon Name="search" Size="16" CssClass="admin-search-icon" />
+        <input type="search" placeholder="Search products, orders, customers..." />
+    </div>
+
+    <div class="admin-topbar-right">
+        <span class="admin-date">@DateTime.Now.ToString("dddd, MMMM d, yyyy")</span>
+
+        <a href="/admin/notifications"
+           class="admin-icon-btn"
+           title="Notifications"
+           aria-label="@($"Notifications{(NotificationHub.UnreadCount > 0 ? $", {NotificationHub.UnreadCount} unread" : "")}")">
+            <Icon Name="bell" Size="18" />
+            @if (NotificationHub.UnreadCount > 0)
+            {
+                <span class="admin-notif-badge">@NotificationHub.UnreadCount</span>
+            }
+        </a>
+
+        <div class="admin-user-wrap">
+            <button type="button"
+                    class="admin-user-btn @(_menuOpen ? "open" : "")"
+                    aria-expanded="@_menuOpen"
+                    @onclick="ToggleMenu"
+                    @onclick:stopPropagation="true">
+                <span class="admin-user-avatar">@Auth.Initial</span>
+                <span class="admin-user-name">@Auth.DisplayName</span>
+                <Icon Name="chevron-down" Size="14" />
+            </button>
+
+            @if (_menuOpen)
+            {
+                <div class="admin-user-menu" role="menu" @onclick:stopPropagation="true">
+                    <a href="/admin/settings" class="admin-user-menu-item" role="menuitem" @onclick="CloseMenu">
+                        <Icon Name="user" Size="15" />
+                        Admin Profile
+                    </a>
+                    <a href="/admin/settings" class="admin-user-menu-item" role="menuitem" @onclick="CloseMenu">
+                        <Icon Name="settings" Size="15" />
+                        Settings
+                    </a>
+                    <div class="admin-user-menu-sep"></div>
+                    <button type="button" class="admin-user-menu-item danger" role="menuitem" @onclick="Logout">
+                        <Icon Name="log-out" Size="15" />
+                        Logout
+                    </button>
+                </div>
+            }
+        </div>
+    </div>
+</header>
+
+@if (_menuOpen)
+{
+    <div class="admin-menu-backdrop" @onclick="CloseMenu"></div>
+}
+
+@code {
+    [Parameter] public EventCallback OnMenuClick { get; set; }
+
+    private bool _menuOpen;
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += Refresh;
+        NotificationHub.OnChange += Refresh;
+        Navigation.LocationChanged += OnLocationChanged;
+    }
+
+    private void ToggleMenu() => _menuOpen = !_menuOpen;
+    private void CloseMenu() => _menuOpen = false;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        _menuOpen = false;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task Logout()
+    {
+        CloseMenu();
+        await Auth.LogoutAsync(JS);
+        Navigation.NavigateTo("/login");
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Auth.OnChange -= Refresh;
+        NotificationHub.OnChange -= Refresh;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

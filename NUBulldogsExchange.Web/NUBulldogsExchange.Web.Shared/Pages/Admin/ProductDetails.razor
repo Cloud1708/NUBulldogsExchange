@@ -1,0 +1,59 @@
+@page "/admin/products/{Id:int}"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminProductService ProductService
+@inject NavigationManager Navigation
+
+<PageTitle>@(Product?.Name ?? "Product") | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-product-form-page">
+    @if (Product is null)
+    {
+        <div class="admin-card admin-placeholder-card">
+            <h2>Product not found</h2>
+            <p>This product may have been deleted.</p>
+            <a href="/admin/products" class="btn btn-navy">Back to Products</a>
+        </div>
+    }
+    else
+    {
+        <header class="admin-products-header">
+            <div>
+                <h1>@Product.Name</h1>
+                <p>Product details</p>
+            </div>
+            <div class="admin-form-actions" style="margin:0">
+                <a href="@($"/admin/products/{Product.Id}/edit")" class="btn btn-navy">Edit Product</a>
+                <a href="/admin/products" class="btn btn-outline-navy">Back</a>
+            </div>
+        </header>
+
+        <section class="admin-card admin-product-view">
+            <img class="admin-product-view-image"
+                 src="@Product.ImageUrl"
+                 alt="@Product.Name"
+                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+
+            <div class="admin-product-view-meta">
+                <dl>
+                    <div><dt>SKU</dt><dd><code>@Product.Sku</code></dd></div>
+                    <div><dt>Category</dt><dd>@Product.Category</dd></div>
+                    <div><dt>Price</dt><dd><strong>₱@Product.Price.ToString("N0")</strong></dd></div>
+                    <div><dt>Stock</dt><dd>@Product.Stock <span class="admin-stock-badge stock-@Product.StockStateKey">@Product.StockState</span></dd></div>
+                    <div><dt>Sold</dt><dd>@Product.Sold.ToString("N0")</dd></div>
+                    <div><dt>Status</dt><dd><span class="admin-product-status @(Product.IsActive ? "is-active" : "is-inactive")">@Product.Status</span></dd></div>
+                    <div><dt>Colors</dt><dd>@(Product.Colors.Count == 0 ? "—" : string.Join(", ", Product.Colors))</dd></div>
+                    <div><dt>Sizes</dt><dd>@(Product.Sizes.Count == 0 ? "—" : string.Join(", ", Product.Sizes))</dd></div>
+                </dl>
+                <p>@(string.IsNullOrWhiteSpace(Product.Description) ? "No description provided." : Product.Description)</p>
+            </div>
+        </section>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+    private AdminProduct? Product => ProductService.GetById(Id);
+}

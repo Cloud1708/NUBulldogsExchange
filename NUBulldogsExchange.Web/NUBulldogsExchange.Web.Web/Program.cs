@@ -14,6 +14,18 @@ builder.Services.AddScoped<CartService>();
 builder.Services.AddScoped<WishlistService>();
 builder.Services.AddScoped<ToastService>();
 builder.Services.AddScoped<AuthService>();
+builder.Services.AddScoped<OrderService>();
+builder.Services.AddScoped<NotificationService>();
+builder.Services.AddScoped<AdminProductService>();
+builder.Services.AddScoped<AdminCategoryService>();
+builder.Services.AddScoped<AdminOrderService>();
+builder.Services.AddScoped<AdminSettingsService>();
+builder.Services.AddScoped<AdminInventoryService>();
+builder.Services.AddScoped<AdminCustomerService>();
+builder.Services.AddScoped<AdminStaffService>();
+builder.Services.AddScoped<AdminPromotionService>();
+builder.Services.AddScoped<AdminReportService>();
+builder.Services.AddScoped<AdminNotificationService>();
 
 var app = builder.Build();
 

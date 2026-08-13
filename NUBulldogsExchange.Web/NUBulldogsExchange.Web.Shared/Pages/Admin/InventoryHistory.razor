@@ -1,0 +1,71 @@
+@page "/admin/inventory/history"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminInventoryService InventoryService
+@implements IDisposable
+
+<PageTitle>Inventory History | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-inventory">
+    <header class="admin-products-header">
+        <div>
+            <h1>Inventory History</h1>
+            <p>All stock adjustments and movements</p>
+        </div>
+        <a href="/admin/inventory" class="btn btn-outline-navy">Back to Inventory</a>
+    </header>
+
+    <section class="admin-inventory-table-card">
+        @if (!InventoryService.History.Any())
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="clock" Size="36" />
+                </div>
+                <h2>No inventory history yet.</h2>
+                <p>Stock adjustments will appear here.</p>
+            </div>
+        }
+        else
+        {
+            <div class="admin-inventory-table-wrap">
+                <table class="admin-inventory-table">
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Product</th>
+                            <th>Type</th>
+                            <th>Quantity</th>
+                            <th>Previous</th>
+                            <th>New</th>
+                            <th>Reason</th>
+                            <th>Admin</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entry in InventoryService.History)
+                        {
+                            <tr>
+                                <td>@entry.Date.ToString("yyyy-MM-dd HH:mm")</td>
+                                <td><strong>@entry.ProductName</strong></td>
+                                <td>@entry.Type</td>
+                                <td><strong>@entry.QuantityLabel</strong></td>
+                                <td>@entry.PreviousStock</td>
+                                <td>@entry.NewStock</td>
+                                <td>@entry.Reason</td>
+                                <td>@entry.AdminName</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    protected override void OnInitialized() => InventoryService.OnChange += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => InventoryService.OnChange -= Refresh;
+}

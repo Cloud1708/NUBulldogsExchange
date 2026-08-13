@@ -1,0 +1,114 @@
+@page "/account"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject OrderService Orders
+@inject WishlistService Wishlist
+@implements IDisposable
+
+<PageTitle>My Account | NU Bulldogs Exchange</PageTitle>
+
+@if (!Auth.IsLoggedIn || Auth.CurrentUser is null)
+{
+    <section class="wishlist-guest-section">
+        <div class="container">
+            <div class="wishlist-guest">
+                <div class="wishlist-guest-icon" aria-hidden="true">
+                    <Icon Name="user-round" Size="34" />
+                </div>
+                <h1>Sign in to view your account</h1>
+                <p>Track orders, manage your wishlist, and more.</p>
+                <a href="/login?returnUrl=%2Faccount" class="btn btn-navy wishlist-signin-btn">Sign In</a>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <AccountShell Active="overview">
+        <div class="account-overview">
+            <section class="account-welcome-card">
+                <h1>Welcome back, @Auth.FirstName!</h1>
+                <p>Here's a summary of your account.</p>
+            </section>
+
+            <div class="account-stat-grid">
+                <article class="account-stat-card">
+                    <div class="account-stat-icon" aria-hidden="true">
+                        <Icon Name="package" Size="22" />
+                    </div>
+                    <strong>@Orders.TotalCount</strong>
+                    <span>Total Orders</span>
+                </article>
+                <article class="account-stat-card">
+                    <div class="account-stat-icon" aria-hidden="true">
+                        <Icon Name="map-pin" Size="22" />
+                    </div>
+                    <strong>@Orders.ActiveCount</strong>
+                    <span>Active Orders</span>
+                </article>
+                <article class="account-stat-card">
+                    <div class="account-stat-icon" aria-hidden="true">
+                        <Icon Name="heart" Size="22" />
+                    </div>
+                    <strong>@Wishlist.Count</strong>
+                    <span>Wishlist Items</span>
+                </article>
+            </div>
+
+            <section class="account-panel account-recent-panel">
+                <div class="account-panel-head">
+                    <h2>Recent Orders</h2>
+                    <a href="/orders" class="account-view-all">
+                        View All
+                        <Icon Name="chevron-right" Size="14" />
+                    </a>
+                </div>
+
+                <div class="recent-order-list">
+                    @foreach (var order in Orders.Recent())
+                    {
+                        <article class="recent-order">
+                            <div class="order-thumbs" aria-hidden="true">
+                                @foreach (var item in order.Items.SelectMany(i => Enumerable.Repeat(i, i.Quantity)).Take(3))
+                                {
+                                    <img src="@item.ImageUrl"
+                                         alt=""
+                                         loading="lazy"
+                                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                }
+                            </div>
+                            <div class="recent-order-meta">
+                                <strong>@order.Id</strong>
+                                <span>@order.DateLabel · @order.ItemCountLabel</span>
+                            </div>
+                            <div class="recent-order-aside">
+                                <span class="order-status status-@order.StatusKey">@order.Status</span>
+                                <strong>₱@order.Total.ToString("N0")</strong>
+                            </div>
+                        </article>
+                    }
+                </div>
+            </section>
+        </div>
+    </AccountShell>
+}
+
+@code {
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += Refresh;
+        Orders.OnChange += Refresh;
+        Wishlist.OnChange += Refresh;
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        Auth.OnChange -= Refresh;
+        Orders.OnChange -= Refresh;
+        Wishlist.OnChange -= Refresh;
+    }
+}

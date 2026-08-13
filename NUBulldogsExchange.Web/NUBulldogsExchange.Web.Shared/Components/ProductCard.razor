@@ -3,6 +3,7 @@
 @using NUBulldogsExchange.Web.Shared.Services
 @inject CartService Cart
 @inject WishlistService Wishlist
+@inject AuthService Auth
 @inject ToastService Toast
 @inject NavigationManager Navigation
 @implements IDisposable
@@ -23,7 +24,7 @@
             <span class="badge badge-offset @BadgeClass">@Product.Badge</span>
         }
         <button type="button"
-                class="favorite @(Wishlist.Contains(Product.Id) ? "active" : "")"
+                class="favorite @(IsWishlisted ? "active" : "")"
                 title="Wishlist"
                 @onclick="ToggleWishlist"
                 @onclick:stopPropagation="true">
@@ -88,11 +89,24 @@
         _ => "badge-best"
     };
 
-    protected override void OnInitialized() => Wishlist.OnChange += Refresh;
+    private bool IsWishlisted => Auth.IsLoggedIn && Wishlist.Contains(Product.Id);
+
+    protected override void OnInitialized()
+    {
+        Wishlist.OnChange += Refresh;
+        Auth.OnChange += Refresh;
+    }
+
     private void Refresh() => InvokeAsync(StateHasChanged);
 
     private void ToggleWishlist()
     {
+        if (!Auth.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/wishlist");
+            return;
+        }
+
         Wishlist.Toggle(Product.Id);
         Toast.Show(Wishlist.Contains(Product.Id)
             ? "Added to wishlist."
@@ -107,5 +121,9 @@
 
     private void GoToDetails() => Navigation.NavigateTo($"/product/{Product.Id}");
 
-    public void Dispose() => Wishlist.OnChange -= Refresh;
+    public void Dispose()
+    {
+        Wishlist.OnChange -= Refresh;
+        Auth.OnChange -= Refresh;
+    }
 }

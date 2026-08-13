@@ -1,0 +1,174 @@
+@page "/admin/notifications"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminNotificationService NotificationHub
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Notifications | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-notifs">
+    <header class="admin-notifs-header">
+        <div>
+            <div class="admin-notifs-title-row">
+                <h1>Notifications</h1>
+                @if (NotificationHub.UnreadCount > 0)
+                {
+                    <span class="admin-notifs-new">@NotificationHub.UnreadCount new</span>
+                }
+            </div>
+            <p>Stay on top of your store activity</p>
+        </div>
+        <div class="admin-notifs-actions">
+            <button type="button" class="btn btn-outline-navy admin-notifs-action" @onclick="MarkAllRead">
+                <Icon Name="check" Size="14" />
+                Mark All Read
+            </button>
+            <button type="button" class="btn btn-outline-navy admin-notifs-action muted" @onclick="OpenClear">
+                <Icon Name="trash" Size="14" />
+                Clear Read
+            </button>
+        </div>
+    </header>
+
+    <div class="admin-notifs-stats">
+        <article class="admin-notifs-stat">
+            <strong class="tone-red">@NotificationHub.UnreadCount</strong>
+            <span>Unread</span>
+        </article>
+        <article class="admin-notifs-stat">
+            <strong class="tone-blue">@NotificationHub.OrderCount</strong>
+            <span>Order Alerts</span>
+        </article>
+        <article class="admin-notifs-stat">
+            <strong class="tone-gold">@NotificationHub.StockCount</strong>
+            <span>Stock Alerts</span>
+        </article>
+    </div>
+
+    <nav class="admin-notifs-tabs" aria-label="Notification filters">
+        @foreach (var tab in AdminNotificationService.Tabs)
+        {
+            <button type="button"
+                    class="admin-notifs-tab @(_tab == tab.Key ? "active" : "")"
+                    @onclick="() => _tab = tab.Key">
+                @tab.Label
+                <strong>@NotificationHub.CountByTab(tab.Key)</strong>
+            </button>
+        }
+    </nav>
+
+    <section class="admin-notifs-list">
+        @{
+            var items = NotificationHub.Filter(_tab).ToList();
+        }
+        @if (!items.Any())
+        {
+            <div class="admin-notifs-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="bell" Size="36" />
+                </div>
+                @if (NotificationHub.TotalCount == 0)
+                {
+                    <h2>You're all caught up.</h2>
+                    <p>There are no notifications to display.</p>
+                }
+                else
+                {
+                    <h2>No notifications here.</h2>
+                    <p>You're all caught up.</p>
+                }
+            </div>
+        }
+        else
+        {
+            @foreach (var item in items)
+            {
+                <article class="admin-notif-card @(item.Read ? "is-read" : "is-unread")"
+                         @onclick="() => OnCardClick(item)">
+                    <div class="admin-notif-icon tone-@item.Tone" aria-hidden="true">
+                        <Icon Name="@item.IconName" Size="18" />
+                    </div>
+                    <div class="admin-notif-body">
+                        <h3>@item.Title</h3>
+                        <p>@item.Message</p>
+                        @if (!string.IsNullOrWhiteSpace(item.RelatedLabel))
+                        {
+                            @if (!string.IsNullOrWhiteSpace(item.RelatedHref))
+                            {
+                                <a class="admin-notif-badge"
+                                   href="@item.RelatedHref"
+                                   @onclick:stopPropagation="true">
+                                    @item.RelatedLabel
+                                </a>
+                            }
+                            else
+                            {
+                                <span class="admin-notif-badge">@item.RelatedLabel</span>
+                            }
+                        }
+                        <time>@item.TimeLabel</time>
+                    </div>
+                    @if (!item.Read)
+                    {
+                        <span class="admin-notif-unread-dot" aria-hidden="true"></span>
+                    }
+                </article>
+            }
+        }
+    </section>
+</div>
+
+@if (_showClear)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseClear">
+        <div class="admin-modal admin-promo-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Clear Read Notifications?</h2>
+            <p>This will remove all notifications that have already been read.</p>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="CloseClear">Cancel</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="ConfirmClear">Clear</button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _tab = "all";
+    private bool _showClear;
+
+    protected override void OnInitialized() => NotificationHub.OnChange += Refresh;
+
+    private void OnCardClick(AdminNotificationItem item)
+    {
+        if (!item.Read)
+            NotificationHub.MarkRead(item.Id);
+
+        if (!string.IsNullOrWhiteSpace(item.RelatedHref) && item.Type != "system")
+            Navigation.NavigateTo(item.RelatedHref);
+    }
+
+    private void MarkAllRead()
+    {
+        NotificationHub.MarkAllRead();
+        Toast.Show("All notifications marked as read.");
+    }
+
+    private void OpenClear() => _showClear = true;
+    private void CloseClear() => _showClear = false;
+
+    private void ConfirmClear()
+    {
+        var removed = NotificationHub.ClearRead();
+        _showClear = false;
+        Toast.Show(removed > 0
+            ? "Read notifications cleared."
+            : "No read notifications to clear.");
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+    public void Dispose() => NotificationHub.OnChange -= Refresh;
+}

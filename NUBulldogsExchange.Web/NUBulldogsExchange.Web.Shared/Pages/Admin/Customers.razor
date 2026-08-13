@@ -1,0 +1,131 @@
+@page "/admin/customers"
+@layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminCustomerService CustomerService
+@implements IDisposable
+
+<PageTitle>Customers | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-customers">
+    <header class="admin-products-header">
+        <div>
+            <h1>Customers</h1>
+            <p>Manage your customer base</p>
+        </div>
+    </header>
+
+    <div class="admin-customers-stats">
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="users" Size="18" /></div>
+            <div>
+                <strong>@CustomerService.TotalCustomers</strong>
+                <span>Total Customers</span>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-green"><Icon Name="user-check" Size="18" /></div>
+            <div>
+                <strong>@CustomerService.ActiveCustomers</strong>
+                <span>Active Customers</span>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-purple"><Icon Name="wallet" Size="18" /></div>
+            <div>
+                <strong>@CustomerService.TotalRevenueLabel</strong>
+                <span>Total Revenue</span>
+            </div>
+        </article>
+    </div>
+
+    <section class="admin-customers-toolbar">
+        <div class="admin-products-search admin-customers-search">
+            <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+            <input type="search"
+                   placeholder="Search customers..."
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+        </div>
+    </section>
+
+    <section class="admin-customers-table-card">
+        @if (!Filtered.Any())
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="users" Size="36" />
+                </div>
+                <h2>No customers found.</h2>
+                <p>Try another search term.</p>
+                <button type="button" class="btn btn-navy" @onclick="ClearSearch">Clear Search</button>
+            </div>
+        }
+        else
+        {
+            <div class="admin-customers-table-wrap">
+                <table class="admin-customers-table">
+                    <thead>
+                        <tr>
+                            <th>Customer ID</th>
+                            <th>Name</th>
+                            <th>Email</th>
+                            <th>Contact</th>
+                            <th>Date Joined</th>
+                            <th>Total Orders</th>
+                            <th>Total Spent</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var customer in Filtered)
+                        {
+                            <tr>
+                                <td><code class="admin-customer-id">@customer.Id</code></td>
+                                <td>
+                                    <div class="admin-customer-name">
+                                        <span class="admin-customer-avatar" aria-hidden="true">@customer.Initial</span>
+                                        <strong>@customer.Name</strong>
+                                    </div>
+                                </td>
+                                <td><span class="admin-customer-email" title="@customer.Email">@customer.Email</span></td>
+                                <td>@customer.Contact</td>
+                                <td>@customer.DateJoinedLabel</td>
+                                <td><strong>@customer.TotalOrders</strong></td>
+                                <td><strong>@customer.TotalSpentLabel</strong></td>
+                                <td>
+                                    <span class="admin-customer-status status-@customer.StatusKey">@customer.Status</span>
+                                </td>
+                                <td>
+                                    <a href="@($"/admin/customers/{customer.Id}")"
+                                       class="btn btn-navy admin-customer-view-btn">
+                                        <Icon Name="eye" Size="14" />
+                                        View
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private string _search = string.Empty;
+
+    private List<AdminCustomer> Filtered => CustomerService.Search(_search).ToList();
+
+    protected override void OnInitialized() => CustomerService.OnChange += Refresh;
+
+    private void OnSearchInput(ChangeEventArgs e) => _search = e.Value?.ToString() ?? string.Empty;
+
+    private void ClearSearch() => _search = string.Empty;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => CustomerService.OnChange -= Refresh;
+}

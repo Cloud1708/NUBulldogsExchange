@@ -22,6 +22,18 @@ namespace NUBulldogsExchange.Web
             builder.Services.AddSingleton<WishlistService>();
             builder.Services.AddSingleton<ToastService>();
             builder.Services.AddSingleton<AuthService>();
+            builder.Services.AddSingleton<OrderService>();
+            builder.Services.AddSingleton<NotificationService>();
+            builder.Services.AddSingleton<AdminProductService>();
+            builder.Services.AddSingleton<AdminCategoryService>();
+            builder.Services.AddSingleton<AdminOrderService>();
+            builder.Services.AddSingleton<AdminSettingsService>();
+            builder.Services.AddSingleton<AdminInventoryService>();
+            builder.Services.AddSingleton<AdminCustomerService>();
+            builder.Services.AddSingleton<AdminStaffService>();
+            builder.Services.AddSingleton<AdminPromotionService>();
+            builder.Services.AddSingleton<AdminReportService>();
+            builder.Services.AddSingleton<AdminNotificationService>();
 
             builder.Services.AddMauiBlazorWebView();
 

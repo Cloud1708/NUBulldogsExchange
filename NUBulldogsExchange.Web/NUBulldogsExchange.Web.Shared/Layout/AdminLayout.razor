@@ -1,0 +1,107 @@
+@inherits LayoutComponentBase
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<AuthSessionRestorer />
+
+@if (_ready && Auth.IsLoggedIn && Auth.IsAdmin)
+{
+    <div class="admin-shell">
+        <AdminSidebar @ref="_sidebar" Active="@ActiveKey" />
+        <div class="admin-main">
+            <AdminHeader OnMenuClick="OpenSidebar" />
+            <div class="admin-content">
+                @Body
+            </div>
+        </div>
+        <ToastHost />
+    </div>
+}
+else if (_ready)
+{
+    <div class="admin-gate">
+        <p>Redirecting...</p>
+    </div>
+}
+
+@code {
+    private AdminSidebar? _sidebar;
+    private bool _ready;
+    private string ActiveKey { get; set; } = "dashboard";
+
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += OnAuthChanged;
+        Navigation.LocationChanged += OnLocationChanged;
+        ActiveKey = ResolveActive(Navigation.Uri);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender) return;
+
+        await Auth.RestoreAsync(JS);
+        _ready = true;
+        EnforceAccess();
+        StateHasChanged();
+    }
+
+    private void OnAuthChanged() => InvokeAsync(() =>
+    {
+        EnforceAccess();
+        StateHasChanged();
+    });
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        ActiveKey = ResolveActive(e.Location);
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void EnforceAccess()
+    {
+        if (!_ready) return;
+
+        if (!Auth.IsLoggedIn)
+        {
+            Navigation.NavigateTo("/login?returnUrl=%2Fadmin%2Fdashboard");
+            return;
+        }
+
+        if (!Auth.IsAdmin)
+            Navigation.NavigateTo("/");
+    }
+
+    private static string ResolveActive(string uri)
+    {
+        var path = new Uri(uri, UriKind.Absolute).AbsolutePath.TrimEnd('/').ToLowerInvariant();
+        if (path.EndsWith("/admin") || path.EndsWith("/admin/dashboard")) return "dashboard";
+        if (path.Contains("/admin/products")) return "products";
+        if (path.Contains("/admin/categories")) return "categories";
+        if (path.Contains("/admin/orders")) return "orders";
+        if (path.Contains("/admin/inventory")) return "inventory";
+        if (path.Contains("/admin/customers")) return "customers";
+        if (path.Contains("/admin/staff")) return "staff";
+        if (path.Contains("/admin/promotions")) return "promotions";
+        if (path.Contains("/admin/reports")) return "reports";
+        if (path.Contains("/admin/notifications")) return "notifications";
+        if (path.Contains("/admin/settings")) return "settings";
+        return "dashboard";
+    }
+
+    private async Task OpenSidebar()
+    {
+        if (_sidebar is not null)
+            await _sidebar.OpenMobile();
+    }
+
+    public void Dispose()
+    {
+        Auth.OnChange -= OnAuthChanged;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}
