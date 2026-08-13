@@ -1,0 +1,20 @@
+@page "/school-essentials"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+<PageTitle>School Essentials | NU Bulldogs Exchange</PageTitle>
+
+<ProductListingPage Title="School Essentials"
+                    Breadcrumb="_breadcrumb"
+                    BaseProducts="MockData.Essentials"
+                    DefaultSort="featured"
+                    RadioGroupPrefix="school-essentials" />
+
+@code {
+    private readonly List<BreadcrumbItem> _breadcrumb =
+    [
+        new("Home", "/"),
+        new("Shop", "/shop"),
+        new("School Essentials")
+    ];
+}

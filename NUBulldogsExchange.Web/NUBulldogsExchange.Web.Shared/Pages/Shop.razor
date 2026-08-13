@@ -1,0 +1,18 @@
+@page "/shop"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+<PageTitle>Shop | NU Bulldogs Exchange</PageTitle>
+
+<ProductListingPage Title="Shop NU Bulldogs Merchandise"
+                    Breadcrumb="_breadcrumb"
+                    DefaultSort="featured"
+                    RadioGroupPrefix="shop" />
+
+@code {
+    private readonly List<BreadcrumbItem> _breadcrumb =
+    [
+        new("Home", "/"),
+        new("Shop")
+    ];
+}

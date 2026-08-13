@@ -1,0 +1,53 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+
+<section class="newsletter-section">
+    <div class="newsletter-card">
+        <div class="newsletter-icon">
+            <Icon Name="mail" Size="24" />
+        </div>
+        <h2>Join the Bulldog Community</h2>
+        <p>Get updates about new drops, exclusive collections, and campus merchandise.</p>
+
+        @if (_subscribed)
+        {
+            <div class="newsletter-success">Thanks for joining the Bulldog community!</div>
+        }
+        else
+        {
+            <EditForm Model="_model" OnValidSubmit="Subscribe" class="newsletter-form">
+                <InputText @bind-Value="_model.Email"
+                           type="email"
+                           placeholder="Enter your email"
+                           class="newsletter-input" />
+                <button type="submit">Subscribe</button>
+            </EditForm>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <p class="newsletter-error">@_error</p>
+            }
+        }
+    </div>
+</section>
+
+@code {
+    private readonly NewsletterModel _model = new();
+    private bool _subscribed;
+    private string? _error;
+
+    private void Subscribe()
+    {
+        if (string.IsNullOrWhiteSpace(_model.Email) || !_model.Email.Contains('@'))
+        {
+            _error = "Please enter a valid email address.";
+            return;
+        }
+
+        _error = null;
+        _subscribed = true;
+    }
+
+    private sealed class NewsletterModel
+    {
+        public string Email { get; set; } = string.Empty;
+    }
+}

@@ -1,0 +1,55 @@
+﻿@page "/"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+<PageTitle>NU Bulldogs Exchange | Official Merchandise</PageTitle>
+
+<HeroSection />
+
+<section class="section section-light" id="categories">
+    <div class="container">
+        <SectionHeader Title="Shop by Category"
+                       Subtitle="Find exactly what you're looking for"
+                       ViewAllHref="/shop" />
+        <div class="category-grid">
+            @foreach (var category in MockData.Categories)
+            {
+                <CategoryCard Category="category" />
+            }
+        </div>
+    </div>
+</section>
+
+<section class="section section-light" id="products">
+    <div class="container">
+        <SectionHeader Title="Featured Bulldogs Picks"
+                       Subtitle="Handpicked favorites for every Bulldog"
+                       ViewAllHref="/shop" />
+        <ProductGrid Products="MockData.Featured" />
+    </div>
+</section>
+
+<section class="section section-light" id="fresh">
+    <div class="container">
+        <SectionHeader Label="JUST DROPPED"
+                       Title="Fresh Drops"
+                       Subtitle="New merchandise just landed."
+                       ViewAllHref="/new-arrivals" />
+        <ProductGrid Products="MockData.FreshDrops" />
+    </div>
+</section>
+
+<PromotionalBanner />
+
+<section class="section section-light" id="favorites">
+    <div class="container">
+        <SectionHeader Label="TOP PICKS"
+                       Title="Bulldog Favorites"
+                       Subtitle="What the community loves most"
+                       ViewAllHref="/best-sellers" />
+        <ProductGrid Products="MockData.Favorites" ShowRank="true" />
+    </div>
+</section>
+
+<WhyShopSection />
+<NewsletterSection />

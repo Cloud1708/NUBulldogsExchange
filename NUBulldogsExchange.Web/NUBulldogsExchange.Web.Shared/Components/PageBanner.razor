@@ -1,0 +1,21 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+
+<div class="page-banner">
+    <div class="container">
+        <p class="breadcrumb">
+            <a href="/">Home</a>
+            <span>/</span>
+            <span>@Title</span>
+        </p>
+        <h1>@Title</h1>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <p class="page-banner-sub">@Subtitle</p>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
+}

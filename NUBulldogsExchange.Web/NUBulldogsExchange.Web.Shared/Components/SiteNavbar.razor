@@ -1,0 +1,37 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+
+<nav class="navigation">
+    <div class="container nav-content">
+        <NavLink class="nav-link" href="/" Match="NavLinkMatch.All">Home</NavLink>
+        <NavLink class="nav-link" href="/shop">Shop</NavLink>
+        <NavLink class="nav-link" href="/new-arrivals">New Arrivals</NavLink>
+        <NavLink class="nav-link" href="/best-sellers">Best Sellers</NavLink>
+
+        <div class="nav-dropdown">
+            <NavLink class="nav-link" href="/apparel">
+                Apparel <Icon Name="chevron-down" Size="14" />
+            </NavLink>
+            <div class="dropdown-menu">
+                <a href="/apparel">All Apparel</a>
+                <a href="/apparel?category=T-Shirts">T-Shirts</a>
+                <a href="/apparel?category=Polo%20Shirts">Polo Shirts</a>
+                <a href="/apparel?category=Hoodies">Hoodies</a>
+                <a href="/apparel?category=Jackets">Jackets</a>
+            </div>
+        </div>
+
+        <div class="nav-dropdown">
+            <NavLink class="nav-link" href="/accessories">
+                Accessories <Icon Name="chevron-down" Size="14" />
+            </NavLink>
+            <div class="dropdown-menu">
+                <a href="/accessories">All Accessories</a>
+                <a href="/accessories?category=Caps">Caps</a>
+                <a href="/accessories?category=Bags">Bags</a>
+                <a href="/accessories?category=Accessories">Lanyards &amp; More</a>
+            </div>
+        </div>
+
+        <NavLink class="nav-link" href="/school-essentials">School Essentials</NavLink>
+    </div>
+</nav>

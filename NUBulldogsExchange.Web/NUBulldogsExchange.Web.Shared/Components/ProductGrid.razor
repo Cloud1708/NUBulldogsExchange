@@ -1,0 +1,26 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+<div class="product-grid">
+    @{
+        var index = 0;
+    }
+    @foreach (var product in Products)
+    {
+        index++;
+        <ProductCard Product="product" Rank="@(ShowRank && index == 1 ? 1 : null)" />
+    }
+</div>
+
+@if (!Products.Any())
+{
+    <div class="empty-state">
+        <p>No products found. Try a different search or category.</p>
+        <a href="/shop" class="btn btn-navy">Browse Shop</a>
+    </div>
+}
+
+@code {
+    [Parameter] public IEnumerable<Product> Products { get; set; } = [];
+    [Parameter] public bool ShowRank { get; set; }
+}

@@ -1,0 +1,611 @@
+@page "/product/{Id:int}"
+@using System.Globalization
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject CartService Cart
+@inject WishlistService Wishlist
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>@(_product?.Name ?? "Product") | NU Bulldogs Exchange</PageTitle>
+
+@if (_product is null)
+{
+    <section class="section section-light">
+        <div class="container empty-state">
+            <h2>Product not found</h2>
+            <a href="/shop" class="btn btn-navy">Back to Shop</a>
+        </div>
+    </section>
+}
+else
+{
+    <section class="section section-light pdp-page">
+        <div class="container">
+            <nav class="shop-breadcrumb pdp-breadcrumb" aria-label="Breadcrumb">
+                <a href="/">Home</a>
+                <Icon Name="chevron-right" Size="14" CssClass="breadcrumb-sep" />
+                <a href="/shop">Shop</a>
+                <Icon Name="chevron-right" Size="14" CssClass="breadcrumb-sep" />
+                <a href="@CategoryHref">@_product.Category</a>
+                <Icon Name="chevron-right" Size="14" CssClass="breadcrumb-sep" />
+                <span>@_product.Name</span>
+            </nav>
+
+            <div class="product-detail">
+                <div class="product-detail-gallery">
+                    <div class="pdp-main-image">
+                        <img src="@_selectedImage"
+                             alt="@_product.Name"
+                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                    </div>
+                    <div class="pdp-thumbs" role="list">
+                        @for (var i = 0; i < _gallery.Count; i++)
+                        {
+                            var index = i;
+                            var src = _gallery[index];
+                            <button type="button"
+                                    class="pdp-thumb @(src == _selectedImage ? "active" : "")"
+                                    role="listitem"
+                                    aria-label="@($"View image {index + 1}")"
+                                    @onclick="() => SelectImage(src)">
+                                <img src="@src"
+                                     alt="@($"{_product.Name} thumbnail {index + 1}")"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="product-detail-info">
+                    <div class="pdp-info-top">
+                        <p class="pdp-stock @_stockClass">
+                            @if (_product.Stock <= 0)
+                            {
+                                <span>Out of Stock</span>
+                            }
+                            else if (_product.Stock <= 10)
+                            {
+                                <span>Only @_product.Stock left</span>
+                            }
+                            else
+                            {
+                                <span class="pdp-stock-ok"><Icon Name="check" Size="14" /> In Stock (@_product.Stock left)</span>
+                            }
+                        </p>
+                        <button type="button"
+                                class="pdp-wishlist favorite @(Wishlist.Contains(_product.Id) ? "active" : "")"
+                                title="Wishlist"
+                                @onclick="ToggleWishlist">
+                            <Icon Name="heart" Size="18" />
+                        </button>
+                    </div>
+
+                    <h1 class="pdp-title">@_product.Name</h1>
+
+                    <div class="rating detail-rating pdp-rating">
+                        @for (var i = 1; i <= 5; i++)
+                        {
+                            <span class="star @(i <= Math.Round(_product.Rating) ? "filled" : "")">★</span>
+                        }
+                        <strong class="pdp-rating-value">@_product.Rating.ToString("0.0")</strong>
+                        <span class="pdp-rating-meta">(@_product.Reviews reviews) · @_product.Sold sold</span>
+                    </div>
+
+                    <div class="detail-price pdp-price">
+                        @if (_product.OriginalPrice is decimal original)
+                        {
+                            <s>₱@original.ToString("N0")</s>
+                            <strong>₱@_product.Price.ToString("N0")</strong>
+                        }
+                        else
+                        {
+                            <strong>₱@_product.Price.ToString("N0")</strong>
+                        }
+                    </div>
+
+                    <p class="detail-desc">@_product.Description</p>
+
+                    @if (_product.Colors.Count > 0)
+                    {
+                        <div class="pdp-option">
+                            <div class="pdp-option-head">
+                                <span>Color</span>
+                                @if (!string.IsNullOrWhiteSpace(_selectedColor))
+                                {
+                                    <small>@MockData.FormatColorName(_selectedColor)</small>
+                                }
+                            </div>
+                            <div class="pdp-swatches">
+                                @foreach (var color in _product.Colors)
+                                {
+                                    <button type="button"
+                                            class="pdp-swatch @color @(_selectedColor == color ? "selected" : "")"
+                                            title="@MockData.FormatColorName(color)"
+                                            aria-label="@MockData.FormatColorName(color)"
+                                            @onclick="() => SelectColor(color)">
+                                    </button>
+                                }
+                            </div>
+                            <p class="pdp-color-label">
+                                @string.Join(" / ", _product.Colors.Select(MockData.FormatColorName))
+                            </p>
+                        </div>
+                    }
+
+                    @if (_product.Sizes.Count > 0)
+                    {
+                        <div class="pdp-option">
+                            <div class="pdp-option-head">
+                                <span>Size</span>
+                                <button type="button" class="pdp-size-guide-link" @onclick="() => _showSizeGuide = true">Size Guide</button>
+                            </div>
+                            <div class="pdp-sizes">
+                                @foreach (var size in _product.Sizes)
+                                {
+                                    <button type="button"
+                                            class="pdp-size @(_selectedSize == size ? "selected" : "")"
+                                            @onclick="() => SelectSize(size)">
+                                        @size
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+
+                    <div class="pdp-option">
+                        <div class="pdp-option-head">
+                            <span>Quantity</span>
+                        </div>
+                        <div class="pdp-qty-row">
+                            <div class="qty-controls pdp-qty">
+                                <button type="button"
+                                        disabled="@(_quantity <= 1 || _product.Stock <= 0)"
+                                        @onclick="DecreaseQty"
+                                        aria-label="Decrease quantity">
+                                    <Icon Name="minus" Size="14" />
+                                </button>
+                                <span>@_quantity</span>
+                                <button type="button"
+                                        disabled="@(_quantity >= _product.Stock || _product.Stock <= 0)"
+                                        @onclick="IncreaseQty"
+                                        aria-label="Increase quantity">
+                                    <Icon Name="plus" Size="14" />
+                                </button>
+                            </div>
+                            <span class="pdp-stock-hint">@_product.Stock pieces available</span>
+                        </div>
+                    </div>
+
+                    <div class="detail-actions pdp-actions">
+                        <button type="button"
+                                class="btn btn-navy pdp-btn"
+                                disabled="@(_product.Stock <= 0)"
+                                @onclick="AddToCart">
+                            <Icon Name="cart" Size="18" /> Add to Cart
+                        </button>
+                        <button type="button"
+                                class="btn btn-gold pdp-btn"
+                                disabled="@(_product.Stock <= 0)"
+                                @onclick="BuyNow">
+                            <Icon Name="zap" Size="18" /> Buy Now
+                        </button>
+                    </div>
+
+                    <ul class="detail-perks pdp-perks">
+                        <li><Icon Name="map-pin" Size="16" /> Free Campus Pickup available at NU Manila campus</li>
+                        <li><Icon Name="clock" Size="16" /> Estimated processing time: 1–3 business days</li>
+                        <li><Icon Name="refresh" Size="16" /> Easy returns within 7 days</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="pdp-tabs-wrap">
+                <div class="pdp-tabs" role="tablist">
+                    @foreach (var tab in _tabs)
+                    {
+                        <button type="button"
+                                role="tab"
+                                class="pdp-tab @(_activeTab == tab ? "active" : "")"
+                                aria-selected="@(_activeTab == tab)"
+                                @onclick="() => _activeTab = tab">
+                            @tab
+                        </button>
+                    }
+                </div>
+
+                <div class="pdp-tab-panel">
+                    @if (_activeTab == "Description")
+                    {
+                        <div class="pdp-card">
+                            <p class="pdp-full-desc">@(!string.IsNullOrWhiteSpace(_product.FullDescription) ? _product.FullDescription : _product.Description)</p>
+                            <ul class="pdp-features">
+                                @foreach (var feature in _product.Features)
+                                {
+                                    <li><Icon Name="check-circle" Size="18" /> <span>@feature</span></li>
+                                }
+                            </ul>
+                        </div>
+                    }
+                    else if (_activeTab == "Specifications")
+                    {
+                        <div class="pdp-card">
+                            <dl class="pdp-specs">
+                                <div class="pdp-spec-row">
+                                    <dt>Material</dt>
+                                    <dd>@(string.IsNullOrWhiteSpace(_product.Material) ? "—" : _product.Material)</dd>
+                                </div>
+                                <div class="pdp-spec-row">
+                                    <dt>Available Sizes</dt>
+                                    <dd>@string.Join(", ", _product.Sizes)</dd>
+                                </div>
+                                <div class="pdp-spec-row">
+                                    <dt>Category</dt>
+                                    <dd>@_product.Category</dd>
+                                </div>
+                                <div class="pdp-spec-row">
+                                    <dt>SKU</dt>
+                                    <dd>@_product.Sku</dd>
+                                </div>
+                                <div class="pdp-spec-row">
+                                    <dt>Colors</dt>
+                                    <dd>@_product.Colors.Count option@(_product.Colors.Count == 1 ? "" : "s")</dd>
+                                </div>
+                            </dl>
+                        </div>
+                    }
+                    else if (_activeTab == "Reviews")
+                    {
+                        <div class="pdp-card pdp-reviews">
+                            <div class="pdp-reviews-summary">
+                                <div class="pdp-reviews-score">
+                                    <div class="pdp-avg">@_product.Rating.ToString("0.0")</div>
+                                    <div class="rating">
+                                        @for (var i = 1; i <= 5; i++)
+                                        {
+                                            <span class="star @(i <= Math.Round(_product.Rating) ? "filled" : "")">★</span>
+                                        }
+                                    </div>
+                                    <p>@_product.Reviews reviews</p>
+                                </div>
+                                <div class="pdp-rating-bars">
+                                    @for (var star = 5; star >= 1; star--)
+                                    {
+                                        var pct = RatingPercent(star);
+                                        <div class="pdp-bar-row">
+                                            <span>@star ★</span>
+                                            <div class="pdp-bar-track"><div class="pdp-bar-fill" style="width:@pct%"></div></div>
+                                            <span>@pct%</span>
+                                        </div>
+                                    }
+                                </div>
+                            </div>
+
+                            <div class="pdp-review-list">
+                                @foreach (var review in _displayReviews)
+                                {
+                                    <article class="pdp-review-card">
+                                        <div class="pdp-review-avatar">@review.Initials</div>
+                                        <div class="pdp-review-body">
+                                            <div class="pdp-review-head">
+                                                <strong>@review.Author</strong>
+                                                <span>@review.Date.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</span>
+                                            </div>
+                                            <div class="rating">
+                                                @for (var i = 1; i <= 5; i++)
+                                                {
+                                                    <span class="star @(i <= review.Rating ? "filled" : "")">★</span>
+                                                }
+                                            </div>
+                                            <p>@review.Comment</p>
+                                        </div>
+                                    </article>
+                                }
+                            </div>
+
+                            <button type="button" class="btn btn-outline-navy pdp-write-review" @onclick="() => _showReviewModal = true">
+                                Write a Review
+                            </button>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="pdp-card pdp-shipping">
+                            <div class="pdp-ship-item pdp-ship-pickup">
+                                <div class="pdp-ship-icon"><Icon Name="map-pin" Size="22" /></div>
+                                <div>
+                                    <h3>Campus Pickup</h3>
+                                    <p>Available at the NU Manila Merchandise Center (Building A, Ground Floor). Pickup hours: Monday–Friday, 8:00 AM–5:00 PM.</p>
+                                </div>
+                            </div>
+                            <div class="pdp-ship-item">
+                                <div class="pdp-ship-icon"><Icon Name="package" Size="22" /></div>
+                                <div>
+                                    <h3>Delivery</h3>
+                                    <p>Metro Manila delivery in 3–5 business days. Provincial delivery in 5–7 business days. Delivery fees calculated at checkout.</p>
+                                </div>
+                            </div>
+                            <div class="pdp-ship-item">
+                                <div class="pdp-ship-icon"><Icon Name="refresh" Size="22" /></div>
+                                <div>
+                                    <h3>Returns &amp; Exchange</h3>
+                                    <p>Items can be returned or exchanged within 7 days of receipt. Must be unworn with original tags. Bring your order receipt to the store.</p>
+                                </div>
+                            </div>
+                        </div>
+                    }
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section class="section section-light pdp-related">
+        <div class="container">
+            <SectionHeader Title="You May Also Like"
+                           Subtitle="More picks from the same category"
+                           ViewAllHref="/shop" />
+            <ProductGrid Products="_related" />
+        </div>
+    </section>
+
+    @if (_showSizeGuide)
+    {
+        <div class="pdp-modal-backdrop" @onclick="() => _showSizeGuide = false">
+            <div class="pdp-modal" @onclick:stopPropagation="true">
+                <div class="pdp-modal-head">
+                    <h3>Size Guide</h3>
+                    <button type="button" class="pdp-modal-close" @onclick="() => _showSizeGuide = false" aria-label="Close">
+                        <Icon Name="x" Size="18" />
+                    </button>
+                </div>
+                @if (_product.Section == "apparel")
+                {
+                    <table class="pdp-size-table">
+                        <thead>
+                            <tr><th>Size</th><th>Chest (in)</th><th>Length (in)</th></tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>XS</td><td>34–36</td><td>26</td></tr>
+                            <tr><td>S</td><td>36–38</td><td>27</td></tr>
+                            <tr><td>M</td><td>38–40</td><td>28</td></tr>
+                            <tr><td>L</td><td>40–42</td><td>29</td></tr>
+                            <tr><td>XL</td><td>42–44</td><td>30</td></tr>
+                            <tr><td>XXL</td><td>44–46</td><td>31</td></tr>
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <p class="pdp-modal-note">This item is offered in <strong>One Size</strong> and is designed for a universal fit.</p>
+                }
+            </div>
+        </div>
+    }
+
+    @if (_showReviewModal)
+    {
+        <div class="pdp-modal-backdrop" @onclick="CloseReviewModal">
+            <div class="pdp-modal" @onclick:stopPropagation="true">
+                <div class="pdp-modal-head">
+                    <h3>Write a Review</h3>
+                    <button type="button" class="pdp-modal-close" @onclick="CloseReviewModal" aria-label="Close">
+                        <Icon Name="x" Size="18" />
+                    </button>
+                </div>
+                <div class="pdp-review-form">
+                    <label>
+                        Name
+                        <input type="text" @bind="_reviewName" placeholder="Your name" maxlength="40" />
+                    </label>
+                    <label>
+                        Rating
+                        <select @bind="_reviewRating">
+                            <option value="5">5 stars</option>
+                            <option value="4">4 stars</option>
+                            <option value="3">3 stars</option>
+                            <option value="2">2 stars</option>
+                            <option value="1">1 star</option>
+                        </select>
+                    </label>
+                    <label>
+                        Review
+                        <textarea @bind="_reviewText" rows="4" placeholder="Share your experience" maxlength="500"></textarea>
+                    </label>
+                    <button type="button" class="btn btn-navy" @onclick="SubmitReview">Submit Review</button>
+                </div>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private static readonly string[] _tabs = ["Description", "Specifications", "Reviews", "Shipping & Pickup"];
+
+    private Product? _product;
+    private List<Product> _related = [];
+    private List<string> _gallery = [];
+    private List<ProductReview> _displayReviews = [];
+
+    private string _selectedImage = string.Empty;
+    private string? _selectedColor;
+    private string? _selectedSize;
+    private int _quantity = 1;
+    private string _activeTab = "Description";
+    private string _stockClass = "in-stock";
+
+    private bool _showSizeGuide;
+    private bool _showReviewModal;
+    private string _reviewName = string.Empty;
+    private int _reviewRating = 5;
+    private string _reviewText = string.Empty;
+
+    private string CategoryHref =>
+        _product is null
+            ? "/shop"
+            : $"/shop?category={Uri.EscapeDataString(_product.Category)}";
+
+    protected override void OnInitialized() => Wishlist.OnChange += Refresh;
+
+    protected override void OnParametersSet()
+    {
+        _product = MockData.GetById(Id);
+        if (_product is null)
+        {
+            _related = [];
+            return;
+        }
+
+        ResetSelection(_product);
+        _related = MockData.GetRelated(_product).ToList();
+        _displayReviews = [.. _product.ProductReviews];
+        _activeTab = "Description";
+        _showSizeGuide = false;
+        _showReviewModal = false;
+        UpdateStockClass();
+    }
+
+    private void ResetSelection(Product product)
+    {
+        _gallery = product.GalleryImages.ToList();
+        if (_gallery.Count == 0 && !string.IsNullOrWhiteSpace(product.ImageUrl))
+            _gallery = [product.ImageUrl];
+
+        _selectedImage = _gallery.FirstOrDefault() ?? product.ImageUrl;
+        _selectedColor = product.Colors.FirstOrDefault();
+        _selectedSize = product.Sizes.Count == 1
+            ? product.Sizes[0]
+            : product.Sizes.Contains("M")
+                ? "M"
+                : product.Sizes.FirstOrDefault();
+        _quantity = product.Stock > 0 ? 1 : 0;
+    }
+
+    private void UpdateStockClass()
+    {
+        if (_product is null || _product.Stock <= 0)
+            _stockClass = "out-of-stock";
+        else if (_product.Stock <= 10)
+            _stockClass = "low-stock";
+        else
+            _stockClass = "in-stock";
+    }
+
+    private int RatingPercent(int star)
+    {
+        if (_product?.RatingBreakdown is null || _product.RatingBreakdown.Length < 5)
+            return 0;
+
+        var index = 5 - star;
+        return Math.Clamp(_product.RatingBreakdown[index], 0, 100);
+    }
+
+    private void SelectImage(string src) => _selectedImage = src;
+    private void SelectColor(string color) => _selectedColor = color;
+    private void SelectSize(string size) => _selectedSize = size;
+
+    private void DecreaseQty()
+    {
+        if (_quantity > 1)
+            _quantity--;
+    }
+
+    private void IncreaseQty()
+    {
+        if (_product is null) return;
+        if (_quantity < _product.Stock)
+            _quantity++;
+    }
+
+    private bool ValidateSelection()
+    {
+        if (_product is null) return false;
+
+        if (_product.Stock <= 0)
+        {
+            Toast.Show("This product is out of stock.");
+            return false;
+        }
+
+        if (_product.Colors.Count > 0 && string.IsNullOrWhiteSpace(_selectedColor))
+        {
+            Toast.Show("Please select a color.");
+            return false;
+        }
+
+        if (_product.Sizes.Count > 0 && string.IsNullOrWhiteSpace(_selectedSize))
+        {
+            Toast.Show("Please select a size.");
+            return false;
+        }
+
+        return true;
+    }
+
+    private void AddToCart()
+    {
+        if (_product is null || !ValidateSelection()) return;
+
+        Cart.Add(_product, _quantity, _selectedColor, _selectedSize);
+        Toast.Show("Product added to cart.");
+    }
+
+    private void BuyNow()
+    {
+        if (_product is null || !ValidateSelection()) return;
+
+        Cart.Add(_product, _quantity, _selectedColor, _selectedSize);
+        Toast.Show("Product added to cart.");
+        Navigation.NavigateTo("/cart");
+    }
+
+    private void ToggleWishlist()
+    {
+        if (_product is null) return;
+        Wishlist.Toggle(_product.Id);
+        Toast.Show(Wishlist.Contains(_product.Id) ? "Added to wishlist." : "Removed from wishlist.");
+    }
+
+    private void CloseReviewModal()
+    {
+        _showReviewModal = false;
+        _reviewName = string.Empty;
+        _reviewText = string.Empty;
+        _reviewRating = 5;
+    }
+
+    private void SubmitReview()
+    {
+        if (_product is null) return;
+
+        if (string.IsNullOrWhiteSpace(_reviewName) || string.IsNullOrWhiteSpace(_reviewText))
+        {
+            Toast.Show("Please enter your name and review.");
+            return;
+        }
+
+        var initials = _reviewName.Trim()[0].ToString().ToUpperInvariant();
+        var review = new ProductReview
+        {
+            Author = _reviewName.Trim(),
+            Initials = initials,
+            Rating = Math.Clamp(_reviewRating, 1, 5),
+            Date = DateTime.Today,
+            Comment = _reviewText.Trim()
+        };
+
+        _product.ProductReviews.Insert(0, review);
+        _displayReviews = [.. _product.ProductReviews];
+        _product.Reviews++;
+        CloseReviewModal();
+        Toast.Show("Review submitted.");
+        _activeTab = "Reviews";
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Wishlist.OnChange -= Refresh;
+}

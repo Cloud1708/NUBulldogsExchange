@@ -1,0 +1,208 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject NavigationManager Navigation
+@inject CartService Cart
+@inject WishlistService Wishlist
+@inject AuthService Auth
+@implements IDisposable
+
+<div class="top-header container">
+    <button type="button" class="mobile-menu-btn" @onclick="ToggleMobile" aria-label="Open menu">
+        <Icon Name="menu" Size="22" />
+    </button>
+
+    <a href="/" class="brand" @onclick="CloseMobile">
+        <div class="brand-icon">NU</div>
+        <div>
+            <div class="brand-title">NU Bulldogs</div>
+            <div class="brand-subtitle">Exchange</div>
+        </div>
+    </a>
+
+    <div class="search-box">
+        <button type="button" class="search-submit" title="Search" aria-label="Search" @onclick="SubmitSearch">
+            <Icon Name="search" Size="18" CssClass="search-icon" />
+        </button>
+        <input type="search"
+               placeholder="Search shirts, hoodies, accessories..."
+               value="@_query"
+               @oninput="OnSearchInput"
+               @onkeydown="OnSearchKey" />
+    </div>
+
+    <div class="header-actions">
+        <a href="/wishlist" class="icon-button" title="Wishlist" aria-label="Wishlist">
+            <Icon Name="heart" Size="20" />
+            @if (Wishlist.Count > 0)
+            {
+                <span class="badge-count">@Wishlist.Count</span>
+            }
+        </a>
+        <button type="button" class="icon-button" title="Notifications" aria-label="Notifications">
+            <Icon Name="bell" Size="20" />
+        </button>
+        <a href="/cart" class="icon-button" title="Cart" aria-label="Shopping cart">
+            <Icon Name="cart" Size="20" />
+            @if (Cart.TotalCount > 0)
+            {
+                <span class="badge-count">@Cart.TotalCount</span>
+            }
+        </a>
+
+        @if (Auth.IsLoggedIn)
+        {
+            <div class="header-user">
+                <a href="/login" class="login-button login-button-user" title="@Auth.Email">
+                    <Icon Name="user" Size="16" />
+                    <span>@Auth.DisplayName</span>
+                </a>
+                <button type="button" class="header-logout" title="Logout" @onclick="Logout">Logout</button>
+            </div>
+        }
+        else
+        {
+            <a href="@LoginHref" class="login-button">Login</a>
+        }
+    </div>
+</div>
+
+@if (_mobileOpen)
+{
+    <div class="mobile-nav-overlay" @onclick="CloseMobile"></div>
+    <div class="mobile-nav-drawer">
+        <div class="mobile-nav-header">
+            <span>Menu</span>
+            <button type="button" class="icon-button" @onclick="CloseMobile" aria-label="Close menu">
+                <Icon Name="x" Size="20" />
+            </button>
+        </div>
+        <nav class="mobile-nav-links">
+            <a href="/" @onclick="CloseMobile">Home</a>
+            <a href="/shop" @onclick="CloseMobile">Shop</a>
+            <a href="/new-arrivals" @onclick="CloseMobile">New Arrivals</a>
+            <a href="/best-sellers" @onclick="CloseMobile">Best Sellers</a>
+            <a href="/apparel" @onclick="CloseMobile">Apparel</a>
+            <a href="/accessories" @onclick="CloseMobile">Accessories</a>
+            <a href="/school-essentials" @onclick="CloseMobile">School Essentials</a>
+            <a href="/wishlist" @onclick="CloseMobile">Wishlist</a>
+            <a href="/cart" @onclick="CloseMobile">Cart</a>
+            @if (Auth.IsLoggedIn)
+            {
+                <a href="/login" @onclick="CloseMobile">Account</a>
+                <button type="button" class="mobile-logout-btn" @onclick="LogoutMobile">Logout</button>
+            }
+            else
+            {
+                <a href="@LoginHref" @onclick="CloseMobile">Login</a>
+            }
+        </nav>
+    </div>
+}
+
+@code {
+    private string _query = string.Empty;
+    private bool _mobileOpen;
+
+    private string LoginHref
+    {
+        get
+        {
+            var path = Navigation.ToBaseRelativePath(Navigation.Uri);
+            if (string.IsNullOrWhiteSpace(path))
+                return "/login?returnUrl=%2F";
+
+            var relative = "/" + path;
+            if (relative.StartsWith("/login", StringComparison.OrdinalIgnoreCase))
+                return "/login";
+
+            return $"/login?returnUrl={Uri.EscapeDataString(relative)}";
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        Cart.OnChange += Refresh;
+        Wishlist.OnChange += Refresh;
+        Auth.OnChange += Refresh;
+        Navigation.LocationChanged += OnLocationChanged;
+        SyncQueryFromUrl();
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        SyncQueryFromUrl();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void SyncQueryFromUrl()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        _query = GetQueryValue(uri, "q")
+            ?? GetQueryValue(uri, "search")
+            ?? string.Empty;
+    }
+
+    private static string? GetQueryValue(Uri uri, string key)
+    {
+        var query = uri.Query.TrimStart('?');
+        if (string.IsNullOrEmpty(query)) return null;
+
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length == 0) continue;
+            if (!string.Equals(Uri.UnescapeDataString(pair[0]), key, StringComparison.OrdinalIgnoreCase))
+                continue;
+            return pair.Length > 1 ? Uri.UnescapeDataString(pair[1]) : string.Empty;
+        }
+
+        return null;
+    }
+
+    private void ToggleMobile() => _mobileOpen = !_mobileOpen;
+    private void CloseMobile() => _mobileOpen = false;
+
+    private void OnSearchInput(ChangeEventArgs e) =>
+        _query = e.Value?.ToString() ?? string.Empty;
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            SubmitSearch();
+    }
+
+    private void SubmitSearch()
+    {
+        var trimmed = _query.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+        {
+            Navigation.NavigateTo("/shop");
+            return;
+        }
+
+        _query = trimmed;
+        Navigation.NavigateTo($"/shop?q={Uri.EscapeDataString(trimmed)}");
+    }
+
+    private void Logout()
+    {
+        Auth.Logout();
+        CloseMobile();
+    }
+
+    private void LogoutMobile()
+    {
+        Auth.Logout();
+        CloseMobile();
+    }
+
+    public void Dispose()
+    {
+        Cart.OnChange -= Refresh;
+        Wishlist.OnChange -= Refresh;
+        Auth.OnChange -= Refresh;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}

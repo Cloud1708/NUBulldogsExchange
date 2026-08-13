@@ -1,0 +1,34 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject ToastService Toast
+@implements IDisposable
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="toast-message" role="status">@_message</div>
+}
+
+@code {
+    private string? _message;
+    private System.Threading.Timer? _timer;
+
+    protected override void OnInitialized() => Toast.OnShow += Show;
+
+    private void Show(string message)
+    {
+        _message = message;
+        InvokeAsync(StateHasChanged);
+        _timer?.Dispose();
+        _timer = new System.Threading.Timer(_ =>
+        {
+            _message = null;
+            InvokeAsync(StateHasChanged);
+        }, null, 2500, Timeout.Infinite);
+    }
+
+    public void Dispose()
+    {
+        Toast.OnShow -= Show;
+        _timer?.Dispose();
+    }
+}

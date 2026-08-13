@@ -1,0 +1,26 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+
+<div class="section-header">
+    <div>
+        @if (!string.IsNullOrWhiteSpace(Label))
+        {
+            <span class="section-label">@Label</span>
+        }
+        <h2>@Title</h2>
+        @if (!string.IsNullOrWhiteSpace(Subtitle))
+        {
+            <p>@Subtitle</p>
+        }
+    </div>
+    @if (!string.IsNullOrWhiteSpace(ViewAllHref))
+    {
+        <a href="@ViewAllHref">View All →</a>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string? ViewAllHref { get; set; }
+}

@@ -1,0 +1,111 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject CartService Cart
+@inject WishlistService Wishlist
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<article class="product-card" @onclick="GoToDetails">
+    <div class="product-image">
+        @if (Rank is > 0)
+        {
+            <span class="rank-badge">#@Rank</span>
+        }
+        else if (!string.IsNullOrWhiteSpace(Product.Badge))
+        {
+            <span class="badge @BadgeClass">@Product.Badge</span>
+        }
+
+        @if (Rank is > 0 && !string.IsNullOrWhiteSpace(Product.Badge))
+        {
+            <span class="badge badge-offset @BadgeClass">@Product.Badge</span>
+        }
+        <button type="button"
+                class="favorite @(Wishlist.Contains(Product.Id) ? "active" : "")"
+                title="Wishlist"
+                @onclick="ToggleWishlist"
+                @onclick:stopPropagation="true">
+            <Icon Name="heart" Size="16" />
+        </button>
+        <img src="@Product.ImageUrl"
+             alt="@Product.Name"
+             loading="lazy"
+             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+    </div>
+
+    <div class="product-info">
+        <small>@Product.Category</small>
+        <h3>@Product.Name</h3>
+
+        <div class="rating">
+            @for (var i = 1; i <= 5; i++)
+            {
+                <span class="star @(i <= Math.Round(Product.Rating) ? "filled" : "")">★</span>
+            }
+            <span>(@Product.Reviews) · @Product.Sold sold</span>
+        </div>
+
+        @if (Product.Colors.Count > 0)
+        {
+            <div class="colors">
+                @foreach (var color in Product.Colors)
+                {
+                    <span class="dot @color" title="@color"></span>
+                }
+            </div>
+        }
+
+        <div class="product-bottom">
+            <div class="price-wrap">
+                <strong>₱@Product.Price.ToString("N0")</strong>
+                @if (Product.OriginalPrice is decimal original)
+                {
+                    <s>₱@original.ToString("N0")</s>
+                }
+            </div>
+            <button type="button"
+                    class="cart-button"
+                    title="Add to cart"
+                    @onclick="AddToCart"
+                    @onclick:stopPropagation="true">
+                <Icon Name="cart" Size="16" />
+            </button>
+        </div>
+    </div>
+</article>
+
+@code {
+    [Parameter, EditorRequired] public Product Product { get; set; } = null!;
+    [Parameter] public int? Rank { get; set; }
+
+    private string BadgeClass => Product.Badge switch
+    {
+        "Best Seller" => "badge-best",
+        "Sale" => "badge-sale",
+        "New" => "badge-new",
+        _ => "badge-best"
+    };
+
+    protected override void OnInitialized() => Wishlist.OnChange += Refresh;
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void ToggleWishlist()
+    {
+        Wishlist.Toggle(Product.Id);
+        Toast.Show(Wishlist.Contains(Product.Id)
+            ? "Added to wishlist."
+            : "Removed from wishlist.");
+    }
+
+    private void AddToCart()
+    {
+        Cart.Add(Product);
+        Toast.Show("Product added to cart.");
+    }
+
+    private void GoToDetails() => Navigation.NavigateTo($"/product/{Product.Id}");
+
+    public void Dispose() => Wishlist.OnChange -= Refresh;
+}

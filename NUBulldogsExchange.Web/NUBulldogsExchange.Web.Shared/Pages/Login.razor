@@ -1,0 +1,297 @@
+@page "/login"
+@layout AuthLayout
+@using System.Text.RegularExpressions
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<PageTitle>Login | NU Bulldogs Exchange</PageTitle>
+
+<div class="auth-page">
+    <aside class="auth-brand-panel">
+        <div class="auth-brand-bg" aria-hidden="true"></div>
+        <div class="auth-brand-inner">
+            <a href="/" class="brand auth-logo">
+                <div class="brand-icon auth-logo-icon">NU</div>
+                <div>
+                    <div class="brand-title">NU Bulldogs</div>
+                    <div class="brand-subtitle">Exchange</div>
+                </div>
+            </a>
+
+            <div class="auth-brand-hero">
+                <span class="auth-badge">
+                    <Icon Name="award" Size="14" />
+                    Official School Merchandise Store
+                </span>
+
+                <h1 class="auth-hero-title">
+                    Wear the Pride.<br />
+                    Live the<br />
+                    <span>Bulldog Spirit.</span>
+                </h1>
+
+                <p class="auth-hero-desc">
+                    Shop exclusive NU merchandise crafted for students, alumni, faculty, and true Bulldog supporters.
+                </p>
+
+                <div class="auth-stat-grid">
+                    <div class="auth-stat-card">
+                        <strong>48+</strong>
+                        <span>Products</span>
+                    </div>
+                    <div class="auth-stat-card">
+                        <strong>3,800+</strong>
+                        <span>Happy Shoppers</span>
+                    </div>
+                    <div class="auth-stat-card">
+                        <strong>342</strong>
+                        <span>Orders Completed</span>
+                    </div>
+                    <div class="auth-stat-card">
+                        <strong>Free</strong>
+                        <span>Campus Pickup</span>
+                    </div>
+                </div>
+            </div>
+
+            <p class="auth-copyright">© 2026 NU Bulldogs Exchange</p>
+        </div>
+    </aside>
+
+    <section class="auth-form-panel">
+        <div class="auth-login-card">
+            @if (Auth.IsLoggedIn)
+            {
+                <h1>You're signed in</h1>
+                <p class="auth-subtitle">
+                    Signed in as <strong>@Auth.Email</strong>
+                    @if (Auth.Role == "admin")
+                    {
+                        <span class="auth-role-pill">Admin</span>
+                    }
+                </p>
+                <a href="/wishlist" class="btn btn-navy btn-block auth-primary-btn">View Wishlist</a>
+                <a href="/" class="btn btn-outline-navy btn-block">Continue Shopping</a>
+                <button type="button" class="btn btn-outline-navy btn-block" @onclick="Logout">Logout</button>
+            }
+            else
+            {
+                <h1>Welcome Back</h1>
+                <p class="auth-subtitle">Sign in to your account to continue shopping.</p>
+
+                <form class="auth-form" @onsubmit="HandleLogin" @onsubmit:preventDefault="true">
+                    <div class="auth-field">
+                        <label for="login-email">Email Address</label>
+                        <div class="auth-input-wrap @(_emailError is not null ? "has-error" : "")">
+                            <Icon Name="mail" Size="18" CssClass="auth-input-icon" />
+                            <input id="login-email"
+                                   type="email"
+                                   autocomplete="email"
+                                   placeholder="you@example.com"
+                                   value="@_email"
+                                   disabled="@_isLoading"
+                                   @oninput="OnEmailInput" />
+                        </div>
+                        @if (_emailError is not null)
+                        {
+                            <span class="auth-field-error">@_emailError</span>
+                        }
+                    </div>
+
+                    <div class="auth-field">
+                        <label for="login-password">Password</label>
+                        <div class="auth-input-wrap @(_passwordError is not null ? "has-error" : "")">
+                            <Icon Name="lock" Size="18" CssClass="auth-input-icon" />
+                            <input id="login-password"
+                                   type="@(_showPassword ? "text" : "password")"
+                                   autocomplete="current-password"
+                                   placeholder="Enter your password"
+                                   value="@_password"
+                                   disabled="@_isLoading"
+                                   @oninput="OnPasswordInput" />
+                            <button type="button"
+                                    class="auth-eye-btn"
+                                    title="@(_showPassword ? "Hide password" : "Show password")"
+                                    aria-label="@(_showPassword ? "Hide password" : "Show password")"
+                                    @onclick="TogglePassword">
+                                <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="18" />
+                            </button>
+                        </div>
+                        @if (_passwordError is not null)
+                        {
+                            <span class="auth-field-error">@_passwordError</span>
+                        }
+                    </div>
+
+                    <div class="auth-row">
+                        <label class="auth-remember">
+                            <input type="checkbox" @bind="_rememberMe" disabled="@_isLoading" />
+                            <span>Remember me</span>
+                        </label>
+                        <a href="/forgot-password" class="auth-forgot">Forgot password?</a>
+                    </div>
+
+                    @if (_formError is not null)
+                    {
+                        <p class="auth-form-error">@_formError</p>
+                    }
+
+                    <button type="submit" class="btn btn-navy btn-block auth-primary-btn" disabled="@_isLoading">
+                        @(_isLoading ? "Signing in..." : "Login")
+                    </button>
+                </form>
+
+                <div class="auth-divider">
+                    <span>or</span>
+                </div>
+
+                <button type="button" class="btn btn-outline-navy btn-block auth-guest-btn" @onclick="ContinueAsGuest" disabled="@_isLoading">
+                    Continue as Guest
+                </button>
+
+                <p class="auth-create">
+                    Don't have an account?
+                    <a href="/register">Create Account</a>
+                </p>
+
+                <div class="auth-demo-box">
+                    Demo: Use any email for customer. Use admin&#64;nu.edu for admin access. Any password (6+ chars).
+                </div>
+            }
+        </div>
+    </section>
+</div>
+
+@code {
+    private static readonly Regex EmailRegex = new(
+        @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
+        RegexOptions.Compiled | RegexOptions.IgnoreCase);
+
+    private string _email = string.Empty;
+    private string _password = string.Empty;
+    private bool _rememberMe;
+    private bool _showPassword;
+    private bool _isLoading;
+    private string? _emailError;
+    private string? _passwordError;
+    private string? _formError;
+
+    protected override void OnInitialized() => Auth.OnChange += Refresh;
+
+    private void OnEmailInput(ChangeEventArgs e)
+    {
+        _email = e.Value?.ToString() ?? string.Empty;
+        _emailError = null;
+        _formError = null;
+    }
+
+    private void OnPasswordInput(ChangeEventArgs e)
+    {
+        _password = e.Value?.ToString() ?? string.Empty;
+        _passwordError = null;
+        _formError = null;
+    }
+
+    private void TogglePassword() => _showPassword = !_showPassword;
+
+    private async Task HandleLogin()
+    {
+        if (_isLoading) return;
+
+        _emailError = null;
+        _passwordError = null;
+        _formError = null;
+
+        var email = _email.Trim();
+        var password = _password;
+
+        var hasError = false;
+
+        if (string.IsNullOrWhiteSpace(email) && string.IsNullOrWhiteSpace(password))
+        {
+            _formError = "Please enter your email and password.";
+            _emailError = "Email address is required.";
+            _passwordError = "Password is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            _emailError = "Email address is required.";
+            hasError = true;
+        }
+        else if (!EmailRegex.IsMatch(email))
+        {
+            _emailError = "Please enter a valid email address.";
+            hasError = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(password))
+        {
+            _passwordError = "Password is required.";
+            hasError = true;
+        }
+        else if (password.Length < 6)
+        {
+            _passwordError = "Password must be at least 6 characters.";
+            hasError = true;
+        }
+
+        if (hasError) return;
+
+        _isLoading = true;
+        try
+        {
+            await Task.Delay(450);
+            Auth.Login(email, _rememberMe);
+            Toast.Show(Auth.Role == "admin" ? "Signed in as admin." : "Welcome back!");
+            Navigation.NavigateTo(GetReturnUrl());
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ContinueAsGuest() => Navigation.NavigateTo("/");
+
+    private void Logout()
+    {
+        Auth.Logout();
+        Toast.Show("Signed out.");
+    }
+
+    private string GetReturnUrl()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = uri.Query.TrimStart('?');
+        if (string.IsNullOrEmpty(query))
+            return "/";
+
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length == 0) continue;
+            if (!string.Equals(Uri.UnescapeDataString(pair[0]), "returnUrl", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            var value = pair.Length > 1 ? Uri.UnescapeDataString(pair[1]) : "/";
+            if (string.IsNullOrWhiteSpace(value) || !value.StartsWith('/') || value.StartsWith("//"))
+                return "/";
+            if (value.StartsWith("/login", StringComparison.OrdinalIgnoreCase))
+                return "/";
+            return value;
+        }
+
+        return "/";
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.OnChange -= Refresh;
+}

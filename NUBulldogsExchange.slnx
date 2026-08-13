@@ -1,0 +1,8 @@
+<Solution>
+  <Project Path="NUBulldogsExchange.Mobile/NUBulldogsExchange.Mobile.csproj" />
+  <Project Path="NUBulldogsExchange.Web/NUBulldogsExchange.Web.Shared/NUBulldogsExchange.Web.Shared.csproj" />
+  <Project Path="NUBulldogsExchange.Web/NUBulldogsExchange.Web.Web/NUBulldogsExchange.Web.Web.csproj" />
+  <Project Path="NUBulldogsExchange.Web/NUBulldogsExchange.Web/NUBulldogsExchange.Web.csproj">
+    <Deploy Solution="Debug|*" />
+  </Project>
+</Solution>

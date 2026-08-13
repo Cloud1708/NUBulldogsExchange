@@ -1,0 +1,20 @@
+@page "/new-arrivals"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+<PageTitle>New Arrivals | NU Bulldogs Exchange</PageTitle>
+
+<ProductListingPage Title="New Arrivals"
+                    Breadcrumb="_breadcrumb"
+                    BaseProducts="MockData.NewArrivals"
+                    DefaultSort="newest"
+                    RadioGroupPrefix="new-arrivals" />
+
+@code {
+    private readonly List<BreadcrumbItem> _breadcrumb =
+    [
+        new("Home", "/"),
+        new("Shop", "/shop"),
+        new("New Arrivals")
+    ];
+}

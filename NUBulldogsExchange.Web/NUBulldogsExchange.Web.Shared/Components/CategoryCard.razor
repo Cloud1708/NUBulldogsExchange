@@ -1,0 +1,17 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+<a class="category-card" href="@Href">
+    <img src="@Category.ImageUrl"
+         alt="@Category.Name"
+         loading="lazy"
+         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+    <strong>@Category.Name</strong>
+    <span>@Category.ItemCount</span>
+</a>
+
+@code {
+    [Parameter, EditorRequired] public CategoryItem Category { get; set; } = null!;
+
+    private string Href => $"/shop?category={Uri.EscapeDataString(Category.Name)}";
+}

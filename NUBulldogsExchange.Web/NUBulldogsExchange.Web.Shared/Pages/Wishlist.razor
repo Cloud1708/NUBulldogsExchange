@@ -1,0 +1,74 @@
+@page "/wishlist"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject WishlistService WishlistService
+@inject AuthService Auth
+@implements IDisposable
+
+<PageTitle>Wishlist | NU Bulldogs Exchange</PageTitle>
+
+@if (!Auth.IsLoggedIn)
+{
+    <section class="section section-light auth-gate-section">
+        <div class="container">
+            <div class="auth-gate">
+                <div class="auth-gate-icon">
+                    <Icon Name="user" Size="48" />
+                </div>
+                <h1>Sign in to view your account</h1>
+                <p>Track orders, manage your wishlist, and more.</p>
+                <a href="/login?returnUrl=%2Fwishlist" class="btn btn-navy auth-gate-btn">Sign In</a>
+            </div>
+        </div>
+    </section>
+}
+else
+{
+    <PageBanner Title="Wishlist"
+                Subtitle="Items you've saved for later" />
+
+    <section class="section section-light">
+        <div class="container">
+            @if (!_products.Any())
+            {
+                <div class="empty-state">
+                    <Icon Name="heart" Size="40" />
+                    <h2>Your wishlist is empty</h2>
+                    <p>Tap the heart on any product to save it here.</p>
+                    <a href="/shop" class="btn btn-navy">Explore Products</a>
+                </div>
+            }
+            else
+            {
+                <ProductGrid Products="_products" />
+            }
+        </div>
+    </section>
+}
+
+@code {
+    private IEnumerable<Product> _products = [];
+
+    protected override void OnInitialized()
+    {
+        WishlistService.OnChange += Refresh;
+        Auth.OnChange += Refresh;
+        Load();
+    }
+
+    private void Load() =>
+        _products = MockData.Products.Where(p => WishlistService.Contains(p.Id)).ToList();
+
+    private void Refresh()
+    {
+        Load();
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        WishlistService.OnChange -= Refresh;
+        Auth.OnChange -= Refresh;
+    }
+}

@@ -1,0 +1,152 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+<div class="filter-card">
+    <div class="filter-card-header">
+        <strong>Filters</strong>
+        <button type="button" class="clear-all-btn" @onclick="OnClear">Clear All</button>
+    </div>
+
+    <div class="filter-group">
+        <h4>Category</h4>
+        <div class="filter-options">
+            @foreach (var category in MockData.Categories)
+            {
+                var name = category.Name;
+                <label class="filter-check">
+                    <input type="checkbox"
+                           checked="@SelectedCategories.Contains(name)"
+                           @onchange="e => ToggleCategory(name, e)" />
+                    <span>@category.Name</span>
+                    <em>@category.Count</em>
+                </label>
+            }
+        </div>
+    </div>
+
+    <div class="filter-group">
+        <h4>Price Range</h4>
+        <input class="price-range"
+               type="range"
+               min="0"
+               max="@MaxPrice"
+               step="50"
+               value="@MaxPriceValue"
+               @oninput="OnPriceInput" />
+        <div class="price-range-labels">
+            <span>₱0</span>
+            <span>₱@MaxPriceValue.ToString("N0")</span>
+        </div>
+    </div>
+
+    <div class="filter-group">
+        <h4>Size</h4>
+        <div class="size-options">
+            @foreach (var size in SizeOptions)
+            {
+                var s = size;
+                <button type="button"
+                        class="size-chip @(SelectedSizes.Contains(s) ? "active" : "")"
+                        @onclick="() => ToggleSize(s)">
+                    @s
+                </button>
+            }
+        </div>
+    </div>
+
+    <div class="filter-group">
+        <h4>Rating</h4>
+        <div class="rating-options">
+            @for (var stars = 4; stars >= 1; stars--)
+            {
+                var value = stars;
+                <label class="rating-option">
+                    <input type="radio"
+                           name="@RadioGroupName"
+                           checked="@(MinRating == value)"
+                           @onchange="() => SetRating(value)" />
+                    <span class="rating-stars">
+                        @for (var i = 1; i <= 5; i++)
+                        {
+                            <span class="star @(i <= value ? "filled" : "")">★</span>
+                        }
+                    </span>
+                    <span>&amp; up</span>
+                </label>
+            }
+            <label class="rating-option">
+                <input type="radio"
+                       name="@RadioGroupName"
+                       checked="@(MinRating == 0)"
+                       @onchange="() => SetRating(0)" />
+                <span>Any rating</span>
+            </label>
+        </div>
+    </div>
+
+    <div class="filter-group">
+        <h4>Availability</h4>
+        <label class="filter-check">
+            <input type="checkbox"
+                   checked="@InStockOnly"
+                   @onchange="OnInStockChanged" />
+            <span>In Stock Only</span>
+        </label>
+    </div>
+
+    <button type="button" class="btn btn-navy apply-filters-btn" @onclick="OnApply">
+        Apply Filters
+    </button>
+</div>
+
+@code {
+    [Parameter] public HashSet<string> SelectedCategories { get; set; } = [];
+    [Parameter] public HashSet<string> SelectedSizes { get; set; } = [];
+    [Parameter] public decimal MaxPriceValue { get; set; } = 2000;
+    [Parameter] public EventCallback<decimal> MaxPriceValueChanged { get; set; }
+    [Parameter] public int MinRating { get; set; }
+    [Parameter] public EventCallback<int> MinRatingChanged { get; set; }
+    [Parameter] public bool InStockOnly { get; set; }
+    [Parameter] public EventCallback<bool> InStockOnlyChanged { get; set; }
+    [Parameter] public EventCallback OnApplyClicked { get; set; }
+    [Parameter] public EventCallback OnClearClicked { get; set; }
+    [Parameter] public string RadioGroupName { get; set; } = "shop-rating";
+
+    private const decimal MaxPrice = 2000;
+    private static readonly string[] SizeOptions = ["XS", "S", "M", "L", "XL", "XXL"];
+
+    private async Task ToggleCategory(string category, ChangeEventArgs e)
+    {
+        var selected = IsChecked(e.Value);
+        if (selected) SelectedCategories.Add(category);
+        else SelectedCategories.Remove(category);
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void ToggleSize(string size)
+    {
+        if (!SelectedSizes.Add(size))
+            SelectedSizes.Remove(size);
+    }
+
+    private async Task OnPriceInput(ChangeEventArgs e)
+    {
+        if (decimal.TryParse(e.Value?.ToString(), out var value))
+            await MaxPriceValueChanged.InvokeAsync(Math.Clamp(value, 0, MaxPrice));
+    }
+
+    private async Task SetRating(int value) => await MinRatingChanged.InvokeAsync(value);
+
+    private async Task OnInStockChanged(ChangeEventArgs e) =>
+        await InStockOnlyChanged.InvokeAsync(IsChecked(e.Value));
+
+    private async Task OnApply() => await OnApplyClicked.InvokeAsync();
+    private async Task OnClear() => await OnClearClicked.InvokeAsync();
+
+    private static bool IsChecked(object? value) => value switch
+    {
+        bool b => b,
+        string s => string.Equals(s, "true", StringComparison.OrdinalIgnoreCase) || s == "on",
+        _ => false
+    };
+}
