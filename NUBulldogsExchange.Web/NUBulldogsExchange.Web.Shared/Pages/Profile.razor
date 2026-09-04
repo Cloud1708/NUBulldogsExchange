@@ -1,5 +1,4 @@
 @page "/profile"
-@using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AuthService Auth
 @inject ToastService Toast
@@ -29,43 +28,102 @@ else
         <div class="account-panel account-profile-panel">
             <h1>My Profile</h1>
 
+            <dl class="profile-meta">
+                <div>
+                    <dt>Full Name</dt>
+                    <dd>@Auth.DisplayName</dd>
+                </div>
+                <div>
+                    <dt>Email</dt>
+                    <dd>@Auth.Email</dd>
+                </div>
+                <div>
+                    <dt>Account Status</dt>
+                    <dd>@(Auth.CurrentUser.Status)</dd>
+                </div>
+                <div>
+                    <dt>Member Since</dt>
+                    <dd>@Auth.CurrentUser.MemberSinceLabel</dd>
+                </div>
+            </dl>
+
             <form class="profile-form" @onsubmit="Save" @onsubmit:preventDefault="true">
                 <div class="profile-form-grid">
                     <label class="profile-field">
                         <span>First Name</span>
-                        <input type="text" @bind="_firstName" @bind:event="oninput" autocomplete="given-name" />
+                        <input type="text" @bind="_firstName" @bind:event="oninput" autocomplete="given-name" disabled="@_saving" />
                     </label>
                     <label class="profile-field">
                         <span>Last Name</span>
-                        <input type="text" @bind="_lastName" @bind:event="oninput" autocomplete="family-name" />
+                        <input type="text" @bind="_lastName" @bind:event="oninput" autocomplete="family-name" disabled="@_saving" />
                     </label>
                     <label class="profile-field">
                         <span>Email</span>
-                        <input type="email" @bind="_email" @bind:event="oninput" autocomplete="email" />
+                        <input type="email" value="@_email" readonly disabled />
                     </label>
                     <label class="profile-field">
                         <span>Contact Number</span>
-                        <input type="tel" @bind="_phone" @bind:event="oninput" autocomplete="tel" />
+                        <input type="tel" @bind="_phone" @bind:event="oninput" autocomplete="tel" disabled="@_saving" />
                     </label>
                     <label class="profile-field">
                         <span>Student / Employee ID</span>
-                        <input type="text" @bind="_studentId" @bind:event="oninput" />
+                        <input type="text" @bind="_studentId" @bind:event="oninput" disabled="@_saving" />
                     </label>
                     <label class="profile-field">
                         <span>College / Department</span>
-                        <input type="text" @bind="_college" @bind:event="oninput" />
+                        <input type="text" @bind="_college" @bind:event="oninput" disabled="@_saving" />
                     </label>
                     <label class="profile-field profile-field-full">
                         <span>Address</span>
-                        <input type="text" @bind="_address" @bind:event="oninput" autocomplete="street-address" />
+                        <input type="text" @bind="_address" @bind:event="oninput" autocomplete="street-address" disabled="@_saving" />
+                    </label>
+                    <label class="profile-field profile-field-full">
+                        <span>Profile Image URL</span>
+                        <input type="url" @bind="_profileImage" @bind:event="oninput" placeholder="https://..." disabled="@_saving" />
                     </label>
                 </div>
 
+                @if (_profileError is not null)
+                {
+                    <p class="auth-form-error">@_profileError</p>
+                }
+
                 <div class="profile-form-actions">
-                    <button type="submit" class="btn btn-navy">Save Changes</button>
-                    <button type="button" class="btn btn-outline-navy" @onclick="Reset">Cancel</button>
+                    <button type="submit" class="btn btn-navy" disabled="@_saving">
+                        @(_saving ? "Saving..." : "Save Changes")
+                    </button>
+                    <button type="button" class="btn btn-outline-navy" @onclick="Reset" disabled="@_saving">Cancel</button>
                 </div>
             </form>
+
+            <section class="profile-password-panel">
+                <h2>Change Password</h2>
+                <form class="profile-form" @onsubmit="ChangePassword" @onsubmit:preventDefault="true">
+                    <div class="profile-form-grid">
+                        <label class="profile-field">
+                            <span>Current Password</span>
+                            <input type="password" @bind="_currentPassword" autocomplete="current-password" disabled="@_changingPassword" />
+                        </label>
+                        <label class="profile-field">
+                            <span>New Password</span>
+                            <input type="password" @bind="_newPassword" autocomplete="new-password" disabled="@_changingPassword" />
+                        </label>
+                        <label class="profile-field profile-field-full">
+                            <span>Confirm New Password</span>
+                            <input type="password" @bind="_confirmPassword" autocomplete="new-password" disabled="@_changingPassword" />
+                        </label>
+                    </div>
+                    @if (_passwordError is not null)
+                    {
+                        <p class="auth-form-error">@_passwordError</p>
+                    }
+                    <div class="profile-form-actions">
+                        <button type="submit" class="btn btn-navy" disabled="@_changingPassword">
+                            @(_changingPassword ? "Updating..." : "Update Password")
+                        </button>
+                    </div>
+                </form>
+            </section>
         </div>
     </AccountShell>
 }
@@ -78,6 +136,14 @@ else
     private string _studentId = string.Empty;
     private string _college = string.Empty;
     private string _address = string.Empty;
+    private string _profileImage = string.Empty;
+    private string _currentPassword = string.Empty;
+    private string _newPassword = string.Empty;
+    private string _confirmPassword = string.Empty;
+    private bool _saving;
+    private bool _changingPassword;
+    private string? _profileError;
+    private string? _passwordError;
 
     protected override void OnInitialized()
     {
@@ -104,13 +170,112 @@ else
         _studentId = user.StudentId;
         _college = user.College;
         _address = user.Address;
+        _profileImage = user.ProfileImage;
+        _profileError = null;
     }
 
     private async Task Save()
     {
-        Auth.UpdateProfile(_firstName, _lastName, _email, _phone, _studentId, _college, _address);
-        await Auth.PersistAsync(JS);
-        Toast.Show("Profile changes saved.");
+        if (_saving) return;
+        _profileError = null;
+
+        if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName))
+        {
+            _profileError = "First name and last name are required.";
+            return;
+        }
+
+        if (!AuthValidation.IsValidPhone(_phone))
+        {
+            _profileError = "Please enter a valid phone number.";
+            return;
+        }
+
+        _saving = true;
+        try
+        {
+            var result = await Auth.UpdateProfileAsync(new UpdateProfileRequest
+            {
+                FirstName = _firstName,
+                LastName = _lastName,
+                PhoneNumber = _phone,
+                ProfileImage = _profileImage,
+                StudentId = _studentId,
+                College = _college,
+                Address = _address
+            });
+
+            if (!result.Success)
+            {
+                _profileError = result.Error ?? "Unable to save your profile.";
+                return;
+            }
+
+            await Auth.PersistAsync(JS);
+            Toast.Show("Profile changes saved.");
+        }
+        catch
+        {
+            _profileError = "Unable to save your profile right now.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task ChangePassword()
+    {
+        if (_changingPassword) return;
+        _passwordError = null;
+
+        if (string.IsNullOrWhiteSpace(_currentPassword) ||
+            string.IsNullOrWhiteSpace(_newPassword) ||
+            string.IsNullOrWhiteSpace(_confirmPassword))
+        {
+            _passwordError = "All password fields are required.";
+            return;
+        }
+
+        if (_newPassword.Length < AuthValidation.MinPasswordLength)
+        {
+            _passwordError = $"New password must be at least {AuthValidation.MinPasswordLength} characters.";
+            return;
+        }
+
+        if (_newPassword != _confirmPassword)
+        {
+            _passwordError = "New password and confirm password must match.";
+            return;
+        }
+
+        _changingPassword = true;
+        try
+        {
+            var result = await Auth.ChangePasswordAsync(new ChangePasswordRequest
+            {
+                CurrentPassword = _currentPassword,
+                NewPassword = _newPassword,
+                ConfirmNewPassword = _confirmPassword
+            });
+
+            if (!result.Success)
+            {
+                _passwordError = result.Error ?? "Unable to change your password.";
+                return;
+            }
+
+            _currentPassword = _newPassword = _confirmPassword = string.Empty;
+            Toast.Show("Password updated successfully.");
+        }
+        catch
+        {
+            _passwordError = "Unable to change your password right now.";
+        }
+        finally
+        {
+            _changingPassword = false;
+        }
     }
 
     public void Dispose() => Auth.OnChange -= Refresh;

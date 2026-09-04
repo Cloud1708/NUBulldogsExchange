@@ -28,9 +28,14 @@ public class Product
     public string FullDescription { get; set; } = string.Empty;
     public List<string> Features { get; set; } = [];
     public List<ProductReview> ProductReviews { get; set; } = [];
-    /// <summary>Percentages for 5★ → 1★ (mock distribution).</summary>
+    /// <summary>Percentages for 5★ → 1★ rating distribution.</summary>
     public int[] RatingBreakdown { get; set; } = [40, 30, 15, 10, 5];
-    public string Section { get; set; } = "apparel"; // apparel | accessories | essentials
+    public string Section { get; set; } = "apparel"; // apparel | accessories
+    public string Status { get; set; } = "Active"; // Active|Draft|Inactive
+    public bool IsPublished { get; set; } = true;
+    public DateTime? PublishedAt { get; set; }
+    public DateTime? UpdatedAt { get; set; }
+    public string? CreatedBy { get; set; }
 
     public IReadOnlyList<string> GalleryImages =>
         Images.Count > 0 ? Images : string.IsNullOrWhiteSpace(ImageUrl) ? [] : [ImageUrl];

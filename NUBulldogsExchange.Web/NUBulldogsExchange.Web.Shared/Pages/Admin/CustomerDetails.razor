@@ -4,6 +4,7 @@
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminCustomerService CustomerService
+@inject AuthService Auth
 @inject ToastService Toast
 @inject NavigationManager Navigation
 @implements IDisposable
@@ -15,7 +16,7 @@
     {
         <div class="admin-card admin-placeholder-card">
             <h2>Customer not found</h2>
-            <p>This customer may have been removed from the mock catalog.</p>
+            <p>This customer was not found.</p>
             <a href="/admin/customers" class="btn btn-navy">Back to Customers</a>
         </div>
     }
@@ -74,6 +75,7 @@
                     <div><dt>Customer ID</dt><dd><code>@Customer.Id</code></dd></div>
                     <div><dt>Contact Number</dt><dd>@Customer.Contact</dd></div>
                     <div><dt>Date Joined</dt><dd>@Customer.DateJoinedLabel</dd></div>
+                    <div><dt>Last Login</dt><dd>@Customer.LastLoginLabel</dd></div>
                     <div>
                         <dt>Status</dt>
                         <dd><span class="admin-customer-status status-@Customer.StatusKey">@Customer.Status</span></dd>
@@ -83,7 +85,7 @@
 
             <section class="admin-card admin-customer-status-panel">
                 <h2>Account Status</h2>
-                <p class="admin-modal-note">Deactivate accounts instead of deleting them. Changes apply to this frontend demo only.</p>
+                <p class="admin-modal-note">Deactivate or suspend accounts instead of deleting them. Customers with order history stay in the records.</p>
                 <label class="admin-field">
                     <span>Status</span>
                     <select value="@Customer.Status" @onchange="OnStatusChange">
@@ -147,13 +149,15 @@
 
     protected override void OnInitialized() => CustomerService.OnChange += Refresh;
 
+    protected override async Task OnInitializedAsync() => await CustomerService.EnsureLoadedAsync();
+
     private void OnStatusChange(ChangeEventArgs e)
     {
         var status = e.Value?.ToString();
         if (string.IsNullOrWhiteSpace(status) || Customer is null)
             return;
 
-        if (CustomerService.SetStatus(Customer.Id, status))
+        if (CustomerService.SetStatus(Customer.Id, status, Auth.UserId > 0 ? Auth.UserId : null))
             Toast.Show($"Customer status updated to {status}.");
     }
 

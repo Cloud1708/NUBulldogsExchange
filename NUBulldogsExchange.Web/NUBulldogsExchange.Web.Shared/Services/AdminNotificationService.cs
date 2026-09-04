@@ -12,48 +12,24 @@ public class AdminNotificationService
         ("system", "System")
     ];
 
-    private readonly List<AdminNotificationItem> _items;
+    private readonly IAppDatabase _db;
+    private readonly List<AdminNotificationItem> _items = [];
+    private bool _loaded;
 
     public event Action? OnChange;
 
-    public AdminNotificationService()
+    public AdminNotificationService(IAppDatabase db)
     {
-        var now = DateTime.Now;
-        _items =
-        [
-            Item("NOTIF-001", "order", "New Order Received",
-                "Order #NUBE-1025 placed by Maria Santos — ₱1,797. Campus Pickup.",
-                "NUBE-1025", "NUBE-1025", "/admin/orders/NUBE-1025",
-                now.AddMinutes(-5), false),
-            Item("NOTIF-002", "stock", "Low Stock Alert",
-                "NU Bulldogs Varsity Jacket is running low — only 18 units remaining.",
-                "jacket", "NU Bulldogs Varsity Jacket", "/admin/inventory",
-                now.AddHours(-1), false),
-            Item("NOTIF-003", "order", "Order Cancelled",
-                "Order #NUBE-1019 cancelled by Mark Torres. Reason: Changed mind.",
-                "NUBE-1019", "NUBE-1019", "/admin/orders/NUBE-1019",
-                now.AddHours(-3), false),
-            Item("NOTIF-004", "stock", "Out of Stock",
-                "NU Bulldogs Varsity Hoodie (Size S) is now out of stock.",
-                "hoodie", "NU Bulldogs Varsity Hoodie", "/admin/inventory",
-                now.Date.AddDays(-1).AddHours(16).AddMinutes(30), true),
-            Item("NOTIF-005", "order", "Order Ready for Pickup",
-                "Order #NUBE-1024 is ready for pickup. Customer notified.",
-                "NUBE-1024", "NUBE-1024", "/admin/orders/NUBE-1024",
-                now.Date.AddDays(-1).AddHours(14).AddMinutes(15), true),
-            Item("NOTIF-006", "system", "New Customer Registered",
-                "Diego Villanueva just created an account on NU Bulldogs Exchange.",
-                null, null, "/admin/customers",
-                now.AddDays(-2), true),
-            Item("NOTIF-007", "stock", "Low Stock Alert",
-                "NU Bulldogs Backpack has only 32 units left.",
-                "backpack", "NU Bulldogs Backpack", "/admin/inventory",
-                now.AddDays(-2), true),
-            Item("NOTIF-008", "order", "Order Completed",
-                "Order #NUBE-1021 marked as completed. ₱2,246 collected.",
-                "NUBE-1021", "NUBE-1021", "/admin/orders/NUBE-1021",
-                now.AddDays(-3), true)
-        ];
+        _db = db;
+    }
+
+    public async Task EnsureLoadedAsync()
+    {
+        if (_loaded) return;
+        _items.Clear();
+        _items.AddRange(await _db.GetAdminNotificationsAsync());
+        _loaded = true;
+        OnChange?.Invoke();
     }
 
     public IReadOnlyList<AdminNotificationItem> All =>
@@ -86,6 +62,7 @@ public class AdminNotificationService
         var item = _items.FirstOrDefault(n => n.Id == id);
         if (item is null || item.Read) return;
         item.Read = true;
+        Persist();
         OnChange?.Invoke();
     }
 
@@ -98,36 +75,43 @@ public class AdminNotificationService
             changed = true;
         }
 
-        if (changed) OnChange?.Invoke();
+        if (changed)
+        {
+            Persist();
+            OnChange?.Invoke();
+        }
     }
 
     public int ClearRead()
     {
         var removed = _items.RemoveAll(n => n.Read);
-        if (removed > 0) OnChange?.Invoke();
+        if (removed > 0)
+        {
+            Persist();
+            OnChange?.Invoke();
+        }
+
         return removed;
     }
 
-    private static AdminNotificationItem Item(
-        string id,
-        string type,
-        string title,
-        string message,
-        string? relatedId,
-        string? relatedLabel,
-        string? href,
-        DateTime timestamp,
-        bool read) =>
-        new()
-        {
-            Id = id,
-            Type = type,
-            Title = title,
-            Message = message,
-            RelatedId = relatedId,
-            RelatedLabel = relatedLabel,
-            RelatedHref = href,
-            Timestamp = timestamp,
-            Read = read
-        };
+    public void Add(AdminNotificationItem item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Id))
+            item.Id = $"NOTIF-{Guid.NewGuid():N}"[..12].ToUpperInvariant();
+        _items.Insert(0, item);
+        Persist();
+        OnChange?.Invoke();
+    }
+
+    public async Task AddAsync(AdminNotificationItem item)
+    {
+        if (string.IsNullOrWhiteSpace(item.Id))
+            item.Id = $"NOTIF-{Guid.NewGuid():N}"[..12].ToUpperInvariant();
+        _items.Insert(0, item);
+        await _db.SaveAdminNotificationsAsync(_items);
+        OnChange?.Invoke();
+    }
+
+    private void Persist() =>
+        _db.SaveAdminNotificationsAsync(_items).GetAwaiter().GetResult();
 }

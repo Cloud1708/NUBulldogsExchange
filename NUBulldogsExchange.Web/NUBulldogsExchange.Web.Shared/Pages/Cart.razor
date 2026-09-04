@@ -152,10 +152,10 @@ else
                         <span>Pickup Fee</span>
                         <span class="text-success">Free</span>
                     </div>
-                    @if (_promoApplied && _appliedPromo is not null)
+                    @if (_promoApplied && !string.IsNullOrWhiteSpace(CartService.AppliedPromoCode))
                     {
                         <div class="summary-row">
-                            <span>Promo (@_appliedPromo.Code)</span>
+                            <span>Discount (@CartService.AppliedPromoCode)</span>
                             <span class="text-success">-₱@Discount.ToString("N0")</span>
                         </div>
                     }
@@ -167,12 +167,23 @@ else
 
                     <div class="cart-promo">
                         <input type="text"
-                               placeholder="Promo code"
+                               placeholder="Enter promo code"
                                value="@_promoCode"
+                               disabled="@_applyingPromo"
                                @oninput="OnPromoInput" />
-                        <button type="button" class="btn btn-navy cart-promo-btn" @onclick="ApplyPromo">Apply</button>
+                        @if (_promoApplied)
+                        {
+                            <button type="button" class="btn btn-outline-navy cart-promo-btn" @onclick="RemovePromo" disabled="@_applyingPromo">
+                                Remove
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-navy cart-promo-btn" @onclick="ApplyPromoAsync" disabled="@_applyingPromo">
+                                @(_applyingPromo ? "Applying…" : "Apply")
+                            </button>
+                        }
                     </div>
-                    <p class="cart-promo-hint">Try: BULLDOG10 or SUMMER50</p>
                     @if (!string.IsNullOrWhiteSpace(_promoMessage))
                     {
                         <p class="@(_promoApplied ? "cart-promo-success" : "cart-promo-error")">@_promoMessage</p>
@@ -196,8 +207,10 @@ else
     private readonly HashSet<string> _knownKeys = [];
     private string _promoCode = string.Empty;
     private bool _promoApplied;
+    private bool _applyingPromo;
+    private bool _refreshingPromo;
     private string? _promoMessage;
-    private AdminPromotion? _appliedPromo;
+    private decimal _discount;
 
     private IEnumerable<CartItem> SelectedItems =>
         CartService.Items.Where(i => _selected.Contains(i.Key));
@@ -208,34 +221,35 @@ else
     private decimal SelectedSubtotal =>
         SelectedItems.Sum(i => i.Product.Price * i.Quantity);
 
-    private decimal Discount =>
-        _promoApplied && _appliedPromo is not null
-            ? _appliedPromo.CalculateDiscount(SelectedSubtotal)
-            : 0;
+    private decimal Discount => _promoApplied ? _discount : 0;
 
     private decimal EstimatedTotal => Math.Max(0, SelectedSubtotal - Discount);
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         CartService.OnChange += Refresh;
         Wishlist.OnChange += Refresh;
         Auth.OnChange += Refresh;
         SyncSelection();
+
+        if (!string.IsNullOrWhiteSpace(CartService.AppliedPromoCode))
+        {
+            _promoCode = CartService.AppliedPromoCode;
+            _promoApplied = true;
+            _discount = CartService.AppliedDiscount;
+            await RevalidateAppliedPromoAsync();
+        }
     }
 
     private void Refresh()
     {
         SyncSelection();
-        if (_promoApplied && _appliedPromo is not null)
+        _ = InvokeAsync(async () =>
         {
-            var (success, message, promo, _) = PromotionService.ValidateForCart(_appliedPromo.Code, SelectedSubtotal);
-            _promoApplied = success;
-            _appliedPromo = success ? promo : null;
-            if (!success)
-                _promoMessage = message;
-        }
-
-        InvokeAsync(StateHasChanged);
+            if (_promoApplied && !_refreshingPromo && !_applyingPromo && !string.IsNullOrWhiteSpace(_promoCode))
+                await RevalidateAppliedPromoAsync();
+            StateHasChanged();
+        });
     }
 
     private void SyncSelection()
@@ -292,20 +306,121 @@ else
     private void OnPromoInput(ChangeEventArgs e)
     {
         _promoCode = e.Value?.ToString() ?? string.Empty;
-        _promoMessage = null;
-        _promoApplied = false;
-        _appliedPromo = null;
+        if (_promoApplied)
+            RemovePromo();
+        else
+            _promoMessage = null;
     }
 
-    private void ApplyPromo()
+    private async Task ApplyPromoAsync()
     {
-        var (success, message, promo, _) = PromotionService.ValidateForCart(_promoCode, SelectedSubtotal);
-        _promoApplied = success;
-        _appliedPromo = success ? promo : null;
-        _promoMessage = message;
+        if (_applyingPromo || !SelectedItems.Any())
+            return;
+
+        _applyingPromo = true;
+        _promoMessage = null;
+        try
+        {
+            var items = SelectedItems.Select(i => new PromoCartItem
+            {
+                ProductId = i.Product.Id,
+                Quantity = i.Quantity,
+                UnitPrice = i.Product.Price,
+                Category = i.Product.Category
+            });
+
+            var (success, message, promo, discount) = await PromotionService.ValidateForCartAsync(
+                _promoCode,
+                items,
+                Auth.Email,
+                Auth.UserId > 0 ? Auth.UserId : null);
+
+            _promoApplied = success;
+            _discount = discount;
+            _promoMessage = success
+                ? $"✓ Promo code {(promo?.Code ?? _promoCode.Trim().ToUpperInvariant())} applied. You saved ₱{discount:N0}."
+                : message;
+
+            if (success && promo is not null)
+            {
+                _promoCode = promo.Code;
+                CartService.SetPromo(promo.Code, discount);
+            }
+            else
+            {
+                CartService.ClearPromo();
+            }
+        }
+        catch (Exception ex)
+        {
+            _promoApplied = false;
+            _discount = 0;
+            CartService.ClearPromo();
+            _promoMessage = "Unable to validate promo code. Please try again.";
+            Console.Error.WriteLine(ex);
+        }
+        finally
+        {
+            _applyingPromo = false;
+        }
     }
 
-    private void ProceedToCheckout()
+    private async Task RevalidateAppliedPromoAsync()
+    {
+        if (_refreshingPromo) return;
+        _refreshingPromo = true;
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_promoCode) || !SelectedItems.Any())
+            {
+                RemovePromo();
+                return;
+            }
+
+            var items = SelectedItems.Select(i => new PromoCartItem
+            {
+                ProductId = i.Product.Id,
+                Quantity = i.Quantity,
+                UnitPrice = i.Product.Price,
+                Category = i.Product.Category
+            });
+
+            var (success, message, promo, discount) = await PromotionService.ValidateForCartAsync(
+                _promoCode,
+                items,
+                Auth.Email,
+                Auth.UserId > 0 ? Auth.UserId : null);
+
+            if (success && promo is not null)
+            {
+                _promoApplied = true;
+                _discount = discount;
+                _promoCode = promo.Code;
+                CartService.SetPromo(promo.Code, discount);
+            }
+            else
+            {
+                _promoApplied = false;
+                _discount = 0;
+                CartService.ClearPromo();
+                _promoMessage = message;
+            }
+        }
+        finally
+        {
+            _refreshingPromo = false;
+        }
+    }
+
+    private void RemovePromo()
+    {
+        _promoApplied = false;
+        _discount = 0;
+        _promoMessage = null;
+        CartService.ClearPromo();
+    }
+
+    private async Task ProceedToCheckout()
     {
         if (!SelectedItems.Any())
             return;
@@ -314,6 +429,22 @@ else
         {
             Navigation.NavigateTo("/login?returnUrl=%2Fcheckout&redirect=%2Fcheckout");
             return;
+        }
+
+        var keep = SelectedItems.Select(i => i.Key).ToHashSet();
+        foreach (var item in CartService.Items.Where(i => !keep.Contains(i.Key)).ToList())
+            CartService.Remove(item.Key);
+
+        if (_promoApplied && !string.IsNullOrWhiteSpace(_promoCode))
+        {
+            await RevalidateAppliedPromoAsync();
+            if (!_promoApplied)
+                return;
+            CartService.SetPromo(_promoCode, _discount);
+        }
+        else
+        {
+            CartService.ClearPromo();
         }
 
         Navigation.NavigateTo("/checkout");

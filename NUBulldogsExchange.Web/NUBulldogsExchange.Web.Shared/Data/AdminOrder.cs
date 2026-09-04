@@ -17,6 +17,10 @@ public class AdminOrder
     public string CustomerEmail { get; set; } = string.Empty;
     public DateTime Date { get; set; }
     public decimal Total { get; set; }
+    public decimal Subtotal { get; set; }
+    public decimal DiscountAmount { get; set; }
+    public string? PromotionId { get; set; }
+    public string? PromotionCode { get; set; }
     public string PaymentStatus { get; set; } = "Paid";
     public string Fulfillment { get; set; } = "Campus Pickup";
     public string Status { get; set; } = "Pending";

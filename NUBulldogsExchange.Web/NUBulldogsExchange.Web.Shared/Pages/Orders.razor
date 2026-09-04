@@ -120,16 +120,23 @@ else
 
     private string _filter = "All";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        Auth.OnChange += Refresh;
+        Auth.OnChange += OnAuthChanged;
         OrderService.OnChange += Refresh;
+        await OrderService.EnsureLoadedAsync(Auth.Email);
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
+    private void OnAuthChanged() => InvokeAsync(async () =>
+    {
+        await OrderService.EnsureLoadedAsync(Auth.Email);
+        StateHasChanged();
+    });
+
     private void ViewOrder(string orderId) =>
-        Toast.Show($"Order {orderId} details — frontend demo only.");
+        Toast.Show($"Order {orderId}");
 
     private void Cancel(string orderId)
     {
@@ -139,7 +146,7 @@ else
 
     public void Dispose()
     {
-        Auth.OnChange -= Refresh;
+        Auth.OnChange -= OnAuthChanged;
         OrderService.OnChange -= Refresh;
     }
 }

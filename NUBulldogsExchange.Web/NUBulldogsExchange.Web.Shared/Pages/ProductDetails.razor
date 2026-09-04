@@ -8,6 +8,8 @@
 @inject AuthService Auth
 @inject ToastService Toast
 @inject NavigationManager Navigation
+@inject ProductCatalogService Catalog
+@inject AdminProductService AdminProducts
 @implements IDisposable
 
 <PageTitle>@(_product?.Name ?? "Product") | NU Bulldogs Exchange</PageTitle>
@@ -449,15 +451,23 @@ else
             ? "/shop"
             : $"/shop?category={Uri.EscapeDataString(_product.Category)}";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Wishlist.OnChange += Refresh;
         Auth.OnChange += Refresh;
+        await AdminProducts.EnsureLoadedAsync();
+        await Catalog.EnsureLoadedAsync();
+        LoadProduct();
     }
 
     protected override void OnParametersSet()
     {
-        _product = MockData.GetById(Id);
+        LoadProduct();
+    }
+
+    private void LoadProduct()
+    {
+        _product = Catalog.GetById(Id);
         if (_product is null)
         {
             _related = [];
@@ -465,7 +475,7 @@ else
         }
 
         ResetSelection(_product);
-        _related = MockData.GetRelated(_product).ToList();
+        _related = Catalog.GetRelated(_product).ToList();
         _displayReviews = [.. _product.ProductReviews];
         _activeTab = "Description";
         _showSizeGuide = false;

@@ -16,8 +16,19 @@ namespace NUBulldogsExchange.Web
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                 });
 
-            // Add device-specific services used by the NUBulldogsExchange.Web.Shared project
+            // Hybrid clients talk to the Web.Web API (central SQLite), not a local marketplace DB.
+            var apiBase = DeviceInfo.Platform == DevicePlatform.Android
+                ? "http://10.0.2.2:5016/"
+                : "http://localhost:5016/";
+
             builder.Services.AddSingleton<IFormFactor, FormFactor>();
+            builder.Services.AddHttpClient<IAppDatabase, HttpAppDatabase>(client =>
+            {
+                client.BaseAddress = new Uri(apiBase);
+                client.Timeout = TimeSpan.FromSeconds(30);
+            });
+
+            builder.Services.AddSingleton<ProductCatalogService>();
             builder.Services.AddSingleton<CartService>();
             builder.Services.AddSingleton<WishlistService>();
             builder.Services.AddSingleton<ToastService>();

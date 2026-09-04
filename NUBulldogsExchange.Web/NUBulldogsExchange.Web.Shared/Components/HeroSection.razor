@@ -1,5 +1,7 @@
 @namespace NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject IAppDatabase Db
 
 <section class="hero" id="home">
     <div class="hero-overlay"></div>
@@ -20,15 +22,15 @@
             </div>
             <div class="hero-stats">
                 <div>
-                    <strong>48+</strong>
+                    <strong>@_stats.PublishedProducts</strong>
                     <span>Products</span>
                 </div>
                 <div>
-                    <strong>3.8K+</strong>
+                    <strong>@_stats.ActiveCustomers</strong>
                     <span>Shoppers</span>
                 </div>
                 <div>
-                    <strong>342</strong>
+                    <strong>@_stats.TotalOrders</strong>
                     <span>Orders</span>
                 </div>
             </div>
@@ -50,3 +52,19 @@
         </div>
     </div>
 </section>
+
+@code {
+    private StorefrontStats _stats = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _stats = await Db.GetStorefrontStatsAsync();
+        }
+        catch
+        {
+            _stats = new StorefrontStats();
+        }
+    }
+}

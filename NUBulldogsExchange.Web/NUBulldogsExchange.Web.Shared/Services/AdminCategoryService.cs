@@ -4,25 +4,29 @@ namespace NUBulldogsExchange.Web.Shared.Services;
 
 public class AdminCategoryService
 {
-    private readonly List<AdminCategory> _categories;
-    private int _nextId;
+    private readonly IAppDatabase _db;
+    private readonly List<AdminCategory> _categories = [];
+    private int _nextId = 1;
+    private bool _loaded;
 
     public event Action? OnChange;
 
-    public AdminCategoryService()
+    public AdminCategoryService(IAppDatabase db)
     {
-        _categories = MockData.Categories.Select((c, index) => new AdminCategory
-        {
-            Id = $"cat-{(index + 1):000}",
-            Name = c.Name,
-            Slug = string.IsNullOrWhiteSpace(c.Slug) ? AdminCategory.ToSlug(c.Name) : c.Slug,
-            ImageUrl = c.ImageUrl,
-            Description = $"NU Bulldogs {c.Name.ToLowerInvariant()} and related merchandise.",
-            Status = "Active",
-            ProductCount = c.Count
-        }).ToList();
+        _db = db;
+    }
 
-        _nextId = _categories.Count + 1;
+    public async Task EnsureLoadedAsync()
+    {
+        if (_loaded) return;
+        _categories.Clear();
+        _categories.AddRange(await _db.GetCategoriesAsync());
+        _nextId = _categories
+            .Select(c => int.TryParse(c.Id.Replace("cat-", "", StringComparison.OrdinalIgnoreCase), out var n) ? n : 0)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+        _loaded = true;
+        OnChange?.Invoke();
     }
 
     public IReadOnlyList<AdminCategory> All => _categories;
@@ -45,11 +49,12 @@ public class AdminCategoryService
             : AdminCategory.ToSlug(category.Slug);
         category.Status = string.IsNullOrWhiteSpace(category.Status) ? "Active" : category.Status;
         category.ImageUrl = string.IsNullOrWhiteSpace(category.ImageUrl)
-            ? MockData.PlaceholderImage
+            ? CatalogHelpers.PlaceholderImage
             : category.ImageUrl.Trim();
         category.Description ??= string.Empty;
         category.ProductCount = Math.Max(0, category.ProductCount);
 
+        _db.UpsertCategoryAsync(category).GetAwaiter().GetResult();
         _categories.Add(category);
         OnChange?.Invoke();
         return category;
@@ -65,10 +70,11 @@ public class AdminCategoryService
             ? AdminCategory.ToSlug(existing.Name)
             : AdminCategory.ToSlug(category.Slug);
         existing.ImageUrl = string.IsNullOrWhiteSpace(category.ImageUrl)
-            ? MockData.PlaceholderImage
+            ? CatalogHelpers.PlaceholderImage
             : category.ImageUrl.Trim();
         existing.Description = category.Description?.Trim() ?? string.Empty;
         existing.Status = string.IsNullOrWhiteSpace(category.Status) ? "Active" : category.Status.Trim();
+        _db.UpsertCategoryAsync(existing).GetAwaiter().GetResult();
         OnChange?.Invoke();
         return true;
     }
@@ -78,6 +84,7 @@ public class AdminCategoryService
         var category = GetById(id);
         if (category is null) return false;
         category.Status = status;
+        _db.UpsertCategoryAsync(category).GetAwaiter().GetResult();
         OnChange?.Invoke();
         return true;
     }
@@ -91,6 +98,7 @@ public class AdminCategoryService
         if (category.ProductCount > 0)
             return (false, "Move or remove the products in this category first.");
 
+        _db.DeleteCategoryAsync(id).GetAwaiter().GetResult();
         _categories.Remove(category);
         OnChange?.Invoke();
         return (true, "Category deleted.");
@@ -98,13 +106,11 @@ public class AdminCategoryService
 
     public void AdjustProductCount(string categoryName, int delta)
     {
-        if (string.IsNullOrWhiteSpace(categoryName) || delta == 0) return;
-
         var category = _categories.FirstOrDefault(c =>
-            c.Name.Equals(categoryName.Trim(), StringComparison.OrdinalIgnoreCase));
+            c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
         if (category is null) return;
-
         category.ProductCount = Math.Max(0, category.ProductCount + delta);
+        _db.UpsertCategoryAsync(category).GetAwaiter().GetResult();
         OnChange?.Invoke();
     }
 }

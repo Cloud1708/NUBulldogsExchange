@@ -7,76 +7,34 @@ public class AdminPromotionService
     public static readonly string[] DiscountTypes = ["percentage", "fixed"];
     public static readonly string[] ManualStatuses = ["Active", "Inactive"];
 
-    private readonly List<AdminPromotion> _promotions;
-    private int _nextId = 5;
+    private readonly IAppDatabase _db;
+    private readonly List<AdminPromotion> _promotions = [];
+    private int _nextId = 1;
+    private bool _loaded;
 
     public event Action? OnChange;
 
-    public AdminPromotionService()
+    public AdminPromotionService(IAppDatabase db)
     {
-        _promotions =
-        [
-            new()
-            {
-                Id = "PROMO-001",
-                Name = "Welcome Discount",
-                Code = "BULLDOG10",
-                DiscountType = "percentage",
-                DiscountValue = 10,
-                MinimumOrder = 500,
-                UsedCount = 142,
-                UsageLimit = 500,
-                StartDate = new DateTime(2026, 1, 1),
-                EndDate = new DateTime(2026, 12, 31),
-                Enabled = true,
-                Description = "10% off for Bulldogs welcome orders."
-            },
-            new()
-            {
-                Id = "PROMO-002",
-                Name = "Summer Sale",
-                Code = "SUMMER50",
-                DiscountType = "fixed",
-                DiscountValue = 50,
-                MinimumOrder = 300,
-                UsedCount = 198,
-                UsageLimit = 200,
-                StartDate = new DateTime(2026, 6, 1),
-                EndDate = new DateTime(2026, 8, 31),
-                Enabled = true,
-                Description = "₱50 off summer campus essentials."
-            },
-            new()
-            {
-                Id = "PROMO-003",
-                Name = "Founding Day Special",
-                Code = "NUFD2026",
-                DiscountType = "percentage",
-                DiscountValue = 15,
-                MinimumOrder = 1000,
-                UsedCount = 100,
-                UsageLimit = 100,
-                StartDate = new DateTime(2026, 7, 15),
-                EndDate = new DateTime(2026, 7, 20),
-                Enabled = true,
-                Description = "Founding Day celebration promo."
-            },
-            new()
-            {
-                Id = "PROMO-004",
-                Name = "Back to School",
-                Code = "BTS2026",
-                DiscountType = "percentage",
-                DiscountValue = 20,
-                MinimumOrder = 800,
-                UsedCount = 0,
-                UsageLimit = 300,
-                StartDate = new DateTime(2026, 9, 1),
-                EndDate = new DateTime(2026, 9, 30),
-                Enabled = false,
-                Description = "Back to school savings for merch."
-            }
-        ];
+        _db = db;
+    }
+
+    public async Task EnsureLoadedAsync()
+    {
+        if (_loaded) return;
+        await ReloadAsync();
+    }
+
+    public async Task ReloadAsync()
+    {
+        _promotions.Clear();
+        _promotions.AddRange(await _db.GetPromotionsAsync());
+        _nextId = _promotions
+            .Select(p => int.TryParse(p.Id.Replace("PROMO-", "", StringComparison.OrdinalIgnoreCase), out var n) ? n : 0)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+        _loaded = true;
+        OnChange?.Invoke();
     }
 
     public IReadOnlyList<AdminPromotion> All => _promotions;
@@ -92,31 +50,31 @@ public class AdminPromotionService
     public AdminPromotion? GetByCode(string code) =>
         _promotions.FirstOrDefault(p => p.Code.Equals(code.Trim(), StringComparison.OrdinalIgnoreCase));
 
-    public (bool Success, string Message, AdminPromotion? Promo, decimal Discount) ValidateForCart(
+    public async Task<(bool Success, string Message, AdminPromotion? Promo, decimal Discount)> ValidateForCartAsync(
         string? code,
-        decimal cartSubtotal)
+        IEnumerable<PromoCartItem> items,
+        string? userEmail = null,
+        int? userId = null)
     {
-        if (string.IsNullOrWhiteSpace(code))
-            return (false, "Invalid promo code.", null, 0);
+        var result = await _db.ValidatePromotionAsync(new PromoValidationRequest
+        {
+            Code = code ?? "",
+            UserEmail = userEmail,
+            UserId = userId,
+            Items = items.ToList()
+        });
 
-        var promo = GetByCode(code);
-        if (promo is null)
-            return (false, "Invalid promo code.", null, 0);
+        if (!result.Valid)
+            return (false, result.Message, null, 0);
 
-        if (!promo.Enabled || promo.Status == "Inactive")
-            return (false, "Promo code is inactive.", promo, 0);
+        var promo = GetByCode(result.Code ?? code ?? "") ?? new AdminPromotion
+        {
+            Id = result.PromotionId ?? "",
+            Code = result.Code ?? code?.Trim().ToUpperInvariant() ?? "",
+            Name = result.PromotionName ?? ""
+        };
 
-        if (promo.Status == "Expired")
-            return (false, "Promo code has expired.", promo, 0);
-
-        if (promo.UsedCount >= promo.UsageLimit)
-            return (false, "Promo usage limit reached.", promo, 0);
-
-        if (cartSubtotal < promo.MinimumOrder)
-            return (false, "Minimum order requirement not met.", promo, 0);
-
-        var discount = promo.CalculateDiscount(cartSubtotal);
-        return (true, "Promo applied successfully.", promo, discount);
+        return (true, result.Message, promo, result.DiscountAmount);
     }
 
     public (bool Success, string Message) Create(AdminPromotion input)
@@ -128,7 +86,9 @@ public class AdminPromotionService
         input.Id = $"PROMO-{_nextId++:D3}";
         input.Code = input.Code.Trim().ToUpperInvariant();
         input.Name = input.Name.Trim();
-        input.UsedCount = Math.Max(0, input.UsedCount);
+        input.UsedCount = 0;
+        input.UsagePerCustomer = input.UsagePerCustomer <= 0 ? 1 : input.UsagePerCustomer;
+        _db.UpsertPromotionAsync(input).GetAwaiter().GetResult();
         _promotions.Insert(0, input);
         OnChange?.Invoke();
         return (true, "Promotion created successfully.");
@@ -149,12 +109,17 @@ public class AdminPromotionService
         existing.DiscountType = input.DiscountType;
         existing.DiscountValue = input.DiscountValue;
         existing.MinimumOrder = input.MinimumOrder;
+        existing.MaximumDiscount = input.MaximumDiscount;
         existing.UsageLimit = input.UsageLimit;
+        existing.UsagePerCustomer = input.UsagePerCustomer <= 0 ? 1 : input.UsagePerCustomer;
         existing.StartDate = input.StartDate.Date;
         existing.EndDate = input.EndDate.Date;
         existing.Enabled = input.Enabled;
         existing.Description = input.Description?.Trim() ?? string.Empty;
+        existing.ProductIds = [.. input.ProductIds];
+        existing.CategoryIds = [.. input.CategoryIds];
 
+        _db.UpsertPromotionAsync(existing).GetAwaiter().GetResult();
         OnChange?.Invoke();
         return (true, "Promotion updated successfully.");
     }
@@ -165,20 +130,17 @@ public class AdminPromotionService
         if (existing is null)
             return (false, "Promotion not found.");
 
+        _db.DeletePromotionAsync(id).GetAwaiter().GetResult();
+        if (existing.UsedCount > 0)
+        {
+            existing.Enabled = false;
+            OnChange?.Invoke();
+            return (true, "Promotion was deactivated because it already has usage history.");
+        }
+
         _promotions.Remove(existing);
         OnChange?.Invoke();
         return (true, "Promotion deleted successfully.");
-    }
-
-    public bool IncrementUsage(string code)
-    {
-        var promo = GetByCode(code);
-        if (promo is null || promo.UsedCount >= promo.UsageLimit)
-            return false;
-
-        promo.UsedCount++;
-        OnChange?.Invoke();
-        return true;
     }
 
     private string? ValidateInput(AdminPromotion input, string? excludeId)
@@ -202,8 +164,12 @@ public class AdminPromotionService
             return "Percentage discount cannot exceed 100.";
         if (input.MinimumOrder < 0)
             return "Minimum order cannot be negative.";
+        if (input.MaximumDiscount is < 0)
+            return "Maximum discount cannot be negative.";
         if (input.UsageLimit <= 0)
             return "Usage limit must be greater than 0.";
+        if (input.UsagePerCustomer < 0)
+            return "Usage per customer cannot be negative.";
         if (input.EndDate.Date < input.StartDate.Date)
             return "End date must be on or after the start date.";
 

@@ -1,6 +1,4 @@
-﻿using Microsoft.Extensions.DependencyInjection;
-
-namespace NUBulldogsExchange.Mobile
+﻿namespace NUBulldogsExchange.Mobile
 {
     public partial class App : Application
     {

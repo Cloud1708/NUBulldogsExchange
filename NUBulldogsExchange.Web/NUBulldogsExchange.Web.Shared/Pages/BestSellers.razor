@@ -1,14 +1,16 @@
 @page "/best-sellers"
 @using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject ProductCatalogService Catalog
 
 <PageTitle>Best Sellers | NU Bulldogs Exchange</PageTitle>
 
 <ProductListingPage Title="Best Sellers"
                     Breadcrumb="_breadcrumb"
-                    BaseProducts="MockData.BestSellers"
+                    BaseProducts="Catalog.BestSellers"
                     DefaultSort="best-selling"
-                    RadioGroupPrefix="best-sellers" />
+                    RadioGroupPrefix="bestsellers" />
 
 @code {
     private readonly List<BreadcrumbItem> _breadcrumb =

@@ -7,6 +7,7 @@ public class AdminCustomer
     public string Email { get; set; } = string.Empty;
     public string Contact { get; set; } = string.Empty;
     public DateTime DateJoined { get; set; }
+    public DateTime? LastLoginAt { get; set; }
     public string Status { get; set; } = "Active";
     public int TotalOrders { get; set; }
     public decimal TotalSpent { get; set; }
@@ -24,6 +25,10 @@ public class AdminCustomer
         string.IsNullOrWhiteSpace(Name) ? "?" : char.ToUpperInvariant(Name.Trim()[0]).ToString();
 
     public string DateJoinedLabel => DateJoined.ToString("MMM d, yyyy");
+
+    public string LastLoginLabel => LastLoginAt is null
+        ? "—"
+        : LastLoginAt.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
 
     public string TotalSpentLabel => $"₱{TotalSpent:N0}";
 }

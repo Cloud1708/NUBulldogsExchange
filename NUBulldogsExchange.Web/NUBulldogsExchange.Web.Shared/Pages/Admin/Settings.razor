@@ -331,13 +331,19 @@
         _storageLoaded = true;
         try
         {
-            var json = await JS.InvokeAsync<string?>("localStorage.getItem", AdminSettingsService.StorageKey);
-            SettingsService.LoadFromStorageJson(json);
+            var loadedFromDb = await SettingsService.EnsureLoadedAsync();
+            if (!loadedFromDb)
+            {
+                var json = await JS.InvokeAsync<string?>("localStorage.getItem", AdminSettingsService.StorageKey);
+                SettingsService.LoadFromStorageJson(json);
+            }
         }
         catch
         {
             // localStorage may be unavailable.
         }
+
+        await InvokeAsync(StateHasChanged);
     }
 
     private RenderFragment RenderToggle(string label, bool value, Action<bool> set) => __builder =>

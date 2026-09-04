@@ -1,6 +1,9 @@
 @namespace NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
 @inject NavigationManager Navigation
+@inject ProductCatalogService Catalog
+@inject AdminProductService AdminProducts
 @implements IDisposable
 
 <section class="shop-page">
@@ -230,10 +233,12 @@
         }
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         Navigation.LocationChanged += OnLocationChanged;
         _sortOption = DefaultSort;
+        await AdminProducts.EnsureLoadedAsync();
+        await Catalog.EnsureLoadedAsync();
         SyncFromUrl(resetCategoryFromUrl: true);
         ApplyFilters();
         _initialized = true;
@@ -384,8 +389,8 @@
 
     private IEnumerable<Product> GetBaseProducts()
     {
-        var source = BaseProducts ?? MockData.Products;
-        return MockData.Search(source, _searchQuery);
+        var source = BaseProducts ?? Catalog.Products;
+        return Catalog.Search(source, _searchQuery);
     }
 
     private void RebuildResults()

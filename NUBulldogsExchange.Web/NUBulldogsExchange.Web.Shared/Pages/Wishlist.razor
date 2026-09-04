@@ -4,6 +4,8 @@
 @using NUBulldogsExchange.Web.Shared.Services
 @inject WishlistService WishlistService
 @inject AuthService Auth
+@inject ProductCatalogService Catalog
+@inject AdminProductService AdminProducts
 @implements IDisposable
 
 <PageTitle>Wishlist | NU Bulldogs Exchange</PageTitle>
@@ -56,15 +58,17 @@ else
     private string ItemCountLabel =>
         WishlistService.Count == 1 ? "1 item" : $"{WishlistService.Count} items";
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         WishlistService.OnChange += Refresh;
         Auth.OnChange += Refresh;
+        await AdminProducts.EnsureLoadedAsync();
+        await Catalog.EnsureLoadedAsync();
         Load();
     }
 
     private void Load() =>
-        _products = MockData.Products.Where(p => WishlistService.Contains(p.Id)).ToList();
+        _products = Catalog.Products.Where(p => WishlistService.Contains(p.Id)).ToList();
 
     private void Refresh()
     {

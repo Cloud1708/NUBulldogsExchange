@@ -58,7 +58,7 @@
                     <Icon Name="users" Size="36" />
                 </div>
                 <h2>No customers found.</h2>
-                <p>Try another search term.</p>
+                <p>@(string.IsNullOrWhiteSpace(_search) ? "Registered customers will appear here automatically." : "Try another search term.")</p>
                 <button type="button" class="btn btn-navy" @onclick="ClearSearch">Clear Search</button>
             </div>
         }
@@ -73,6 +73,7 @@
                             <th>Email</th>
                             <th>Contact</th>
                             <th>Date Joined</th>
+                            <th>Last Login</th>
                             <th>Total Orders</th>
                             <th>Total Spent</th>
                             <th>Status</th>
@@ -93,6 +94,7 @@
                                 <td><span class="admin-customer-email" title="@customer.Email">@customer.Email</span></td>
                                 <td>@customer.Contact</td>
                                 <td>@customer.DateJoinedLabel</td>
+                                <td>@customer.LastLoginLabel</td>
                                 <td><strong>@customer.TotalOrders</strong></td>
                                 <td><strong>@customer.TotalSpentLabel</strong></td>
                                 <td>
@@ -120,6 +122,8 @@
     private List<AdminCustomer> Filtered => CustomerService.Search(_search).ToList();
 
     protected override void OnInitialized() => CustomerService.OnChange += Refresh;
+
+    protected override async Task OnInitializedAsync() => await CustomerService.EnsureLoadedAsync();
 
     private void OnSearchInput(ChangeEventArgs e) => _search = e.Value?.ToString() ?? string.Empty;
 

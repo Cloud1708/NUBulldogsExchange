@@ -42,35 +42,34 @@ public class AdminProductService
         ["School Supplies"] = "NUBE-SS"
     };
 
-    private readonly List<AdminProduct> _products;
+    private readonly IAppDatabase _db;
+    private readonly ProductCatalogService _catalog;
+    private readonly List<AdminProduct> _products = [];
     private readonly Dictionary<int, Product> _hiddenStorefront = new();
-    private int _nextId;
+    private int _nextId = 1;
+    private bool _loaded;
 
     public event Action? OnChange;
 
-    public AdminProductService()
+    public AdminProductService(IAppDatabase db, ProductCatalogService catalog)
     {
-        _products = MockData.Products
-            .Take(10)
-            .Select(AdminProduct.FromProduct)
-            .Select(NormalizeForAdminCatalog)
-            .ToList();
-
-        // Match screenshot: Varsity Jacket as low stock example.
-        var jacket = _products.FirstOrDefault(p => p.Category == "Jackets");
-        if (jacket is not null && jacket.Stock > AdminProduct.LowStockThreshold)
-            jacket.Stock = 18;
-
-        var penish = _products.FirstOrDefault(p => p.Stock == 0);
-        if (penish is not null)
-            penish.Status = "Active";
-
-        var maxAdmin = _products.Count == 0 ? 0 : _products.Max(p => p.Id);
-        var maxStore = MockData.Products.Count == 0 ? 0 : MockData.Products.Max(p => p.Id);
-        _nextId = Math.Max(maxAdmin, maxStore) + 1;
+        _db = db;
+        _catalog = catalog;
     }
 
     public IReadOnlyList<AdminProduct> All => _products;
+
+    public async Task EnsureLoadedAsync()
+    {
+        if (_loaded) return;
+        var products = await _db.GetProductsAsync();
+        _products.Clear();
+        _products.AddRange(products.Select(AdminProduct.FromProduct));
+        _nextId = _products.Count == 0 ? 1 : _products.Max(p => p.Id) + 1;
+        await _catalog.ReloadAsync();
+        _loaded = true;
+        OnChange?.Invoke();
+    }
 
     public AdminProduct? GetById(int id) =>
         _products.FirstOrDefault(p => p.Id == id);
@@ -79,13 +78,7 @@ public class AdminProductService
     {
         if (string.IsNullOrWhiteSpace(sku)) return false;
         var normalized = sku.Trim();
-
-        if (_products.Any(p =>
-                (excludeId is null || p.Id != excludeId) &&
-                p.Sku.Equals(normalized, StringComparison.OrdinalIgnoreCase)))
-            return true;
-
-        return MockData.Products.Any(p =>
+        return _products.Any(p =>
             (excludeId is null || p.Id != excludeId) &&
             p.Sku.Equals(normalized, StringComparison.OrdinalIgnoreCase));
     }
@@ -97,7 +90,6 @@ public class AdminProductService
             : "NUBE-XX";
 
         var used = _products.Select(p => p.Sku)
-            .Concat(MockData.Products.Select(p => p.Sku))
             .Where(s => s.StartsWith(prefix + "-", StringComparison.OrdinalIgnoreCase))
             .Select(s =>
             {
@@ -148,7 +140,7 @@ public class AdminProductService
 
     public AdminProduct Add(AdminProduct product)
     {
-        product.Id = _nextId++;
+        product.Id = 0;
         product.Name = product.Name.Trim();
         product.Sku = product.Sku.Trim().ToUpperInvariant();
         product.Category = product.Category.Trim();
@@ -167,8 +159,10 @@ public class AdminProductService
         if (product.Images.Count > 0)
             product.ImageUrl = product.Images[0];
         else if (string.IsNullOrWhiteSpace(product.ImageUrl))
-            product.ImageUrl = MockData.PlaceholderImage;
+            product.ImageUrl = CatalogHelpers.PlaceholderImage;
 
+        var stored = Persist(product);
+        product.Id = stored.Id;
         _products.Add(product);
         SyncStorefront(product);
         OnChange?.Invoke();
@@ -195,11 +189,12 @@ public class AdminProductService
         existing.ImageUrl = existing.Images.Count > 0
             ? existing.Images[0]
             : string.IsNullOrWhiteSpace(product.ImageUrl)
-                ? MockData.PlaceholderImage
+                ? CatalogHelpers.PlaceholderImage
                 : product.ImageUrl.Trim();
         existing.Description = product.Description?.Trim() ?? string.Empty;
         existing.Colors = [.. product.Colors];
         existing.Sizes = [.. product.Sizes];
+        Persist(existing);
         SyncStorefront(existing);
         OnChange?.Invoke();
         return true;
@@ -211,15 +206,12 @@ public class AdminProductService
         if (source is null) return null;
 
         var copy = source.Clone();
-        copy.Id = _nextId++;
+        copy.Id = 0;
         copy.Name = $"{source.Name} Copy";
         copy.Sku = $"{source.Sku}-COPY";
         copy.Sold = 0;
         copy.CreatedAt = DateTime.Now;
-        _products.Add(copy);
-        SyncStorefront(copy);
-        OnChange?.Invoke();
-        return copy;
+        return Add(copy);
     }
 
     public bool SetStatus(int id, string status)
@@ -227,6 +219,7 @@ public class AdminProductService
         var product = GetById(id);
         if (product is null) return false;
         product.Status = status;
+        Persist(product);
         SyncStorefront(product);
         OnChange?.Invoke();
         return true;
@@ -237,6 +230,7 @@ public class AdminProductService
         var removed = _products.RemoveAll(p => p.Id == id) > 0;
         if (removed)
         {
+            _db.DeleteProductAsync(id).GetAwaiter().GetResult();
             RemoveFromStorefront(id);
             OnChange?.Invoke();
         }
@@ -252,7 +246,10 @@ public class AdminProductService
         if (removed > 0)
         {
             foreach (var id in removedIds)
+            {
+                _db.DeleteProductAsync(id).GetAwaiter().GetResult();
                 RemoveFromStorefront(id);
+            }
             OnChange?.Invoke();
         }
 
@@ -266,6 +263,7 @@ public class AdminProductService
         foreach (var product in _products.Where(p => set.Contains(p.Id)))
         {
             product.Status = status;
+            Persist(product);
             SyncStorefront(product);
             changed = true;
         }
@@ -278,13 +276,14 @@ public class AdminProductService
         var product = GetById(id);
         if (product is null) return false;
         product.Stock = Math.Max(0, stock);
+        Persist(product);
 
-        // Keep storefront mock catalog in sync for the demo.
-        var storeProduct = MockData.GetById(id);
+        var storeProduct = _catalog.GetById(id);
         if (storeProduct is not null)
         {
             storeProduct.Stock = product.Stock;
             storeProduct.InStock = product.Stock > 0 && product.IsActive;
+            _catalog.Upsert(storeProduct);
         }
 
         OnChange?.Invoke();
@@ -293,35 +292,47 @@ public class AdminProductService
 
     public void NotifyChanged() => OnChange?.Invoke();
 
+    private Product Persist(AdminProduct product)
+    {
+        var store = ToStoreProduct(product);
+        if (!product.IsActive)
+            store.InStock = false;
+
+        var saved = _db.UpsertProductAsync(store).GetAwaiter().GetResult();
+        product.Id = saved.Id;
+        return saved;
+    }
+
     private void SyncStorefront(AdminProduct product)
     {
-        // Only Active products appear on the customer storefront.
         if (!product.IsActive)
         {
             HideFromStorefront(product.Id);
             return;
         }
 
-        var existing = MockData.GetById(product.Id);
+        var existing = _catalog.GetById(product.Id);
         if (existing is null && _hiddenStorefront.TryGetValue(product.Id, out var restored))
         {
             existing = restored;
-            MockData.Products.Add(restored);
+            _catalog.Upsert(restored);
             _hiddenStorefront.Remove(product.Id);
         }
 
         if (existing is null)
         {
-            MockData.Products.Add(ToStoreProduct(product));
+            _catalog.Upsert(ToStoreProduct(product));
             return;
         }
 
         ApplyAdminFields(existing, product);
+        _catalog.Upsert(existing);
+        _ = _db.UpsertProductAsync(existing);
     }
 
     private void HideFromStorefront(int id)
     {
-        var existing = MockData.GetById(id);
+        var existing = _catalog.GetById(id);
         if (existing is null)
         {
             _hiddenStorefront.Remove(id);
@@ -329,7 +340,7 @@ public class AdminProductService
         }
 
         _hiddenStorefront[id] = existing;
-        MockData.Products.RemoveAll(p => p.Id == id);
+        _catalog.Remove(id);
     }
 
     private void RemoveFromStorefront(int id)
@@ -347,6 +358,11 @@ public class AdminProductService
         target.Stock = product.Stock;
         target.Sold = product.Sold;
         target.InStock = product.Stock > 0;
+        target.Status = product.Status;
+        target.IsPublished = product.IsActive;
+        if (product.IsActive)
+            target.PublishedAt ??= DateTime.UtcNow;
+        target.UpdatedAt = DateTime.UtcNow;
         target.Description = string.IsNullOrWhiteSpace(product.Description)
             ? target.Description
             : product.Description;
@@ -369,14 +385,18 @@ public class AdminProductService
         Price = product.Price,
         Stock = product.Stock,
         Sold = product.Sold,
-        InStock = product.Stock > 0,
+        InStock = product.Stock > 0 && product.IsActive,
+        Status = product.Status,
+        IsPublished = product.IsActive,
+        PublishedAt = product.IsActive ? DateTime.UtcNow : null,
+        UpdatedAt = DateTime.UtcNow,
         Description = product.Description,
         FullDescription = product.Description,
         ImageUrl = product.ImageUrl,
         Images = product.Images.Count > 0 ? [.. product.Images] : [product.ImageUrl],
         Colors = product.Colors.Count > 0 ? [.. product.Colors] : ["navy"],
         Sizes = product.Sizes.Count > 0 ? [.. product.Sizes] : ["One Size"],
-        Rating = 5,
+        Rating = 0,
         Reviews = 0,
         Section = ResolveSection(product.Category),
         IsNewArrival = true
@@ -384,16 +404,7 @@ public class AdminProductService
 
     private static string ResolveSection(string category) => category switch
     {
-        "Accessories" or "Caps" or "Bags" or "Tumblers" => "accessories",
-        "School Supplies" => "essentials",
+        "Accessories" or "Caps" or "Bags" or "Tumblers" or "School Supplies" => "accessories",
         _ => "apparel"
     };
-
-    private static AdminProduct NormalizeForAdminCatalog(AdminProduct product)
-    {
-        // Keep catalog Active by default for admin demo; stock badges remain separate.
-        if (string.IsNullOrWhiteSpace(product.Status))
-            product.Status = "Active";
-        return product;
-    }
 }

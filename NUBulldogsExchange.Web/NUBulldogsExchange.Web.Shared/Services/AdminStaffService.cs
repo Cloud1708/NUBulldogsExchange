@@ -22,70 +22,29 @@ public class AdminStaffService
     private static readonly Regex EmailRegex =
         new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
-    private readonly List<AdminStaffMember> _staff;
-    private int _nextId = 5;
+    private readonly IAppDatabase _db;
+    private readonly List<AdminStaffMember> _staff = [];
+    private int _nextId = 1;
+    private bool _loaded;
 
     public event Action? OnChange;
 
-    public AdminStaffService()
+    public AdminStaffService(IAppDatabase db)
     {
-        _staff =
-        [
-            new()
-            {
-                Id = "S-001",
-                FirstName = "Admin",
-                LastName = "User",
-                Email = "admin@nu.edu",
-                Role = "Admin",
-                Status = "Active",
-                LastLogin = new DateTime(2026, 8, 12, 9, 14, 0),
-                IsPrimaryAdmin = true,
-                Permissions = AdminStaffPermissions.FullAccess()
-            },
-            new()
-            {
-                Id = "S-002",
-                FirstName = "Maria",
-                LastName = "Reyes",
-                Email = "maria.reyes@nu.edu",
-                Role = "Staff",
-                Status = "Active",
-                LastLogin = new DateTime(2026, 8, 11, 15, 22, 0),
-                Permissions = AdminStaffPermissions.DefaultStaff()
-            },
-            new()
-            {
-                Id = "S-003",
-                FirstName = "Juan",
-                LastName = "Santos",
-                Email = "juan.santos@nu.edu",
-                Role = "Staff",
-                Status = "Active",
-                LastLogin = new DateTime(2026, 8, 10, 11, 5, 0),
-                Permissions = new AdminStaffPermissions
-                {
-                    ManageProducts = true,
-                    ManageCategories = false,
-                    ManageOrders = true,
-                    ManageInventory = true,
-                    ViewCustomers = false,
-                    ManagePromotions = false,
-                    ViewReports = false
-                }
-            },
-            new()
-            {
-                Id = "S-004",
-                FirstName = "Ana",
-                LastName = "Lim",
-                Email = "ana.lim@nu.edu",
-                Role = "Staff",
-                Status = "Inactive",
-                LastLogin = new DateTime(2026, 7, 28, 14, 0, 0),
-                Permissions = AdminStaffPermissions.DefaultStaff()
-            }
-        ];
+        _db = db;
+    }
+
+    public async Task EnsureLoadedAsync()
+    {
+        if (_loaded) return;
+        _staff.Clear();
+        _staff.AddRange(await _db.GetStaffAsync());
+        _nextId = _staff
+            .Select(s => int.TryParse(s.Id.Replace("S-", "", StringComparison.OrdinalIgnoreCase), out var n) ? n : 0)
+            .DefaultIfEmpty(0)
+            .Max() + 1;
+        _loaded = true;
+        OnChange?.Invoke();
     }
 
     public IReadOnlyList<AdminStaffMember> All => _staff;
@@ -135,7 +94,7 @@ public class AdminStaffService
             status = "Active";
 
         var isAdmin = role.Equals("Admin", StringComparison.OrdinalIgnoreCase);
-        _staff.Add(new AdminStaffMember
+        var member = new AdminStaffMember
         {
             Id = $"S-{_nextId++:D3}",
             FirstName = firstName,
@@ -147,8 +106,10 @@ public class AdminStaffService
             Permissions = isAdmin
                 ? AdminStaffPermissions.FullAccess()
                 : (permissions ?? AdminStaffPermissions.DefaultStaff()).Clone()
-        });
+        };
 
+        _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
+        _staff.Add(member);
         OnChange?.Invoke();
         return (true, "Staff member added successfully.");
     }
@@ -184,7 +145,6 @@ public class AdminStaffService
         {
             member.FirstName = firstName;
             member.LastName = lastName;
-            // Preserve primary admin email, role, and active status.
             member.Role = "Admin";
             member.Status = "Active";
             member.Permissions = AdminStaffPermissions.FullAccess();
@@ -205,6 +165,7 @@ public class AdminStaffService
                 member.Permissions = AdminStaffPermissions.FullAccess();
         }
 
+        _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
         OnChange?.Invoke();
         return (true, "Staff information updated successfully.");
     }
@@ -218,11 +179,13 @@ public class AdminStaffService
         if (member.IsPrimaryAdmin || member.IsAdmin)
         {
             member.Permissions = AdminStaffPermissions.FullAccess();
+            _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
             OnChange?.Invoke();
             return (true, "Admin accounts always have full access.");
         }
 
         member.Permissions = permissions.Clone();
+        _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
         OnChange?.Invoke();
         return (true, "Permissions updated successfully.");
     }
@@ -240,6 +203,7 @@ public class AdminStaffService
             member.Email.Equals(currentUserEmail.Trim(), StringComparison.OrdinalIgnoreCase))
             return (false, "You cannot delete your own account.");
 
+        _db.DeleteStaffAsync(id).GetAwaiter().GetResult();
         _staff.Remove(member);
         OnChange?.Invoke();
         return (true, "Staff member removed successfully.");

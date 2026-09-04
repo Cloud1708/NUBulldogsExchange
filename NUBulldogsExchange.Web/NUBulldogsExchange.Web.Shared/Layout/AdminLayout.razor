@@ -4,6 +4,14 @@
 @inject AuthService Auth
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject AdminProductService Products
+@inject AdminCategoryService Categories
+@inject AdminOrderService Orders
+@inject AdminCustomerService Customers
+@inject AdminStaffService Staff
+@inject AdminPromotionService Promotions
+@inject AdminInventoryService Inventory
+@inject AdminNotificationService AdminNotifications
 @implements IDisposable
 
 <AuthSessionRestorer />
@@ -45,6 +53,22 @@ else if (_ready)
         if (!firstRender) return;
 
         await Auth.RestoreAsync(JS);
+        try
+        {
+            await Products.EnsureLoadedAsync();
+            await Categories.EnsureLoadedAsync();
+            await Orders.EnsureLoadedAsync();
+            await Customers.EnsureLoadedAsync();
+            await Staff.EnsureLoadedAsync();
+            await Promotions.EnsureLoadedAsync();
+            await Inventory.EnsureLoadedAsync();
+            await AdminNotifications.EnsureLoadedAsync();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+
         _ready = true;
         EnforceAccess();
         StateHasChanged();

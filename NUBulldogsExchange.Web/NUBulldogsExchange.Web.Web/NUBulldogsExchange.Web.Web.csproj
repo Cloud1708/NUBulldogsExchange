@@ -7,6 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="9.0.0" />
+    <!-- Override transitive 2.1.10 (NU1903) with the project's known-safe native provider. -->
+    <PackageReference Include="SQLitePCLRaw.lib.e_sqlite3" Version="3.53.3" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\NUBulldogsExchange.Web.Shared\NUBulldogsExchange.Web.Shared.csproj" />
   </ItemGroup>
 

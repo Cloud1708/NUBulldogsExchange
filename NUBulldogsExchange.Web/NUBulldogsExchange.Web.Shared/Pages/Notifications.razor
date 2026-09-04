@@ -60,17 +60,26 @@ else
 }
 
 @code {
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
-        Auth.OnChange += Refresh;
+        Auth.OnChange += OnAuthChanged;
         NotificationService.OnChange += Refresh;
+        if (Auth.IsLoggedIn)
+            await NotificationService.EnsureLoadedAsync(Auth.Email);
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
+    private void OnAuthChanged() => InvokeAsync(async () =>
+    {
+        if (Auth.IsLoggedIn)
+            await NotificationService.EnsureLoadedAsync(Auth.Email);
+        StateHasChanged();
+    });
+
     public void Dispose()
     {
-        Auth.OnChange -= Refresh;
+        Auth.OnChange -= OnAuthChanged;
         NotificationService.OnChange -= Refresh;
     }
 }

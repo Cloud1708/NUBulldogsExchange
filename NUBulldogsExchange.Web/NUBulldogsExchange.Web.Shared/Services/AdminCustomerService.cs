@@ -4,50 +4,55 @@ namespace NUBulldogsExchange.Web.Shared.Services;
 
 public class AdminCustomerService
 {
-    private readonly List<AdminCustomer> _customers;
+    private readonly IAppDatabase _db;
     private readonly AdminOrderService _orders;
+    private readonly List<AdminCustomer> _customers = [];
+    private decimal _completedRevenue;
+
+    private bool _loading;
 
     public event Action? OnChange;
 
-    public AdminCustomerService(AdminOrderService orders)
+    public AdminCustomerService(IAppDatabase db, AdminOrderService orders)
     {
+        _db = db;
         _orders = orders;
-        _customers =
-        [
-            Customer("C-001", "Maria Santos", "maria.santos@example.com",
-                "+63 912 345 6789", new DateTime(2026, 1, 15), "Active", 8, 6840),
-            Customer("C-002", "Juan dela Cruz", "juan.delacruz@example.com",
-                "+63 917 234 5678", new DateTime(2026, 2, 3), "Active", 5, 3540),
-            Customer("C-003", "Ana Reyes", "ana.reyes@example.com",
-                "+63 918 345 6789", new DateTime(2026, 3, 22), "Active", 3, 1848),
-            Customer("C-004", "Carlo Mendoza", "carlo.mendoza@example.com",
-                "+63 919 456 7890", new DateTime(2026, 4, 10), "Active", 12, 9240),
-            Customer("C-005", "Sofia Lim", "sofia.lim@example.com",
-                "+63 920 567 8901", new DateTime(2026, 5, 5), "Active", 2, 828),
-            Customer("C-006", "Mark Torres", "mark.torres@example.com",
-                "+63 921 678 9012", new DateTime(2026, 6, 18), "Inactive", 1, 299)
-        ];
-
-        // Link existing admin orders to customer IDs by email.
-        foreach (var order in _orders.All)
-        {
-            var customer = _customers.FirstOrDefault(c =>
-                c.Email.Equals(order.CustomerEmail, StringComparison.OrdinalIgnoreCase));
-            if (customer is not null)
-                order.CustomerId = customer.Id;
-        }
-
         _orders.OnChange += () => OnChange?.Invoke();
+    }
+
+    public async Task EnsureLoadedAsync()
+    {
+        if (_loading) return;
+        _loading = true;
+        try
+        {
+            await _orders.EnsureLoadedAsync();
+            _customers.Clear();
+            _customers.AddRange(await _db.GetCustomersAsync());
+            try
+            {
+                _completedRevenue = await _db.GetCompletedOrderRevenueAsync();
+            }
+            catch
+            {
+                _completedRevenue = _orders.All
+                    .Where(o => o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase))
+                    .Sum(o => o.Total);
+            }
+
+            OnChange?.Invoke();
+        }
+        finally
+        {
+            _loading = false;
+        }
     }
 
     public IReadOnlyList<AdminCustomer> All => _customers;
 
     public int TotalCustomers => _customers.Count;
-
     public int ActiveCustomers => _customers.Count(c => c.IsActive);
-
-    public decimal TotalRevenue => _customers.Sum(c => c.TotalSpent);
-
+    public decimal TotalRevenue => _completedRevenue;
     public string TotalRevenueLabel => $"₱{TotalRevenue:N0}";
 
     public AdminCustomer? GetById(string id) =>
@@ -93,7 +98,7 @@ public class AdminCustomerService
         OrdersForCustomer(customerId).Count(o =>
             o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase));
 
-    public bool SetStatus(string id, string status)
+    public bool SetStatus(string id, string status, int? actorUserId = null)
     {
         var customer = GetById(id);
         if (customer is null) return false;
@@ -103,35 +108,51 @@ public class AdminCustomerService
             !status.Equals("Suspended", StringComparison.OrdinalIgnoreCase))
             return false;
 
-        customer.Status = status switch
+        var normalized = status switch
         {
             var s when s.Equals("Active", StringComparison.OrdinalIgnoreCase) => "Active",
             var s when s.Equals("Suspended", StringComparison.OrdinalIgnoreCase) => "Suspended",
             _ => "Inactive"
         };
 
+        var updated = _db.SetCustomerStatusAsync(id, normalized, actorUserId).GetAwaiter().GetResult();
+        if (!updated)
+            return false;
+
+        customer.Status = normalized;
         OnChange?.Invoke();
         return true;
     }
 
-    private static AdminCustomer Customer(
-        string id,
-        string name,
-        string email,
-        string contact,
-        DateTime joined,
-        string status,
-        int orders,
-        decimal spent) =>
-        new()
+    public AdminCustomer EnsureCustomer(string name, string email, string? contact = null, int userId = 0)
+    {
+        var existing = _customers.FirstOrDefault(c =>
+            c.Email.Equals(email, StringComparison.OrdinalIgnoreCase) ||
+            (userId > 0 && c.Id == userId.ToString()));
+        if (existing is not null)
+            return existing;
+
+        return new AdminCustomer
         {
-            Id = id,
+            Id = userId > 0 ? userId.ToString() : email.Trim().ToLowerInvariant(),
             Name = name,
-            Email = email,
-            Contact = contact,
-            DateJoined = joined,
-            Status = status,
-            TotalOrders = orders,
-            TotalSpent = spent
+            Email = email.Trim(),
+            Contact = contact ?? string.Empty,
+            DateJoined = DateTime.UtcNow,
+            Status = "Active",
+            TotalOrders = 0,
+            TotalSpent = 0
         };
+    }
+
+    public void RecordPurchase(string email, decimal amount)
+    {
+        var customer = _customers.FirstOrDefault(c =>
+            c.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
+        if (customer is null) return;
+        customer.TotalOrders += 1;
+        customer.TotalSpent += amount;
+        _db.UpsertCustomerAsync(customer).GetAwaiter().GetResult();
+        OnChange?.Invoke();
+    }
 }

@@ -154,8 +154,18 @@
                         <input type="number" min="0" step="1" @bind="_minimumOrder" @bind:event="oninput" />
                     </label>
                     <label class="admin-field">
+                        <span>Maximum Discount (optional)</span>
+                        <input type="number" min="0" step="1" @bind="_maximumDiscount" @bind:event="oninput" />
+                    </label>
+                </div>
+                <div class="admin-staff-form-grid">
+                    <label class="admin-field">
                         <span>Usage Limit</span>
                         <input type="number" min="1" step="1" @bind="_usageLimit" @bind:event="oninput" />
+                    </label>
+                    <label class="admin-field">
+                        <span>Usage Per Customer</span>
+                        <input type="number" min="1" step="1" @bind="_usagePerCustomer" @bind:event="oninput" />
                     </label>
                 </div>
                 <div class="admin-staff-form-grid">
@@ -222,13 +232,19 @@
     private string _discountType = "percentage";
     private decimal _discountValue;
     private decimal _minimumOrder;
+    private decimal? _maximumDiscount;
     private int _usageLimit = 100;
+    private int _usagePerCustomer = 1;
     private DateTime _startDate = DateTime.Today;
     private DateTime _endDate = DateTime.Today.AddMonths(1);
     private string _manualStatus = "Active";
     private string _description = string.Empty;
 
-    protected override void OnInitialized() => PromotionService.OnChange += Refresh;
+    protected override async Task OnInitializedAsync()
+    {
+        PromotionService.OnChange += Refresh;
+        await PromotionService.ReloadAsync();
+    }
 
     private void OpenCreate()
     {
@@ -240,7 +256,9 @@
         _discountType = "percentage";
         _discountValue = 10;
         _minimumOrder = 0;
+        _maximumDiscount = null;
         _usageLimit = 100;
+        _usagePerCustomer = 1;
         _startDate = DateTime.Today;
         _endDate = DateTime.Today.AddMonths(1);
         _manualStatus = "Active";
@@ -257,7 +275,9 @@
         _discountType = promo.DiscountType;
         _discountValue = promo.DiscountValue;
         _minimumOrder = promo.MinimumOrder;
+        _maximumDiscount = promo.MaximumDiscount;
         _usageLimit = promo.UsageLimit;
+        _usagePerCustomer = promo.UsagePerCustomer <= 0 ? 1 : promo.UsagePerCustomer;
         _startDate = promo.StartDate;
         _endDate = promo.EndDate;
         _manualStatus = promo.Enabled ? "Active" : "Inactive";
@@ -281,7 +301,9 @@
             DiscountType = _discountType,
             DiscountValue = _discountValue,
             MinimumOrder = _minimumOrder,
+            MaximumDiscount = _maximumDiscount is > 0 ? _maximumDiscount : null,
             UsageLimit = _usageLimit,
+            UsagePerCustomer = _usagePerCustomer <= 0 ? 1 : _usagePerCustomer,
             StartDate = _startDate,
             EndDate = _endDate,
             Enabled = _manualStatus.Equals("Active", StringComparison.OrdinalIgnoreCase),

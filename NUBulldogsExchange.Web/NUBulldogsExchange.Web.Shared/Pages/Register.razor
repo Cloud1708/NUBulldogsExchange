@@ -1,7 +1,11 @@
 @page "/register"
 @layout AuthLayout
-@using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Layout
+@inject AuthService Auth
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
 
 <PageTitle>Create Account | NU Bulldogs Exchange</PageTitle>
 
@@ -30,14 +34,284 @@
     </aside>
 
     <section class="auth-form-panel">
-        <div class="auth-login-card">
-            <h1>Create Account</h1>
-            <p class="auth-subtitle">Registration is a frontend placeholder for now.</p>
-            <p class="auth-placeholder-note">
-                Account creation will be available in a future update. For this demo, sign in with any valid email and a password of 6+ characters.
-            </p>
-            <a href="/login" class="btn btn-navy btn-block auth-primary-btn">Back to Login</a>
-            <a href="/" class="btn btn-outline-navy btn-block">Continue as Guest</a>
+        <div class="auth-login-card auth-register-card">
+            @if (Auth.IsLoggedIn)
+            {
+                <h1>You're signed in</h1>
+                <p class="auth-subtitle">
+                    Signed in as <strong>@Auth.DisplayName</strong>
+                </p>
+                <a href="/" class="btn btn-navy btn-block auth-primary-btn">Continue Shopping</a>
+            }
+            else
+            {
+                <h1>Create Account</h1>
+                <p class="auth-subtitle">Register as a customer to shop official NU merchandise.</p>
+
+                <form class="auth-form" @onsubmit="HandleRegister" @onsubmit:preventDefault="true">
+                    <div class="auth-field-row">
+                        <div class="auth-field">
+                            <label for="reg-first">First Name</label>
+                            <div class="auth-input-wrap @(_firstError is not null ? "has-error" : "")">
+                                <Icon Name="user" Size="18" CssClass="auth-input-icon" />
+                                <input id="reg-first"
+                                       type="text"
+                                       autocomplete="given-name"
+                                       placeholder="Juan"
+                                       value="@_firstName"
+                                       disabled="@_isLoading"
+                                       @oninput="e => OnInput(e, v => _firstName = v, () => _firstError = null)" />
+                            </div>
+                            @if (_firstError is not null)
+                            {
+                                <span class="auth-field-error">@_firstError</span>
+                            }
+                        </div>
+                        <div class="auth-field">
+                            <label for="reg-last">Last Name</label>
+                            <div class="auth-input-wrap @(_lastError is not null ? "has-error" : "")">
+                                <Icon Name="user" Size="18" CssClass="auth-input-icon" />
+                                <input id="reg-last"
+                                       type="text"
+                                       autocomplete="family-name"
+                                       placeholder="Dela Cruz"
+                                       value="@_lastName"
+                                       disabled="@_isLoading"
+                                       @oninput="e => OnInput(e, v => _lastName = v, () => _lastError = null)" />
+                            </div>
+                            @if (_lastError is not null)
+                            {
+                                <span class="auth-field-error">@_lastError</span>
+                            }
+                        </div>
+                    </div>
+
+                    <div class="auth-field">
+                        <label for="reg-email">Email Address</label>
+                        <div class="auth-input-wrap @(_emailError is not null ? "has-error" : "")">
+                            <Icon Name="mail" Size="18" CssClass="auth-input-icon" />
+                            <input id="reg-email"
+                                   type="email"
+                                   autocomplete="email"
+                                   placeholder="you@example.com"
+                                   value="@_email"
+                                   disabled="@_isLoading"
+                                   @oninput="e => OnInput(e, v => _email = v, () => _emailError = null)" />
+                        </div>
+                        @if (_emailError is not null)
+                        {
+                            <span class="auth-field-error">@_emailError</span>
+                        }
+                    </div>
+
+                    <div class="auth-field">
+                        <label for="reg-phone">Phone Number <span class="auth-optional">(optional)</span></label>
+                        <div class="auth-input-wrap @(_phoneError is not null ? "has-error" : "")">
+                            <Icon Name="phone" Size="18" CssClass="auth-input-icon" />
+                            <input id="reg-phone"
+                                   type="tel"
+                                   autocomplete="tel"
+                                   placeholder="09XXXXXXXXX"
+                                   value="@_phone"
+                                   disabled="@_isLoading"
+                                   @oninput="e => OnInput(e, v => _phone = v, () => _phoneError = null)" />
+                        </div>
+                        @if (_phoneError is not null)
+                        {
+                            <span class="auth-field-error">@_phoneError</span>
+                        }
+                    </div>
+
+                    <div class="auth-field">
+                        <label for="reg-password">Password</label>
+                        <div class="auth-input-wrap @(_passwordError is not null ? "has-error" : "")">
+                            <Icon Name="lock" Size="18" CssClass="auth-input-icon" />
+                            <input id="reg-password"
+                                   type="@(_showPassword ? "text" : "password")"
+                                   autocomplete="new-password"
+                                   placeholder="At least @AuthValidation.MinPasswordLength characters"
+                                   value="@_password"
+                                   disabled="@_isLoading"
+                                   @oninput="e => OnInput(e, v => _password = v, () => _passwordError = null)" />
+                            <button type="button"
+                                    class="auth-eye-btn"
+                                    title="@(_showPassword ? "Hide password" : "Show password")"
+                                    aria-label="@(_showPassword ? "Hide password" : "Show password")"
+                                    @onclick="() => _showPassword = !_showPassword">
+                                <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="18" />
+                            </button>
+                        </div>
+                        @if (_passwordError is not null)
+                        {
+                            <span class="auth-field-error">@_passwordError</span>
+                        }
+                    </div>
+
+                    <div class="auth-field">
+                        <label for="reg-confirm">Confirm Password</label>
+                        <div class="auth-input-wrap @(_confirmError is not null ? "has-error" : "")">
+                            <Icon Name="lock" Size="18" CssClass="auth-input-icon" />
+                            <input id="reg-confirm"
+                                   type="@(_showConfirm ? "text" : "password")"
+                                   autocomplete="new-password"
+                                   placeholder="Re-enter your password"
+                                   value="@_confirm"
+                                   disabled="@_isLoading"
+                                   @oninput="e => OnInput(e, v => _confirm = v, () => _confirmError = null)" />
+                            <button type="button"
+                                    class="auth-eye-btn"
+                                    title="@(_showConfirm ? "Hide password" : "Show password")"
+                                    aria-label="@(_showConfirm ? "Hide password" : "Show password")"
+                                    @onclick="() => _showConfirm = !_showConfirm">
+                                <Icon Name="@(_showConfirm ? "eye-off" : "eye")" Size="18" />
+                            </button>
+                        </div>
+                        @if (_confirmError is not null)
+                        {
+                            <span class="auth-field-error">@_confirmError</span>
+                        }
+                    </div>
+
+                    @if (_formError is not null)
+                    {
+                        <p class="auth-form-error">@_formError</p>
+                    }
+
+                    <button type="submit" class="btn btn-navy btn-block auth-primary-btn" disabled="@_isLoading">
+                        @(_isLoading ? "Registering..." : "Create Account")
+                    </button>
+                </form>
+
+                <p class="auth-create">
+                    Already have an account?
+                    <a href="/login">Sign in</a>
+                </p>
+            }
         </div>
     </section>
 </div>
+
+@code {
+    private string _firstName = string.Empty;
+    private string _lastName = string.Empty;
+    private string _email = string.Empty;
+    private string _phone = string.Empty;
+    private string _password = string.Empty;
+    private string _confirm = string.Empty;
+    private bool _showPassword;
+    private bool _showConfirm;
+    private bool _isLoading;
+    private string? _firstError;
+    private string? _lastError;
+    private string? _emailError;
+    private string? _phoneError;
+    private string? _passwordError;
+    private string? _confirmError;
+    private string? _formError;
+
+    protected override void OnInitialized() => Auth.OnChange += Refresh;
+
+    private static void OnInput(ChangeEventArgs e, Action<string> setValue, Action clearError)
+    {
+        setValue(e.Value?.ToString() ?? string.Empty);
+        clearError();
+    }
+
+    private async Task HandleRegister()
+    {
+        if (_isLoading) return;
+
+        _firstError = _lastError = _emailError = _phoneError = _passwordError = _confirmError = _formError = null;
+        var hasError = false;
+
+        if (string.IsNullOrWhiteSpace(_firstName))
+        {
+            _firstError = "First name is required.";
+            hasError = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(_lastName))
+        {
+            _lastError = "Last name is required.";
+            hasError = true;
+        }
+
+        var email = _email.Trim();
+        if (string.IsNullOrWhiteSpace(email))
+        {
+            _emailError = "Email address is required.";
+            hasError = true;
+        }
+        else if (!AuthValidation.IsValidEmail(email))
+        {
+            _emailError = "Please enter a valid email address.";
+            hasError = true;
+        }
+
+        if (!AuthValidation.IsValidPhone(_phone))
+        {
+            _phoneError = "Please enter a valid phone number.";
+            hasError = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(_password))
+        {
+            _passwordError = "Password is required.";
+            hasError = true;
+        }
+        else if (_password.Length < AuthValidation.MinPasswordLength)
+        {
+            _passwordError = $"Password must be at least {AuthValidation.MinPasswordLength} characters.";
+            hasError = true;
+        }
+
+        if (string.IsNullOrWhiteSpace(_confirm))
+        {
+            _confirmError = "Confirm password is required.";
+            hasError = true;
+        }
+        else if (_password != _confirm)
+        {
+            _confirmError = "Password and confirm password must match.";
+            hasError = true;
+        }
+
+        if (hasError) return;
+
+        _isLoading = true;
+        try
+        {
+            var result = await Auth.RegisterAsync(new RegisterRequest
+            {
+                FirstName = _firstName.Trim(),
+                LastName = _lastName.Trim(),
+                Email = email,
+                PhoneNumber = _phone.Trim(),
+                Password = _password,
+                ConfirmPassword = _confirm
+            });
+
+            if (!result.Success)
+            {
+                _formError = result.Error ?? "Unable to create your account. Please try again.";
+                return;
+            }
+
+            await Auth.PersistAsync(JS);
+            Toast.Show("Account created successfully.");
+            Navigation.NavigateTo("/");
+        }
+        catch
+        {
+            _formError = "Unable to create your account right now. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Auth.OnChange -= Refresh;
+}

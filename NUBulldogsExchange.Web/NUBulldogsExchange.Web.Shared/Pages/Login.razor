@@ -1,13 +1,13 @@
 @page "/login"
 @layout AuthLayout
-@using System.Text.RegularExpressions
-@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AuthService Auth
 @inject ToastService Toast
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject IAppDatabase Db
 @implements IDisposable
 
 <PageTitle>Login | NU Bulldogs Exchange</PageTitle>
@@ -42,15 +42,15 @@
 
                 <div class="auth-stat-grid">
                     <div class="auth-stat-card">
-                        <strong>48+</strong>
+                        <strong>@_stats.PublishedProducts</strong>
                         <span>Products</span>
                     </div>
                     <div class="auth-stat-card">
-                        <strong>3,800+</strong>
+                        <strong>@_stats.ActiveCustomers.ToString("N0")</strong>
                         <span>Happy Shoppers</span>
                     </div>
                     <div class="auth-stat-card">
-                        <strong>342</strong>
+                        <strong>@_stats.TotalOrders</strong>
                         <span>Orders Completed</span>
                     </div>
                     <div class="auth-stat-card">
@@ -168,20 +168,12 @@
                     Don't have an account?
                     <a href="/register">Create Account</a>
                 </p>
-
-                <div class="auth-demo-box">
-                    Demo: Use any email for customer. Use admin&#64;nu.edu for admin access. Any password (6+ chars).
-                </div>
             }
         </div>
     </section>
 </div>
 
 @code {
-    private static readonly Regex EmailRegex = new(
-        @"^[^@\s]+@[^@\s]+\.[^@\s]+$",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase);
-
     private string _email = string.Empty;
     private string _password = string.Empty;
     private bool _rememberMe;
@@ -190,8 +182,21 @@
     private string? _emailError;
     private string? _passwordError;
     private string? _formError;
+    private StorefrontStats _stats = new();
 
     protected override void OnInitialized() => Auth.OnChange += Refresh;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            _stats = await Db.GetStorefrontStatsAsync();
+        }
+        catch
+        {
+            _stats = new StorefrontStats();
+        }
+    }
 
     private void OnEmailInput(ChangeEventArgs e)
     {
@@ -235,7 +240,7 @@
             _emailError = "Email address is required.";
             hasError = true;
         }
-        else if (!EmailRegex.IsMatch(email))
+        else if (!AuthValidation.IsValidEmail(email))
         {
             _emailError = "Please enter a valid email address.";
             hasError = true;
@@ -246,9 +251,9 @@
             _passwordError = "Password is required.";
             hasError = true;
         }
-        else if (password.Length < 6)
+        else if (password.Length < AuthValidation.MinPasswordLength)
         {
-            _passwordError = "Password must be at least 6 characters.";
+            _passwordError = $"Password must be at least {AuthValidation.MinPasswordLength} characters.";
             hasError = true;
         }
 
@@ -257,11 +262,20 @@
         _isLoading = true;
         try
         {
-            await Task.Delay(450);
-            Auth.Login(email, _rememberMe);
+            var result = await Auth.LoginAsync(email, password, _rememberMe);
+            if (!result.Success)
+            {
+                _formError = result.Error ?? "Invalid email or password.";
+                return;
+            }
+
             await Auth.PersistAsync(JS);
-            Toast.Show(Auth.IsAdmin ? "Signed in as admin." : "Welcome back!");
+            Toast.Show(Auth.IsAdmin ? "Signed in as admin." : $"Welcome back, {Auth.FirstName}.");
             Navigation.NavigateTo(Auth.IsAdmin ? "/admin/dashboard" : GetReturnUrl());
+        }
+        catch
+        {
+            _formError = "Unable to sign in right now. Please try again.";
         }
         finally
         {

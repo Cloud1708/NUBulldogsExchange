@@ -97,17 +97,12 @@ public class AdminReportService
 
     public ReportSnapshot GetSnapshot()
     {
-        var scale = SelectedRange switch
-        {
-            "today" => 0.04m,
-            "7days" => 0.22m,
-            "30days" => 1m,
-            "year" => 3.2m,
-            "custom" => EstimateCustomScale(),
-            _ => 1m
-        };
+        var (start, end) = ResolveRange();
+        var orders = _orders.All
+            .Where(o => o.Date.Date >= start && o.Date.Date <= end)
+            .ToList();
 
-        if (SelectedRange == "custom" && scale <= 0)
+        if (orders.Count == 0 && _products.All.Count == 0)
         {
             return new ReportSnapshot
             {
@@ -116,17 +111,37 @@ public class AdminReportService
             };
         }
 
-        var trend = BuildTrend(scale);
-        var distribution = ScaleDistribution(scale);
-        var categories = BuildCategories(scale);
-        var bestSellers = BuildBestSellers(scale);
-        var kpis = BuildKpis(scale, trend, distribution, bestSellers);
+        var activeOrders = orders
+            .Where(o => !o.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
+        var gross = activeOrders.Sum(o => o.Total);
+        var items = activeOrders.Sum(o => o.ItemCount);
+        var aov = activeOrders.Count == 0 ? 0 : Math.Round(gross / activeOrders.Count, 2);
+
+        var colors = ColorMap();
+        var distribution = orders
+            .GroupBy(o => NormalizeStatus(o.Status))
+            .Select(g => new AdminStatusSlice(g.Key, g.Count(), colors.GetValueOrDefault(g.Key, "#94A3B8")))
+            .OrderByDescending(s => s.Count)
+            .ToList();
+
+        var trend = BuildTrend(activeOrders);
+        var categories = BuildCategories(activeOrders);
+        var bestSellers = BuildBestSellers(activeOrders);
 
         return new ReportSnapshot
         {
             RangeKey = SelectedRange,
-            HasData = true,
-            Kpis = kpis,
+            HasData = orders.Count > 0 || _products.All.Count > 0,
+            Kpis =
+            [
+                new ReportKpi { Label = "Gross Sales", Value = $"₱{gross:N0}", Change = "From recorded orders", IsPositive = true },
+                new ReportKpi { Label = "Net Sales", Value = $"₱{gross:N0}", Change = "From recorded orders", IsPositive = true },
+                new ReportKpi { Label = "Total Orders", Value = orders.Count.ToString("N0"), Change = "In selected range", IsPositive = true },
+                new ReportKpi { Label = "Items Sold", Value = items.ToString("N0"), Change = "In selected range", IsPositive = true },
+                new ReportKpi { Label = "Avg. Order Value", Value = $"₱{aov:N2}", Change = "In selected range", IsPositive = true }
+            ],
             SalesTrend = trend,
             OrderDistribution = distribution,
             RevenueByCategory = categories,
@@ -158,174 +173,95 @@ public class AdminReportService
         return string.Join("\n", lines);
     }
 
-    private decimal EstimateCustomScale()
+    private (DateTime Start, DateTime End) ResolveRange()
     {
-        if (CustomStart is null || CustomEnd is null)
-            return 0;
-
-        var days = (CustomEnd.Value - CustomStart.Value).TotalDays + 1;
-        if (days <= 0) return 0;
-        if (days <= 1) return 0.04m;
-        if (days <= 7) return 0.22m;
-        if (days <= 31) return 1m;
-        if (days <= 120) return 1.8m;
-        return 3.2m;
-    }
-
-    private List<ReportKpi> BuildKpis(
-        decimal scale,
-        List<ReportMonthPoint> trend,
-        List<AdminStatusSlice> distribution,
-        List<ReportBestSeller> bestSellers)
-    {
-        var gross = Math.Round(128450m * scale, 0);
-        var net = Math.Round(115205m * scale, 0);
-        var orders = Math.Max(1, (int)Math.Round(387 * (double)scale));
-        var items = Math.Max(1, (int)Math.Round(634 * (double)scale));
-        var aov = orders == 0 ? 0 : Math.Round(net / orders, 2);
-
-        // Prefer live order count when period is close to "current catalog" demo.
-        if (SelectedRange is "30days" or "7days")
+        var today = DateTime.Today;
+        return SelectedRange switch
         {
-            var liveOrders = _orders.All.Count;
-            if (liveOrders > 0 && SelectedRange == "7days")
-                orders = Math.Max(orders, liveOrders);
-        }
-
-        _ = trend;
-        _ = distribution;
-        _ = bestSellers;
-
-        return
-        [
-            new ReportKpi { Label = "Gross Sales", Value = $"₱{gross:N0}", Change = "+12.5% vs last period", IsPositive = true },
-            new ReportKpi { Label = "Net Sales", Value = $"₱{net:N0}", Change = "+11.8% vs last period", IsPositive = true },
-            new ReportKpi { Label = "Total Orders", Value = orders.ToString("N0"), Change = "+8.2% vs last period", IsPositive = true },
-            new ReportKpi { Label = "Items Sold", Value = items.ToString("N0"), Change = "+9.4% vs last period", IsPositive = true },
-            new ReportKpi { Label = "Avg. Order Value", Value = $"₱{aov:N2}", Change = "+3.6% vs last period", IsPositive = true }
-        ];
-    }
-
-    private static List<ReportMonthPoint> BuildTrend(decimal scale)
-    {
-        var baseData = new (string Month, decimal Revenue, int Orders, decimal Aov)[]
-        {
-            ("Jan", 45000, 80, 500),
-            ("Feb", 52000, 95, 500),
-            ("Mar", 62000, 120, 498),
-            ("Apr", 48000, 90, 495),
-            ("May", 75000, 145, 501),
-            ("Jun", 91000, 175, 504),
-            ("Jul", 96000, 185, 503),
-            ("Aug", 128450, 250, 505)
+            "today" => (today, today),
+            "7days" => (today.AddDays(-6), today),
+            "year" => (new DateTime(today.Year, 1, 1), today),
+            "custom" when CustomStart is not null && CustomEnd is not null => (CustomStart.Value, CustomEnd.Value),
+            _ => (today.AddDays(-29), today)
         };
-
-        return baseData.Select(d => new ReportMonthPoint
-        {
-            Month = d.Month,
-            Revenue = Math.Round(d.Revenue * scale, 0),
-            Orders = Math.Max(1, (int)Math.Round(d.Orders * (double)scale)),
-            AvgOrderValue = Math.Round(d.Aov * Math.Min(scale, 1.05m), 0)
-        }).ToList();
     }
 
-    private List<AdminStatusSlice> ScaleDistribution(decimal scale)
+    private static List<ReportMonthPoint> BuildTrend(List<AdminOrder> orders)
     {
-        // Prefer live admin order statuses when available; otherwise use dashboard mock mix.
-        var live = _orders.All
-            .GroupBy(o => NormalizeStatus(o.Status))
-            .Select(g => new { Label = g.Key, Count = g.Count() })
-            .ToList();
-
-        if (SelectedRange is "today" or "7days" && live.Count > 0)
-        {
-            var colors = ColorMap();
-            return live
-                .OrderByDescending(x => x.Count)
-                .Select(x => new AdminStatusSlice(x.Label, x.Count, colors.GetValueOrDefault(x.Label, "#94A3B8")))
-                .ToList();
-        }
-
-        return MockAdminData.OrderStatus
-            .Select(s => new AdminStatusSlice(
-                s.Label,
-                Math.Max(0, (int)Math.Round(s.Count * (double)scale)),
-                s.Color))
+        return Enumerable.Range(0, 8)
+            .Select(i =>
+            {
+                var month = DateTime.Today.AddMonths(i - 7);
+                var monthOrders = orders
+                    .Where(o => o.Date.Year == month.Year && o.Date.Month == month.Month)
+                    .ToList();
+                var revenue = monthOrders.Sum(o => o.Total);
+                var count = monthOrders.Count;
+                return new ReportMonthPoint
+                {
+                    Month = month.ToString("MMM"),
+                    Revenue = revenue,
+                    Orders = count,
+                    AvgOrderValue = count == 0 ? 0 : Math.Round(revenue / count, 0)
+                };
+            })
             .ToList();
     }
 
-    private List<ReportCategoryBar> BuildCategories(decimal scale)
+    private List<ReportCategoryBar> BuildCategories(List<AdminOrder> orders)
     {
-        var groups = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["Apparel"] = 52000,
-            ["Accessories"] = 22000,
-            ["Bags"] = 19000,
-            ["Footwear"] = 14000,
-            ["Supplies"] = 9000
-        };
+        var groups = new Dictionary<string, decimal>(StringComparer.OrdinalIgnoreCase);
 
-        // Blend with live product sold * price where possible.
-        foreach (var product in _products.All)
+        foreach (var order in orders)
         {
-            var bucket = MapCategory(product.Category);
-            var contrib = product.Sold * product.Price * 0.05m;
-            if (groups.ContainsKey(bucket))
-                groups[bucket] += contrib;
+            foreach (var item in order.Items)
+            {
+                var product = _products.GetById(item.ProductId);
+                var bucket = MapCategory(product?.Category ?? "Other");
+                groups[bucket] = groups.GetValueOrDefault(bucket) + item.Price * item.Quantity;
+            }
         }
 
         return groups
-            .Select(kv => new ReportCategoryBar
-            {
-                Category = kv.Key,
-                Revenue = Math.Round(kv.Value * scale, 0)
-            })
+            .Select(kv => new ReportCategoryBar { Category = kv.Key, Revenue = Math.Round(kv.Value, 0) })
             .OrderByDescending(c => c.Revenue)
             .ToList();
     }
 
-    private List<ReportBestSeller> BuildBestSellers(decimal scale)
+    private List<ReportBestSeller> BuildBestSellers(List<AdminOrder> orders)
     {
-        var seed = new (int Id, int Units, decimal Revenue)[]
+        var units = new Dictionary<int, (int Units, decimal Revenue)>();
+        foreach (var order in orders)
         {
-            (1, 891, 132759),
-            (2, 543, 162357),
-            (3, 342, 170658),
-            (4, 310, 39990),
-            (5, 215, 75035),
-            (6, 201, 200799),
-            (7, 178, 124422),
-            (8, 132, 32868)
-        };
-
-        var rows = new List<ReportBestSeller>();
-        foreach (var (id, units, revenue) in seed)
-        {
-            var product = _products.GetById(id);
-            var fallback = MockData.GetById(id);
-            if (product is null && fallback is null)
-                continue;
-
-            product ??= AdminProduct.FromProduct(fallback!);
-            rows.Add(new ReportBestSeller
+            foreach (var item in order.Items)
             {
-                ProductId = product.Id,
-                Name = product.Name,
-                Category = product.Category,
-                ImageUrl = product.ImageUrl,
-                UnitsSold = Math.Max(1, (int)Math.Round(units * (double)scale)),
-                Revenue = Math.Round(revenue * scale, 0),
-                StockLeft = product.Stock
-            });
+                var current = units.GetValueOrDefault(item.ProductId);
+                units[item.ProductId] = (current.Units + item.Quantity, current.Revenue + item.Price * item.Quantity);
+            }
         }
 
-        return rows
+        return units
+            .Select(kv =>
+            {
+                var product = _products.GetById(kv.Key);
+                return new ReportBestSeller
+                {
+                    ProductId = kv.Key,
+                    Name = product?.Name ?? $"Product #{kv.Key}",
+                    Category = product?.Category ?? "",
+                    ImageUrl = product?.ImageUrl ?? CatalogHelpers.PlaceholderImage,
+                    UnitsSold = kv.Value.Units,
+                    Revenue = kv.Value.Revenue,
+                    StockLeft = product?.Stock ?? 0
+                };
+            })
             .OrderByDescending(r => r.UnitsSold)
             .Select((r, i) =>
             {
                 r.Rank = i + 1;
                 return r;
             })
+            .Take(10)
             .ToList();
     }
 
@@ -335,7 +271,7 @@ public class AdminReportService
         "Accessories" or "Caps" or "Tumblers" => "Accessories",
         "Bags" => "Bags",
         "School Supplies" => "Supplies",
-        _ => "Footwear"
+        _ => "Other"
     };
 
     private static string NormalizeStatus(string status) => status switch

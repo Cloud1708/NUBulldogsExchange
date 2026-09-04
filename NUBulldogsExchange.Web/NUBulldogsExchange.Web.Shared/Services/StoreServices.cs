@@ -6,11 +6,46 @@ namespace NUBulldogsExchange.Web.Shared.Services;
 
 public class CartService
 {
+    private readonly IAppDatabase _db;
+    private readonly ProductCatalogService _catalog;
     private readonly List<CartItem> _items = [];
     public event Action? OnChange;
 
+    public CartService(IAppDatabase db, ProductCatalogService catalog)
+    {
+        _db = db;
+        _catalog = catalog;
+    }
+
     public IReadOnlyList<CartItem> Items => _items;
     public int TotalCount => _items.Sum(i => i.Quantity);
+    public string? AppliedPromoCode { get; private set; }
+    public decimal AppliedDiscount { get; private set; }
+    public decimal Subtotal => _items.Sum(i => i.Product.Price * i.Quantity);
+    public decimal EstimatedTotal => Math.Max(0, Subtotal - AppliedDiscount);
+
+    public void SetPromo(string? code, decimal discount)
+    {
+        var normalized = string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
+        var amount = Math.Max(0, discount);
+        if (string.Equals(AppliedPromoCode, normalized, StringComparison.Ordinal) &&
+            AppliedDiscount == amount)
+            return;
+
+        AppliedPromoCode = normalized;
+        AppliedDiscount = amount;
+        OnChange?.Invoke();
+    }
+
+    public void ClearPromo()
+    {
+        if (AppliedPromoCode is null && AppliedDiscount == 0)
+            return;
+
+        AppliedPromoCode = null;
+        AppliedDiscount = 0;
+        OnChange?.Invoke();
+    }
 
     public void Add(Product product, int quantity = 1, string? color = null, string? size = null)
     {
@@ -71,10 +106,64 @@ public class CartService
     public void Clear()
     {
         _items.Clear();
+        AppliedPromoCode = null;
+        AppliedDiscount = 0;
         OnChange?.Invoke();
     }
 
-    public decimal Subtotal => _items.Sum(i => i.Product.Price * i.Quantity);
+    public async Task RestoreAsync(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return;
+
+        try
+        {
+            await _catalog.EnsureLoadedAsync();
+            var rows = await _db.GetCartAsync(email);
+            _items.Clear();
+            foreach (var row in rows)
+            {
+                var product = _catalog.GetById(row.ProductId) ?? await _db.GetProductByIdAsync(row.ProductId);
+                if (product is null) continue;
+                _items.Add(new CartItem
+                {
+                    Product = product,
+                    Quantity = Math.Max(1, row.Quantity),
+                    SelectedColor = row.SelectedColor,
+                    SelectedSize = row.SelectedSize
+                });
+            }
+
+            OnChange?.Invoke();
+        }
+        catch
+        {
+            // Ignore restore failures during prerender / offline.
+        }
+    }
+
+    public async Task PersistAsync(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return;
+
+        try
+        {
+            var dtos = _items.Select(i => new CartItemDto
+            {
+                ProductId = i.Product.Id,
+                Quantity = i.Quantity,
+                UnitPrice = i.Product.Price,
+                SelectedColor = i.SelectedColor,
+                SelectedSize = i.SelectedSize
+            });
+            await _db.SaveCartAsync(email, dtos);
+        }
+        catch
+        {
+            // Ignore persist failures during prerender / offline.
+        }
+    }
 
     private static string Normalize(string? value) =>
         string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim().ToLowerInvariant();
@@ -82,9 +171,14 @@ public class CartService
 
 public class WishlistService
 {
-    private const string KeyPrefix = "nube-demo-wishlist:";
+    private readonly IAppDatabase _db;
     private readonly HashSet<int> _ids = [];
     public event Action? OnChange;
+
+    public WishlistService(IAppDatabase db)
+    {
+        _db = db;
+    }
 
     public int Count => _ids.Count;
     public IReadOnlyCollection<int> Ids => _ids;
@@ -106,25 +200,34 @@ public class WishlistService
 
         try
         {
-            var json = await js.InvokeAsync<string?>("localStorage.getItem", StorageKey(email));
+            var ids = await _db.GetWishlistAsync(email);
             _ids.Clear();
-
-            if (!string.IsNullOrWhiteSpace(json))
-            {
-                var ids = JsonSerializer.Deserialize<List<int>>(json) ?? [];
-                foreach (var id in ids)
-                    _ids.Add(id);
-            }
-
+            foreach (var id in ids)
+                _ids.Add(id);
             OnChange?.Invoke();
         }
-        catch (JSException)
+        catch
         {
-            // Browser storage may be unavailable during prerender.
-        }
-        catch (JsonException)
-        {
-            // Ignore invalid demo storage.
+            // Fall back to browser storage if API/DB is unavailable during prerender.
+            try
+            {
+                var json = await js.InvokeAsync<string?>("localStorage.getItem", StorageKey(email));
+                _ids.Clear();
+                if (!string.IsNullOrWhiteSpace(json))
+                {
+                    var localIds = JsonSerializer.Deserialize<List<int>>(json) ?? [];
+                    foreach (var id in localIds)
+                        _ids.Add(id);
+                }
+
+                OnChange?.Invoke();
+            }
+            catch (JSException)
+            {
+            }
+            catch (JsonException)
+            {
+            }
         }
     }
 
@@ -135,17 +238,23 @@ public class WishlistService
 
         try
         {
-            var json = JsonSerializer.Serialize(_ids.ToList());
-            await js.InvokeVoidAsync("localStorage.setItem", StorageKey(email), json);
+            await _db.SaveWishlistAsync(email, _ids);
         }
-        catch (JSException)
+        catch
         {
-            // Browser storage may be unavailable during prerender.
+            try
+            {
+                var json = JsonSerializer.Serialize(_ids.ToList());
+                await js.InvokeVoidAsync("localStorage.setItem", StorageKey(email), json);
+            }
+            catch (JSException)
+            {
+            }
         }
     }
 
     private static string StorageKey(string email) =>
-        KeyPrefix + email.Trim().ToLowerInvariant();
+        "nube-wishlist:" + email.Trim().ToLowerInvariant();
 }
 
 public class ToastService
@@ -157,12 +266,47 @@ public class ToastService
 
 public class OrderService
 {
-    private readonly List<MockOrder> _orders = MockAccountData.CreateOrders();
+    private readonly IAppDatabase _db;
+    private readonly List<MockOrder> _orders = [];
+    private bool _loaded;
+    private bool _loading;
+    private string? _loadedEmail;
     public event Action? OnChange;
+
+    public OrderService(IAppDatabase db)
+    {
+        _db = db;
+    }
 
     public IReadOnlyList<MockOrder> Orders => _orders;
     public int TotalCount => _orders.Count;
     public int ActiveCount => _orders.Count(o => o.IsActive);
+
+    public async Task EnsureLoadedAsync(string? email = null)
+    {
+        var emailKey = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+        if (_loading) return;
+        if (_loaded && string.Equals(_loadedEmail, emailKey, StringComparison.Ordinal))
+            return;
+
+        _loading = true;
+        try
+        {
+            var adminOrders = await _db.GetOrdersAsync();
+            _orders.Clear();
+            var filtered = emailKey is null
+                ? adminOrders
+                : adminOrders.Where(o => o.CustomerEmail.Equals(emailKey, StringComparison.OrdinalIgnoreCase));
+            _orders.AddRange(filtered.Select(MockOrder.FromAdmin));
+            _loadedEmail = emailKey;
+            _loaded = true;
+            OnChange?.Invoke();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
 
     public IEnumerable<MockOrder> Recent(int take = 3) =>
         _orders.OrderByDescending(o => o.Date).ThenByDescending(o => o.Id).Take(take);
@@ -183,17 +327,66 @@ public class OrderService
             return;
 
         order.Status = "Cancelled";
+        var admin = _db.GetOrderByIdAsync(orderId).GetAwaiter().GetResult();
+        if (admin is not null)
+        {
+            admin.Status = "Cancelled";
+            _db.UpsertOrderAsync(admin).GetAwaiter().GetResult();
+        }
+
         OnChange?.Invoke();
+    }
+
+    public MockOrder PlaceOrder(AdminOrder order)
+    {
+        var mock = MockOrder.FromAdmin(order);
+        _orders.RemoveAll(o => o.Id.Equals(mock.Id, StringComparison.OrdinalIgnoreCase));
+        _orders.Insert(0, mock);
+        OnChange?.Invoke();
+        return mock;
     }
 }
 
 public class NotificationService
 {
-    private readonly List<MockNotification> _items = MockAccountData.CreateNotifications();
+    private readonly IAppDatabase _db;
+    private readonly List<MockNotification> _items = [];
+    private string? _email;
+    private string? _loadedEmail;
+    private bool _loaded;
+    private bool _loading;
     public event Action? OnChange;
+
+    public NotificationService(IAppDatabase db)
+    {
+        _db = db;
+    }
 
     public IReadOnlyList<MockNotification> Items => _items;
     public int UnreadCount => _items.Count(n => !n.IsRead);
+
+    public async Task EnsureLoadedAsync(string? email = null)
+    {
+        var emailKey = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant();
+        if (_loading) return;
+        if (_loaded && string.Equals(_loadedEmail, emailKey, StringComparison.Ordinal))
+            return;
+
+        _loading = true;
+        try
+        {
+            _email = email;
+            _items.Clear();
+            _items.AddRange(await _db.GetCustomerNotificationsAsync(email));
+            _loadedEmail = emailKey;
+            _loaded = true;
+            OnChange?.Invoke();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
 
     public void MarkAllAsRead()
     {
@@ -203,14 +396,39 @@ public class NotificationService
         foreach (var item in _items)
             item.IsRead = true;
 
+        _db.SaveCustomerNotificationsAsync(_items, _email).GetAwaiter().GetResult();
+        OnChange?.Invoke();
+    }
+
+    public void Add(MockNotification notification)
+    {
+        if (string.IsNullOrWhiteSpace(notification.Id))
+            notification.Id = Guid.NewGuid().ToString("N");
+        _items.Insert(0, notification);
+        _db.SaveCustomerNotificationsAsync(_items, _email).GetAwaiter().GetResult();
+        OnChange?.Invoke();
+    }
+
+    public async Task AddAsync(MockNotification notification)
+    {
+        if (string.IsNullOrWhiteSpace(notification.Id))
+            notification.Id = Guid.NewGuid().ToString("N");
+        _items.Insert(0, notification);
+        await _db.SaveCustomerNotificationsAsync(_items, _email);
         OnChange?.Invoke();
     }
 }
 
 public class AuthService
 {
-    private const string StorageKey = "nube-demo-user";
+    private const string StorageKey = "nube-user";
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
+    private readonly IAppDatabase _db;
+
+    public AuthService(IAppDatabase db)
+    {
+        _db = db;
+    }
 
     public event Action? OnChange;
 
@@ -220,6 +438,7 @@ public class AuthService
     public string Role => CurrentUser?.Role ?? "guest";
     public bool RememberMe => CurrentUser?.RememberMe ?? false;
     public string DisplayName => CurrentUser?.Name ?? "Guest";
+    public int UserId => CurrentUser?.UserId ?? 0;
     public string FirstName
     {
         get
@@ -238,32 +457,62 @@ public class AuthService
     public bool IsCustomer => CurrentUser?.IsCustomer == true;
     public bool IsAdmin => CurrentUser?.IsAdmin == true;
 
-    public void Login(string email, bool rememberMe = false)
+    public async Task<AuthResult> RegisterAsync(RegisterRequest request)
     {
-        CurrentUser = MockUser.FromEmail(email, rememberMe);
-        OnChange?.Invoke();
+        var result = await _db.RegisterCustomerAsync(request);
+        if (result.Success && result.User is not null)
+            SetUser(result.User, result.SessionToken, rememberMe: false);
+        return result;
+    }
+
+    public async Task<AuthResult> LoginAsync(string email, string password, bool rememberMe = false)
+    {
+        var result = await _db.LoginAsync(new LoginRequest
+        {
+            Email = email,
+            Password = password,
+            RememberMe = rememberMe
+        });
+        if (result.Success && result.User is not null)
+            SetUser(result.User, result.SessionToken, rememberMe);
+        return result;
     }
 
     public void Logout()
     {
+        var token = CurrentUser?.SessionToken;
         CurrentUser = null;
         OnChange?.Invoke();
+        if (!string.IsNullOrWhiteSpace(token))
+            _ = _db.LogoutSessionAsync(token);
     }
 
-    public void UpdateProfile(string firstName, string lastName, string email, string phone, string studentId, string college, string address)
+    public async Task<AuthResult> UpdateProfileAsync(UpdateProfileRequest request)
     {
-        if (CurrentUser is null)
-            return;
+        var token = CurrentUser?.SessionToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return new AuthResult { Success = false, Error = "Please sign in to update your profile." };
 
-        CurrentUser.FirstName = firstName.Trim();
-        CurrentUser.LastName = lastName.Trim();
-        CurrentUser.Name = $"{CurrentUser.FirstName} {CurrentUser.LastName}".Trim();
-        CurrentUser.Email = email.Trim();
-        CurrentUser.Phone = phone.Trim();
-        CurrentUser.StudentId = studentId.Trim();
-        CurrentUser.College = college.Trim();
-        CurrentUser.Address = address.Trim();
-        OnChange?.Invoke();
+        var result = await _db.UpdateCustomerProfileAsync(token, request);
+        if (result.Success && result.User is not null)
+        {
+            result.User.RememberMe = RememberMe;
+            result.User.SessionToken = token;
+            CurrentUser = result.User;
+            NormalizeProfile(CurrentUser);
+            OnChange?.Invoke();
+        }
+
+        return result;
+    }
+
+    public async Task<AuthResult> ChangePasswordAsync(ChangePasswordRequest request)
+    {
+        var token = CurrentUser?.SessionToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return new AuthResult { Success = false, Error = "Please sign in to change your password." };
+
+        return await _db.ChangePasswordAsync(token, request);
     }
 
     public async Task PersistAsync(IJSRuntime js)
@@ -290,7 +539,6 @@ public class AuthService
         }
         catch (JSException)
         {
-            // Browser storage may be unavailable during prerender.
         }
     }
 
@@ -313,19 +561,42 @@ public class AuthService
         if (string.IsNullOrWhiteSpace(json))
             return;
 
+        MockUser? stored;
         try
         {
-            CurrentUser = JsonSerializer.Deserialize<MockUser>(json, JsonOptions);
-            if (CurrentUser is not null && string.IsNullOrWhiteSpace(CurrentUser.Email))
-                CurrentUser = null;
+            stored = JsonSerializer.Deserialize<MockUser>(json, JsonOptions);
         }
         catch (JsonException)
         {
-            CurrentUser = null;
+            await ClearStorageAsync(js);
+            return;
         }
 
-        if (CurrentUser is not null)
+        if (stored is null || string.IsNullOrWhiteSpace(stored.SessionToken))
         {
+            await ClearStorageAsync(js);
+            return;
+        }
+
+        try
+        {
+            var result = await _db.ValidateSessionAsync(stored.SessionToken);
+            if (!result.Success || result.User is null)
+            {
+                await ClearStorageAsync(js);
+                return;
+            }
+
+            result.User.RememberMe = stored.RememberMe;
+            result.User.SessionToken = stored.SessionToken;
+            CurrentUser = result.User;
+            NormalizeProfile(CurrentUser);
+            OnChange?.Invoke();
+        }
+        catch
+        {
+            stored.SessionToken = stored.SessionToken;
+            CurrentUser = stored;
             NormalizeProfile(CurrentUser);
             OnChange?.Invoke();
         }
@@ -333,8 +604,30 @@ public class AuthService
 
     public async Task LogoutAsync(IJSRuntime js)
     {
-        Logout();
+        var token = CurrentUser?.SessionToken;
+        CurrentUser = null;
+        OnChange?.Invoke();
         await ClearStorageAsync(js);
+        if (!string.IsNullOrWhiteSpace(token))
+        {
+            try
+            {
+                await _db.LogoutSessionAsync(token);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private void SetUser(MockUser user, string? sessionToken, bool rememberMe)
+    {
+        user.RememberMe = rememberMe;
+        if (!string.IsNullOrWhiteSpace(sessionToken))
+            user.SessionToken = sessionToken;
+        NormalizeProfile(user);
+        CurrentUser = user;
+        OnChange?.Invoke();
     }
 
     private static void NormalizeProfile(MockUser user)
@@ -346,14 +639,8 @@ public class AuthService
             user.LastName = parts.Length > 1 ? parts[1] : user.LastName;
         }
 
-        if (string.IsNullOrWhiteSpace(user.Phone))
-            user.Phone = "+63 912 345 6789";
-        if (string.IsNullOrWhiteSpace(user.StudentId))
-            user.StudentId = "2021-12345";
-        if (string.IsNullOrWhiteSpace(user.College))
-            user.College = "College of Business & Accountancy";
-        if (string.IsNullOrWhiteSpace(user.Address))
-            user.Address = "123 Sampaloc, Manila";
+        if (string.IsNullOrWhiteSpace(user.Name))
+            user.Name = $"{user.FirstName} {user.LastName}".Trim();
     }
 
     private static async Task ClearStorageAsync(IJSRuntime js)
@@ -365,7 +652,6 @@ public class AuthService
         }
         catch (JSException)
         {
-            // Browser storage may be unavailable during prerender.
         }
     }
 }

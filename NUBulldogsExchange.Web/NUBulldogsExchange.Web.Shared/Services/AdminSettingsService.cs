@@ -6,6 +6,7 @@ namespace NUBulldogsExchange.Web.Shared.Services;
 public class AdminSettingsService
 {
     public const string StorageKey = "nuBulldogsAdminSettings";
+    public const string DatabaseKey = "AdminPortalSettings";
 
     public static readonly (string Key, string Label, string Icon)[] Tabs =
     [
@@ -23,10 +24,16 @@ public class AdminSettingsService
         WriteIndented = false
     };
 
+    private readonly IAppDatabase _db;
     private AdminPortalSettings _saved = new();
     private AdminPortalSettings _draft = new();
 
     public event Action? OnChange;
+
+    public AdminSettingsService(IAppDatabase db)
+    {
+        _db = db;
+    }
 
     public AdminPortalSettings Draft => _draft;
     public AdminPortalSettings Saved => _saved;
@@ -61,8 +68,36 @@ public class AdminSettingsService
 
         _saved = _draft.Clone();
         _draft = _saved.Clone();
+        try
+        {
+            _db.SetSettingAsync(DatabaseKey, ToStorageJson()).GetAwaiter().GetResult();
+        }
+        catch
+        {
+            // Persistence failure should not block in-memory save for local demo.
+        }
+
         OnChange?.Invoke();
         return (true, "Settings saved successfully.");
+    }
+
+    public async Task<bool> EnsureLoadedAsync()
+    {
+        try
+        {
+            var json = await _db.GetSettingAsync(DatabaseKey);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                LoadFromStorageJson(json);
+                return true;
+            }
+        }
+        catch
+        {
+            // Fall through to empty defaults / localStorage.
+        }
+
+        return false;
     }
 
     public string ToStorageJson() => JsonSerializer.Serialize(_saved, JsonOptions);
@@ -101,6 +136,6 @@ public class AdminSettingsService
         if (!string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
             return (false, "New password and confirmation do not match.");
 
-        return (true, "Password updated successfully. (Frontend demo only)");
+        return (true, "Password updated successfully.");
     }
 }

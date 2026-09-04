@@ -6,6 +6,13 @@
 @inject CartService Cart
 @inject ToastService Toast
 @inject NavigationManager Navigation
+@inject OrderService Orders
+@inject AdminOrderService AdminOrders
+@inject AdminCustomerService Customers
+@inject NotificationService Notifications
+@inject AdminNotificationService AdminNotifications
+@inject ProductCatalogService Catalog
+@inject AdminPromotionService PromotionService
 @implements IDisposable
 
 <PageTitle>Checkout | NU Bulldogs Exchange</PageTitle>
@@ -19,8 +26,11 @@
                     <Icon Name="lock" Size="34" />
                 </div>
                 <h1>Sign in to checkout</h1>
-                <p>Create or sign in to your account to complete this mock order.</p>
-                <a href="/login?returnUrl=%2Fcheckout&redirect=%2Fcheckout" class="btn btn-navy wishlist-signin-btn">Sign In</a>
+                <p>Create or sign in to your account to complete your order.</p>
+                <div class="wishlist-guest-actions">
+                    <a href="/login?returnUrl=%2Fcheckout&redirect=%2Fcheckout" class="btn btn-navy wishlist-signin-btn">Sign In</a>
+                    <a href="/register" class="btn btn-outline-navy wishlist-signin-btn">Register</a>
+                </div>
             </div>
         </div>
     </section>
@@ -53,7 +63,7 @@ else
             </nav>
 
             <h1 class="cart-checkout-title">Checkout</h1>
-            <p class="account-overview-lead">Frontend demo only. No payment is processed.</p>
+            <p class="account-overview-lead">Campus pickup orders are saved to your account.</p>
 
             <div class="cart-layout">
                 <div class="wishlist-panel">
@@ -65,13 +75,51 @@ else
                     <h3>Order Summary</h3>
                     <div class="summary-row"><span>Items</span><span>@Cart.TotalCount</span></div>
                     <div class="summary-row"><span>Subtotal</span><strong>₱@Cart.Subtotal.ToString("N0")</strong></div>
-                    <div class="summary-row"><span>Pickup Fee</span><span class="text-success">Free</span></div>
-                    <div class="summary-total"><span>Estimated Total</span><strong>₱@Cart.Subtotal.ToString("N0")</strong></div>
-                    <button type="button" class="btn btn-navy btn-block cart-checkout-btn" @onclick="PlaceOrder">Place Order</button>
+                    <div class="summary-row"><span>Campus Pickup</span><span class="text-success">₱0</span></div>
+                    @if (Cart.AppliedDiscount > 0 && !string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
+                    {
+                        <div class="summary-row">
+                            <span>Discount (@Cart.AppliedPromoCode)</span>
+                            <span class="text-success">-₱@Cart.AppliedDiscount.ToString("N0")</span>
+                        </div>
+                    }
+                    <div class="summary-total"><span>Total</span><strong>₱@Cart.EstimatedTotal.ToString("N0")</strong></div>
+
+                    <div class="cart-promo">
+                        <input type="text"
+                               placeholder="Enter promo code"
+                               value="@_promoCode"
+                               disabled="@(_submitting || _applyingPromo)"
+                               @oninput="OnPromoInput" />
+                        @if (!string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
+                        {
+                            <button type="button" class="btn btn-outline-navy cart-promo-btn" @onclick="RemovePromo" disabled="@(_submitting || _applyingPromo)">
+                                Remove
+                            </button>
+                        }
+                        else
+                        {
+                            <button type="button" class="btn btn-navy cart-promo-btn" @onclick="ApplyPromoAsync" disabled="@(_submitting || _applyingPromo)">
+                                @(_applyingPromo ? "Applying…" : "Apply")
+                            </button>
+                        }
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(_promoMessage))
+                    {
+                        <p class="@(_promoOk ? "cart-promo-success" : "cart-promo-error")">@_promoMessage</p>
+                    }
+
+                    <button type="button" class="btn btn-navy btn-block cart-checkout-btn" disabled="@_submitting" @onclick="PlaceOrderAsync">
+                        @(_submitting ? "Placing order…" : "Place Order")
+                    </button>
                     <a href="/cart" class="btn btn-outline-navy btn-block">Back to Cart</a>
                     @if (!string.IsNullOrWhiteSpace(_message))
                     {
                         <p class="cart-promo-success">@_message</p>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_error))
+                    {
+                        <p class="text-danger">@_error</p>
                     }
                 </aside>
             </div>
@@ -81,21 +129,176 @@ else
 
 @code {
     private string? _message;
+    private string? _error;
+    private bool _submitting;
+    private bool _applyingPromo;
+    private string _promoCode = string.Empty;
+    private string? _promoMessage;
+    private bool _promoOk;
 
     protected override void OnInitialized()
     {
         Auth.OnChange += Refresh;
         Cart.OnChange += Refresh;
+        if (!string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
+        {
+            _promoCode = Cart.AppliedPromoCode;
+            _promoOk = true;
+            _promoMessage = $"Promo Code: {Cart.AppliedPromoCode}";
+        }
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
-    private void PlaceOrder()
+    private void OnPromoInput(ChangeEventArgs e)
     {
-        _message = "Order placed. This is a frontend demo only.";
-        Toast.Show("Mock order placed.");
-        Cart.Clear();
-        Navigation.NavigateTo("/");
+        _promoCode = e.Value?.ToString() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
+            RemovePromo();
+        else
+            _promoMessage = null;
+    }
+
+    private async Task ApplyPromoAsync()
+    {
+        if (_applyingPromo || !Cart.Items.Any())
+            return;
+
+        _applyingPromo = true;
+        _promoMessage = null;
+        try
+        {
+            var items = Cart.Items.Select(i => new PromoCartItem
+            {
+                ProductId = i.Product.Id,
+                Quantity = i.Quantity,
+                UnitPrice = i.Product.Price,
+                Category = i.Product.Category
+            });
+
+            var (success, message, promo, discount) = await PromotionService.ValidateForCartAsync(
+                _promoCode,
+                items,
+                Auth.Email,
+                Auth.UserId > 0 ? Auth.UserId : null);
+
+            _promoOk = success;
+            _promoMessage = success
+                ? $"✓ Promo code {(promo?.Code ?? _promoCode.Trim().ToUpperInvariant())} applied. You saved ₱{discount:N0}."
+                : message;
+
+            if (success && promo is not null)
+            {
+                _promoCode = promo.Code;
+                Cart.SetPromo(promo.Code, discount);
+            }
+            else
+            {
+                Cart.ClearPromo();
+            }
+        }
+        catch (Exception ex)
+        {
+            _promoOk = false;
+            Cart.ClearPromo();
+            _promoMessage = "Unable to validate promo code. Please try again.";
+            Console.Error.WriteLine(ex);
+        }
+        finally
+        {
+            _applyingPromo = false;
+        }
+    }
+
+    private void RemovePromo()
+    {
+        Cart.ClearPromo();
+        _promoOk = false;
+        _promoMessage = null;
+    }
+
+    private async Task PlaceOrderAsync()
+    {
+        if (_submitting || Auth.CurrentUser is null || !Cart.Items.Any())
+            return;
+
+        _submitting = true;
+        _error = null;
+        try
+        {
+            await AdminOrders.EnsureLoadedAsync();
+            await Customers.EnsureLoadedAsync();
+
+            var user = Auth.CurrentUser;
+            var customer = Customers.EnsureCustomer(user.Name, user.Email, user.Phone, user.UserId);
+            var promoCode = Cart.AppliedPromoCode;
+            var order = new AdminOrder
+            {
+                Id = string.Empty,
+                CustomerId = user.UserId > 0 ? user.UserId.ToString() : customer.Id,
+                CustomerName = user.Name,
+                CustomerEmail = user.Email,
+                Date = DateTime.Now,
+                Total = Cart.EstimatedTotal,
+                PaymentStatus = "Pending",
+                Fulfillment = "Campus Pickup",
+                Status = "Pending",
+                Items = Cart.Items.Select(i => new AdminOrderItem
+                {
+                    ProductId = i.Product.Id,
+                    Name = i.Product.Name,
+                    ImageUrl = i.Product.ImageUrl,
+                    Quantity = i.Quantity,
+                    Price = i.Product.Price
+                }).ToList()
+            };
+
+            // Server recalculates discount from PromoCode; client DiscountAmount is ignored.
+            order = await AdminOrders.AddAsync(order, promoCode, 0);
+            Orders.PlaceOrder(order);
+            Catalog.ApplyPurchase(order.Items);
+
+            await Notifications.AddAsync(new MockNotification
+            {
+                Title = "Order Confirmed",
+                Message = $"Your order #{order.Id} has been placed and is being processed.",
+                TimeAgo = "Just now",
+                Icon = "check-circle",
+                Tone = "green",
+                IsRead = false
+            });
+
+            await AdminNotifications.AddAsync(new AdminNotificationItem
+            {
+                Type = "order",
+                Title = "New Order Received",
+                Message = $"Order #{order.Id} placed by {order.CustomerName} — ₱{order.Total:N0}.",
+                RelatedId = order.Id,
+                RelatedLabel = order.Id,
+                RelatedHref = $"/admin/orders/{order.Id}",
+                Timestamp = DateTime.Now,
+                Read = false
+            });
+
+            _message = $"Order {order.Id} placed successfully.";
+            Toast.Show($"Order {order.Id} placed.");
+            Cart.Clear();
+            await Cart.PersistAsync(user.Email);
+            Navigation.NavigateTo("/orders");
+        }
+        catch (InvalidOperationException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = "Unable to place order. Please try again.";
+            Console.Error.WriteLine(ex);
+        }
+        finally
+        {
+            _submitting = false;
+        }
     }
 
     public void Dispose()

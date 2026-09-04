@@ -2,6 +2,7 @@
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AuthService Auth
 @inject WishlistService Wishlist
+@inject CartService Cart
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -12,6 +13,7 @@
     {
         Auth.OnChange += OnAuthChanged;
         Wishlist.OnChange += OnWishlistChanged;
+        Cart.OnChange += OnCartChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -22,7 +24,10 @@
         _restored = true;
         await Auth.RestoreAsync(JS);
         if (Auth.IsLoggedIn)
+        {
             await Wishlist.RestoreAsync(JS, Auth.Email);
+            await Cart.RestoreAsync(Auth.Email);
+        }
     }
 
     private void OnAuthChanged()
@@ -30,7 +35,10 @@
         _ = InvokeAsync(async () =>
         {
             if (Auth.IsLoggedIn)
+            {
                 await Wishlist.RestoreAsync(JS, Auth.Email);
+                await Cart.RestoreAsync(Auth.Email);
+            }
         });
     }
 
@@ -43,9 +51,19 @@
         });
     }
 
+    private void OnCartChanged()
+    {
+        _ = InvokeAsync(async () =>
+        {
+            if (Auth.IsLoggedIn)
+                await Cart.PersistAsync(Auth.Email);
+        });
+    }
+
     public void Dispose()
     {
         Auth.OnChange -= OnAuthChanged;
         Wishlist.OnChange -= OnWishlistChanged;
+        Cart.OnChange -= OnCartChanged;
     }
 }

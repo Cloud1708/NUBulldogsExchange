@@ -3,233 +3,238 @@
 @layout AdminLayout
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject IAppDatabase Database
+@inject AdminProductService Products
+@inject AdminOrderService Orders
+@inject AdminInventoryService Inventory
 
 <PageTitle>Admin Dashboard | NU Bulldogs Exchange</PageTitle>
 
-<div class="admin-dashboard">
-    <header class="admin-page-intro">
-        <h1>Store Overview</h1>
-        <p>Welcome back — here's what's happening in your store.</p>
-    </header>
-
-    <div class="admin-stat-grid">
-        @foreach (var stat in MockAdminData.Stats)
-        {
-            <article class="admin-stat-card">
-                <div class="admin-stat-top">
-                    <div class="admin-stat-icon tone-@stat.Tone" aria-hidden="true">
-                        <Icon Name="@stat.Icon" Size="16" />
-                    </div>
-                    <span class="admin-stat-change @(stat.IsPositive ? "up" : "down")">
-                        <Icon Name="@(stat.IsPositive ? "trending-up" : "trending-down")" Size="12" />
-                        @stat.Change
-                    </span>
-                </div>
-                <strong>@stat.Value</strong>
-                <span>@stat.Label</span>
-            </article>
-        }
+@if (_loading)
+{
+    <div class="admin-dashboard">
+        <p>Loading dashboard…</p>
     </div>
+}
+else if (!string.IsNullOrWhiteSpace(_error))
+{
+    <div class="admin-dashboard">
+        <p class="text-danger">@_error</p>
+    </div>
+}
+else
+{
+    <div class="admin-dashboard">
+        <header class="admin-page-intro">
+            <h1>Store Overview</h1>
+            <p>Welcome back — here's what's happening in your store.</p>
+        </header>
 
-    <div class="admin-mid-grid">
-        <section class="admin-card admin-sales-card">
-            <div class="admin-card-head">
-                <div>
-                    <h2>Sales Analytics</h2>
-                    <p>Revenue and orders over time</p>
-                </div>
-                <div class="admin-range-tabs" role="tablist" aria-label="Sales range">
-                    @foreach (var range in _ranges)
-                    {
-                        <button type="button"
-                                role="tab"
-                                class="admin-range-tab @(_activeRange == range ? "active" : "")"
-                                @onclick="() => _activeRange = range">
-                            @range
-                        </button>
-                    }
-                </div>
-            </div>
-            <div class="admin-line-chart" aria-label="Sales line chart">
-                <div class="admin-line-y">
-                    <span>₱140K</span>
-                    <span>₱105K</span>
-                    <span>₱70K</span>
-                    <span>₱35K</span>
-                    <span>₱0K</span>
-                </div>
-                <div class="admin-line-plot">
-                    <svg viewBox="0 0 400 180" preserveAspectRatio="none" class="admin-line-svg">
-                        <defs>
-                            <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
-                                <stop offset="0%" stop-color="#123A63" stop-opacity="0.22" />
-                                <stop offset="100%" stop-color="#123A63" stop-opacity="0.02" />
-                            </linearGradient>
-                        </defs>
-                        @for (var i = 0; i < 5; i++)
-                        {
-                            var y = 10 + i * 40;
-                            <line x1="0" y1="@y" x2="400" y2="@y" class="admin-grid-line" />
-                        }
-                        <path d="@AreaPath" fill="url(#salesFill)" />
-                        <path d="@LinePath" class="admin-line-path" fill="none" />
-                        @foreach (var point in ChartPoints)
-                        {
-                            <circle cx="@point.X.ToString("0.##")" cy="@point.Y.ToString("0.##")" r="3.5" class="admin-line-dot" />
-                        }
-                    </svg>
-                    <div class="admin-line-x">
-                        @foreach (var month in MockAdminData.SalesMonths)
-                        {
-                            <span>@month</span>
-                        }
+        <div class="admin-stat-grid">
+            @foreach (var stat in _stats)
+            {
+                <article class="admin-stat-card">
+                    <div class="admin-stat-top">
+                        <div class="admin-stat-icon tone-@stat.Tone" aria-hidden="true">
+                            <Icon Name="@stat.Icon" Size="16" />
+                        </div>
+                        <span class="admin-stat-change @(stat.IsPositive ? "up" : "down")">
+                            <Icon Name="@(stat.IsPositive ? "trending-up" : "trending-down")" Size="12" />
+                            @stat.Change
+                        </span>
+                    </div>
+                    <strong>@stat.Value</strong>
+                    <span>@stat.Label</span>
+                </article>
+            }
+        </div>
+
+        <div class="admin-mid-grid">
+            <section class="admin-card admin-sales-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Sales Analytics</h2>
+                        <p>Revenue from recorded orders</p>
                     </div>
                 </div>
-            </div>
-        </section>
+                <div class="admin-line-chart" aria-label="Sales line chart">
+                    <div class="admin-line-y">
+                        <span>₱@_chartMax.ToString("N0")</span>
+                        <span>₱0</span>
+                    </div>
+                    <div class="admin-line-plot">
+                        <svg viewBox="0 0 400 180" preserveAspectRatio="none" class="admin-line-svg">
+                            <defs>
+                                <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
+                                    <stop offset="0%" stop-color="#123A63" stop-opacity="0.22" />
+                                    <stop offset="100%" stop-color="#123A63" stop-opacity="0.02" />
+                                </linearGradient>
+                            </defs>
+                            <path d="@AreaPath" fill="url(#salesFill)" />
+                            <path d="@LinePath" class="admin-line-path" fill="none" />
+                            @foreach (var point in ChartPoints)
+                            {
+                                <circle cx="@point.X.ToString("0.##")" cy="@point.Y.ToString("0.##")" r="3.5" class="admin-line-dot" />
+                            }
+                        </svg>
+                        <div class="admin-line-x">
+                            @foreach (var month in _salesMonths)
+                            {
+                                <span>@month</span>
+                            }
+                        </div>
+                    </div>
+                </div>
+            </section>
 
-        <section class="admin-card admin-status-card">
-            <div class="admin-card-head">
-                <div>
-                    <h2>Order Status</h2>
-                    <p>Distribution of order states</p>
+            <section class="admin-card admin-status-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Order Status</h2>
+                        <p>Distribution of order states</p>
+                    </div>
                 </div>
-            </div>
-            <div class="admin-donut-wrap">
-                <div class="admin-donut" style="background: @DonutGradient;" aria-hidden="true">
-                    <div class="admin-donut-hole"></div>
-                </div>
-            </div>
-            <ul class="admin-status-legend">
-                @foreach (var slice in MockAdminData.OrderStatus)
+                @if (!_orderStatus.Any())
                 {
-                    <li>
-                        <span class="admin-legend-dot" style="background: @slice.Color;"></span>
-                        <span class="admin-legend-label">@slice.Label</span>
-                        <strong>@slice.Count</strong>
-                    </li>
+                    <p>No orders yet.</p>
                 }
-            </ul>
-        </section>
-    </div>
-
-    <div class="admin-bottom-grid">
-        <section class="admin-card admin-orders-card">
-            <div class="admin-card-head">
-                <div>
-                    <h2>Recent Orders</h2>
-                    <p>Latest transactions</p>
-                </div>
-                <a href="/admin/orders" class="admin-view-all">
-                    View All
-                    <Icon Name="arrow-right" Size="14" />
-                </a>
-            </div>
-
-            <div class="admin-table-wrap">
-                <table class="admin-table">
-                    <thead>
-                        <tr>
-                            <th>Order ID</th>
-                            <th>Customer</th>
-                            <th>Date</th>
-                            <th>Total</th>
-                            <th>Status</th>
-                            <th>Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var order in MockAdminData.RecentOrders)
+                else
+                {
+                    <div class="admin-donut-wrap">
+                        <div class="admin-donut" style="background: @DonutGradient;" aria-hidden="true">
+                            <div class="admin-donut-hole"></div>
+                        </div>
+                    </div>
+                    <ul class="admin-status-legend">
+                        @foreach (var slice in _orderStatus)
                         {
-                            <tr>
-                                <td><strong>@order.Id</strong></td>
-                                <td>
-                                    <div class="admin-customer-cell">
-                                        <strong>@order.Customer</strong>
-                                        <span>@order.Fulfillment</span>
-                                    </div>
-                                </td>
-                                <td>@order.Date</td>
-                                <td><strong>₱@order.Total.ToString("N0")</strong></td>
-                                <td>
-                                    <span class="order-status status-@MockAdminData.StatusKey(order.Status)">
-                                        @order.Status
-                                    </span>
-                                </td>
-                                <td>
-                                    <button type="button" class="admin-row-action" title="Actions" aria-label="Order actions">
-                                        <Icon Name="more-horizontal" Size="16" />
-                                    </button>
-                                </td>
-                            </tr>
+                            <li>
+                                <span class="admin-legend-dot" style="background: @slice.Color;"></span>
+                                <span class="admin-legend-label">@slice.Label</span>
+                                <strong>@slice.Count</strong>
+                            </li>
                         }
-                    </tbody>
-                </table>
-            </div>
-        </section>
-
-        <section class="admin-card admin-topselling-card">
-            <div class="admin-card-head">
-                <div>
-                    <h2>Top Selling</h2>
-                </div>
-                <a href="/admin/products" class="admin-view-all">View All</a>
-            </div>
-
-            <div class="admin-top-list">
-                @foreach (var product in _topProducts)
-                {
-                    <article class="admin-top-item">
-                        <span class="admin-top-rank">@product.Rank</span>
-                        <img src="@product.ImageUrl"
-                             alt="@product.Name"
-                             loading="lazy"
-                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                        <div class="admin-top-meta">
-                            <strong>@product.Name</strong>
-                            <span>@product.Sold.ToString("N0") sold</span>
-                        </div>
-                        <strong class="admin-top-revenue">₱@product.Revenue.ToString("N0")</strong>
-                    </article>
+                    </ul>
                 }
-            </div>
+            </section>
+        </div>
 
-            <div class="admin-revenue-block">
-                <h3>Revenue by Product</h3>
-                <div class="admin-bar-chart" aria-label="Revenue by product">
-                    @{
-                        var maxRevenue = _topProducts.Max(p => p.Revenue);
-                    }
-                    @foreach (var product in _topProducts)
-                    {
-                        var height = maxRevenue <= 0 ? 0 : (double)(product.Revenue / maxRevenue) * 100;
-                        <div class="admin-bar-col">
-                            <div class="admin-bar" style="height: @height.ToString("0.##")%;"></div>
-                            <span>@product.ShortLabel</span>
-                        </div>
-                    }
+        <div class="admin-bottom-grid">
+            <section class="admin-card admin-orders-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Recent Orders</h2>
+                        <p>Latest transactions</p>
+                    </div>
+                    <a href="/admin/orders" class="admin-view-all">
+                        View All
+                        <Icon Name="arrow-right" Size="14" />
+                    </a>
                 </div>
-            </div>
-        </section>
+
+                @if (!_recentOrders.Any())
+                {
+                    <p>No records found.</p>
+                }
+                else
+                {
+                    <div class="admin-table-wrap">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Customer</th>
+                                    <th>Date</th>
+                                    <th>Total</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var order in _recentOrders)
+                                {
+                                    <tr>
+                                        <td><strong>@order.Id</strong></td>
+                                        <td>
+                                            <div class="admin-customer-cell">
+                                                <strong>@order.Customer</strong>
+                                                <span>@order.Fulfillment</span>
+                                            </div>
+                                        </td>
+                                        <td>@order.Date</td>
+                                        <td><strong>₱@order.Total.ToString("N0")</strong></td>
+                                        <td>
+                                            <span class="order-status status-@AdminStatusHelper.StatusKey(order.Status)">
+                                                @order.Status
+                                            </span>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
+
+            <section class="admin-card admin-topselling-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Top Selling</h2>
+                    </div>
+                    <a href="/admin/products" class="admin-view-all">View All</a>
+                </div>
+
+                @if (!_topProducts.Any())
+                {
+                    <p>No listings available.</p>
+                }
+                else
+                {
+                    <div class="admin-top-list">
+                        @foreach (var product in _topProducts)
+                        {
+                            <article class="admin-top-item">
+                                <span class="admin-top-rank">@product.Rank</span>
+                                <img src="@product.ImageUrl"
+                                     alt="@product.Name"
+                                     loading="lazy"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="admin-top-meta">
+                                    <strong>@product.Name</strong>
+                                    <span>@product.Sold.ToString("N0") sold</span>
+                                </div>
+                                <strong class="admin-top-revenue">₱@product.Revenue.ToString("N0")</strong>
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
     </div>
-</div>
+}
 
 @code {
-    private readonly string[] _ranges = ["Today", "7 Days", "30 Days", "This Year", "Custom"];
-    private string _activeRange = "30 Days";
-    private readonly List<AdminTopProduct> _topProducts = MockAdminData.TopSelling();
+    private bool _loading = true;
+    private string? _error;
+    private List<AdminStatCard> _stats = [];
+    private List<AdminOrderRow> _recentOrders = [];
+    private List<AdminStatusSlice> _orderStatus = [];
+    private List<AdminTopProduct> _topProducts = [];
+    private List<string> _salesMonths = [];
+    private double[] _salesValues = [];
+    private double _chartMax = 1;
 
     private IEnumerable<(double X, double Y)> ChartPoints
     {
         get
         {
-            var values = MockAdminData.SalesByMonth;
-            var max = 140.0;
-            var count = values.Length;
-            for (var i = 0; i < count; i++)
+            var values = _salesValues;
+            if (values.Length == 0) yield break;
+            var max = Math.Max(1, _chartMax);
+            for (var i = 0; i < values.Length; i++)
             {
-                var x = count == 1 ? 200 : (i / (double)(count - 1)) * 400;
-                var y = 170 - (values[i] / max) * 160;
+                var x = values.Length == 1 ? 200 : i * (400.0 / (values.Length - 1));
+                var y = 170 - (values[i] / max * 150);
                 yield return (x, y);
             }
         }
@@ -267,19 +272,54 @@
     {
         get
         {
-            var total = MockAdminData.OrderStatus.Sum(s => s.Count);
+            var total = _orderStatus.Sum(s => s.Count);
             if (total <= 0) return "#E2E8F0";
-
             var stops = new List<string>();
             double cursor = 0;
-            foreach (var slice in MockAdminData.OrderStatus)
+            foreach (var slice in _orderStatus)
             {
-                var pct = slice.Count * 100.0 / total;
-                var next = cursor + pct;
-                stops.Add($"{slice.Color} {cursor:0.##}% {next:0.##}%");
-                cursor = next;
+                var start = cursor;
+                cursor += slice.Count * 100.0 / total;
+                stops.Add($"{slice.Color} {start:0.##}% {cursor:0.##}%");
             }
             return $"conic-gradient({string.Join(", ", stops)})";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Products.EnsureLoadedAsync();
+            await Orders.EnsureLoadedAsync();
+            await Inventory.EnsureLoadedAsync();
+            var dash = await Database.GetDashboardStatsAsync();
+
+            _stats =
+            [
+                new("Total Sales", $"₱{dash.TotalSales:N0}", "Live", true, "dollar-sign", "blue"),
+                new("Total Orders", dash.TotalOrders.ToString("N0"), "Live", true, "cart", "green"),
+                new("Pending Orders", dash.PendingOrders.ToString("N0"), "Live", dash.PendingOrders == 0, "alert-triangle", "gold"),
+                new("Completed Orders", dash.CompletedOrders.ToString("N0"), "Live", true, "check-circle", "teal"),
+                new("Total Products", dash.TotalProducts.ToString("N0"), "Live", true, "package", "purple"),
+                new("Low Stock", dash.LowStockCount.ToString("N0"), "Live", dash.LowStockCount == 0, "alert-triangle", "red")
+            ];
+
+            _recentOrders = dash.RecentOrders;
+            _orderStatus = dash.OrderStatus;
+            _topProducts = dash.TopProducts;
+            _salesMonths = dash.SalesByMonth.Select(s => s.Month).ToList();
+            _salesValues = dash.SalesByMonth.Select(s => s.Value).ToArray();
+            _chartMax = Math.Max(1, _salesValues.DefaultIfEmpty(0).Max());
+        }
+        catch (Exception ex)
+        {
+            _error = "Unable to load dashboard statistics.";
+            Console.Error.WriteLine(ex);
+        }
+        finally
+        {
+            _loading = false;
         }
     }
 }

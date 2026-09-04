@@ -235,6 +235,26 @@ img {
     background: var(--navy-dark);
 }
 
+.header-auth-links {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.register-button {
+    border: 1.5px solid var(--navy);
+    background: white;
+    color: var(--navy);
+    border-radius: 12px;
+    padding: 10px 18px;
+    font-weight: 700;
+    text-decoration: none;
+}
+
+.register-button:hover {
+    background: #F8FAFC;
+}
+
 .mobile-menu-btn {
     display: none;
     border: none;
@@ -2063,6 +2083,57 @@ img {
     padding: 0 22px;
     border-radius: 12px;
     font-size: 14px;
+}
+
+.profile-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 14px 24px;
+    margin: 8px 0 0;
+}
+
+.profile-meta div {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.profile-meta dt {
+    font-size: 12px;
+    font-weight: 600;
+    color: #94A3B8;
+}
+
+.profile-meta dd {
+    margin: 0;
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--navy);
+}
+
+.profile-password-panel {
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 1px solid #F1F5F9;
+}
+
+.profile-password-panel h2 {
+    margin: 0 0 4px;
+    font-size: 18px;
+    color: var(--navy);
+}
+
+.profile-field input:disabled,
+.profile-field input[readonly] {
+    background: #F1F5F9;
+    color: #64748B;
+}
+
+.wishlist-guest-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: center;
 }
 
 @media (max-width: 1100px) {
@@ -4039,6 +4110,10 @@ img {
     box-shadow: 0 12px 36px rgba(15, 23, 42, .06);
 }
 
+.auth-register-card {
+    width: min(480px, 100%);
+}
+
 .auth-login-card h1 {
     margin: 0 0 8px;
     color: var(--navy);
@@ -4069,6 +4144,17 @@ img {
     display: flex;
     flex-direction: column;
     gap: 16px;
+}
+
+.auth-field-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.auth-optional {
+    font-weight: 500;
+    color: #94A3B8;
 }
 
 .auth-field label {
@@ -4576,6 +4662,14 @@ img {
     .auth-login-card {
         width: 100%;
         padding: 24px 20px;
+    }
+
+    .auth-field-row {
+        grid-template-columns: 1fr;
+    }
+
+    .profile-meta {
+        grid-template-columns: 1fr;
     }
 }
 

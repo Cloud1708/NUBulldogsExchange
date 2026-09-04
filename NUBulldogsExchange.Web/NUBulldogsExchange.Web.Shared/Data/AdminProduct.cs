@@ -66,7 +66,9 @@ public class AdminProduct
         Price = product.Price,
         Stock = product.Stock,
         Sold = product.Sold,
-        Status = product.Stock == 0 && !product.InStock ? "Inactive" : "Active",
+        Status = !string.IsNullOrWhiteSpace(product.Status)
+            ? product.Status
+            : product.Stock == 0 && !product.InStock ? "Inactive" : "Active",
         ImageUrl = product.ImageUrl,
         Images = product.Images.Count > 0
             ? [.. product.Images]
