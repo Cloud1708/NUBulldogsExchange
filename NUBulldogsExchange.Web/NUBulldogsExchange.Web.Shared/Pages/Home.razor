@@ -1,7 +1,9 @@
-﻿@page "/"
+@page "/"
 @using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Components.Mobile
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Services
+@inject IFormFactor FormFactor
 @inject ProductCatalogService Catalog
 @inject AdminCategoryService Categories
 @inject AdminProductService Products
@@ -9,80 +11,87 @@
 
 <PageTitle>NU Bulldogs Exchange | Official Merchandise</PageTitle>
 
-@if (_loading)
+@if (FormFactor.IsMobile)
 {
-    <section class="section section-light">
-        <div class="container">
-            <p>Loading catalog…</p>
-        </div>
-    </section>
-}
-else if (!string.IsNullOrWhiteSpace(_error))
-{
-    <section class="section section-light">
-        <div class="container">
-            <p class="text-danger">@_error</p>
-        </div>
-    </section>
+    <MobileHomeView />
 }
 else
 {
-    <HeroSection />
+    @if (_loading)
+    {
+        <section class="section section-light">
+            <div class="container">
+                <p>Loading catalog…</p>
+            </div>
+        </section>
+    }
+    else if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <section class="section section-light">
+            <div class="container">
+                <p class="text-danger">@_error</p>
+            </div>
+        </section>
+    }
+    else
+    {
+        <HeroSection />
 
-    <section class="section section-light" id="categories">
-        <div class="container">
-            <SectionHeader Title="Shop by Category"
-                           Subtitle="Find exactly what you're looking for"
-                           ViewAllHref="/shop" />
-            @if (!Catalog.Categories.Any())
-            {
-                <div class="empty-state">
-                    <p>No categories available.</p>
-                </div>
-            }
-            else
-            {
-                <div class="category-grid">
-                    @foreach (var category in Catalog.Categories)
-                    {
-                        <CategoryCard Category="category" />
-                    }
-                </div>
-            }
-        </div>
-    </section>
+        <section class="section section-light" id="categories">
+            <div class="container">
+                <SectionHeader Title="Shop by Category"
+                               Subtitle="Find exactly what you're looking for"
+                               ViewAllHref="/shop" />
+                @if (!Catalog.Categories.Any())
+                {
+                    <div class="empty-state">
+                        <p>No categories available.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="category-grid">
+                        @foreach (var category in Catalog.Categories)
+                        {
+                            <CategoryCard Category="category" />
+                        }
+                    </div>
+                }
+            </div>
+        </section>
 
-    <section class="section section-light" id="products">
-        <div class="container">
-            <SectionHeader Title="Featured Bulldogs Picks"
-                           Subtitle="Handpicked favorites for every Bulldog"
-                           ViewAllHref="/shop" />
-            <ProductGrid Products="Catalog.Featured" />
-        </div>
-    </section>
+        <section class="section section-light" id="products">
+            <div class="container">
+                <SectionHeader Title="Featured Bulldogs Picks"
+                               Subtitle="Handpicked favorites for every Bulldog"
+                               ViewAllHref="/shop" />
+                <ProductGrid Products="Catalog.Featured" />
+            </div>
+        </section>
 
-    <section class="section section-light" id="fresh">
-        <div class="container">
-            <SectionHeader Label="JUST DROPPED"
-                           Title="Fresh Drops"
-                           Subtitle="New merchandise just landed."
-                           ViewAllHref="/new-arrivals" />
-            <ProductGrid Products="Catalog.FreshDrops" />
-        </div>
-    </section>
+        <section class="section section-light" id="fresh">
+            <div class="container">
+                <SectionHeader Label="JUST DROPPED"
+                               Title="Fresh Drops"
+                               Subtitle="New merchandise just landed."
+                               ViewAllHref="/new-arrivals" />
+                <ProductGrid Products="Catalog.FreshDrops" />
+            </div>
+        </section>
 
-    <section class="section section-light" id="favorites">
-        <div class="container">
-            <SectionHeader Label="TOP PICKS"
-                           Title="Bulldog Favorites"
-                           Subtitle="What the community loves most"
-                           ViewAllHref="/best-sellers" />
-            <ProductGrid Products="Catalog.Favorites" ShowRank="true" />
-        </div>
-    </section>
+        <section class="section section-light" id="favorites">
+            <div class="container">
+                <SectionHeader Label="TOP PICKS"
+                               Title="Bulldog Favorites"
+                               Subtitle="What the community loves most"
+                               ViewAllHref="/best-sellers" />
+                <ProductGrid Products="Catalog.Favorites" ShowRank="true" />
+            </div>
+        </section>
 
-    <WhyShopSection />
-    <NewsletterSection />
+        <WhyShopSection />
+        <NewsletterSection />
+    }
 }
 
 @code {

@@ -1,7 +1,6 @@
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
 using NUBulldogsExchange.Web.Web.Components;
-using NUBulldogsExchange.Web.Web.Data;
 using NUBulldogsExchange.Web.Web.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -31,6 +30,16 @@ builder.Services.AddScoped<AdminPromotionService>();
 builder.Services.AddScoped<AdminReportService>();
 builder.Services.AddScoped<AdminNotificationService>();
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
+});
+
 var app = builder.Build();
 
 using (var scope = app.Services.CreateScope())
@@ -39,13 +48,15 @@ using (var scope = app.Services.CreateScope())
     await db.InitializeAsync();
 }
 
+app.UseCors();
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
     app.UseHsts();
+    app.UseHttpsRedirection();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
-app.UseHttpsRedirection();
 app.UseAntiforgery();
 app.MapStaticAssets();
 
@@ -338,6 +349,13 @@ static void MapApi(WebApplication app)
             return Results.BadRequest(new { error = "Email is required." });
         var created = await db.UpsertStaffAsync(staff);
         return Results.Created($"/api/staff/{created.Id}", created);
+    });
+
+    api.MapPut("/staff/{id}", async (string id, AdminStaffMember staff, IAppDatabase db) =>
+    {
+        staff.Id = id;
+        var updated = await db.UpsertStaffAsync(staff);
+        return Results.Ok(updated);
     });
 
     api.MapDelete("/staff/{id}", async (string id, IAppDatabase db) =>

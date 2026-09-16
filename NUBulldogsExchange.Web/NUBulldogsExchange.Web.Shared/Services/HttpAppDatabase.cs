@@ -182,22 +182,36 @@ public sealed class HttpAppDatabase : IAppDatabase
 
     public async Task<AuthResult> RegisterCustomerAsync(RegisterRequest request)
     {
-        var response = await _http.PostAsJsonAsync("api/auth/register", request);
-        return await ReadAuthResultAsync(response, "Unable to create your account. Please try again.");
+        try
+        {
+            var response = await _http.PostAsJsonAsync("api/auth/register", request);
+            return await ReadAuthResultAsync(response, "Unable to create your account. Please try again.");
+        }
+        catch (HttpRequestException)
+        {
+            return new AuthResult { Success = false, Error = "Cannot connect to server. Please verify the backend API is running." };
+        }
     }
 
     public async Task<AuthResult> LoginAsync(LoginRequest request)
     {
-        var response = await _http.PostAsJsonAsync("api/auth/login", request);
-        return await ReadAuthResultAsync(response, "Unable to sign in. Please try again.");
+        try
+        {
+            var response = await _http.PostAsJsonAsync("api/auth/login", request);
+            return await ReadAuthResultAsync(response, "Invalid email or password.");
+        }
+        catch (HttpRequestException)
+        {
+            return new AuthResult { Success = false, Error = "Cannot connect to server. Please verify the backend API is running." };
+        }
     }
 
     public async Task LogoutSessionAsync(string sessionToken)
     {
-        using var message = new HttpRequestMessage(HttpMethod.Post, "api/auth/logout");
-        ApplySession(message, sessionToken);
         try
         {
+            using var message = new HttpRequestMessage(HttpMethod.Post, "api/auth/logout");
+            ApplySession(message, sessionToken);
             await _http.SendAsync(message);
         }
         catch
@@ -207,32 +221,53 @@ public sealed class HttpAppDatabase : IAppDatabase
 
     public async Task<AuthResult> ValidateSessionAsync(string sessionToken)
     {
-        using var message = new HttpRequestMessage(HttpMethod.Get, "api/auth/me");
-        ApplySession(message, sessionToken);
-        var response = await _http.SendAsync(message);
-        return await ReadAuthResultAsync(response, "Your session has expired. Please sign in again.");
+        try
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Get, "api/auth/me");
+            ApplySession(message, sessionToken);
+            var response = await _http.SendAsync(message);
+            return await ReadAuthResultAsync(response, "Your session has expired. Please sign in again.");
+        }
+        catch (HttpRequestException)
+        {
+            return new AuthResult { Success = false, Error = "Cannot connect to server." };
+        }
     }
 
     public async Task<AuthResult> UpdateCustomerProfileAsync(string sessionToken, UpdateProfileRequest request)
     {
-        using var message = new HttpRequestMessage(HttpMethod.Put, "api/auth/profile")
+        try
         {
-            Content = JsonContent.Create(request)
-        };
-        ApplySession(message, sessionToken);
-        var response = await _http.SendAsync(message);
-        return await ReadAuthResultAsync(response, "Unable to update your profile. Please try again.");
+            using var message = new HttpRequestMessage(HttpMethod.Put, "api/auth/profile")
+            {
+                Content = JsonContent.Create(request)
+            };
+            ApplySession(message, sessionToken);
+            var response = await _http.SendAsync(message);
+            return await ReadAuthResultAsync(response, "Unable to update your profile. Please try again.");
+        }
+        catch (HttpRequestException)
+        {
+            return new AuthResult { Success = false, Error = "Cannot connect to server." };
+        }
     }
 
     public async Task<AuthResult> ChangePasswordAsync(string sessionToken, ChangePasswordRequest request)
     {
-        using var message = new HttpRequestMessage(HttpMethod.Post, "api/auth/change-password")
+        try
         {
-            Content = JsonContent.Create(request)
-        };
-        ApplySession(message, sessionToken);
-        var response = await _http.SendAsync(message);
-        return await ReadAuthResultAsync(response, "Unable to change your password. Please try again.");
+            using var message = new HttpRequestMessage(HttpMethod.Post, "api/auth/change-password")
+            {
+                Content = JsonContent.Create(request)
+            };
+            ApplySession(message, sessionToken);
+            var response = await _http.SendAsync(message);
+            return await ReadAuthResultAsync(response, "Unable to change your password. Please try again.");
+        }
+        catch (HttpRequestException)
+        {
+            return new AuthResult { Success = false, Error = "Cannot connect to server." };
+        }
     }
 
     private static void ApplySession(HttpRequestMessage message, string sessionToken)

@@ -50,9 +50,16 @@ public class ProductCatalogService
 
         _products.Clear();
         _products.AddRange(products
-            .Where(p => p.IsPublished && p.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
-            .Where(p => p.InStock || p.Stock >= 0)
+            .Where(p => p.IsPublished && (string.IsNullOrEmpty(p.Status) || p.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)))
             .Select(NormalizeProduct));
+
+        if (_products.Count == 0)
+        {
+            var allProds = await _db.GetProductsAsync();
+            _products.AddRange(allProds
+                .Where(p => string.IsNullOrEmpty(p.Status) || !p.Status.Equals("Archived", StringComparison.OrdinalIgnoreCase))
+                .Select(NormalizeProduct));
+        }
 
         _categories.Clear();
         foreach (var c in categories.Where(c => c.IsActive))
@@ -120,16 +127,65 @@ public class ProductCatalogService
         return source.Where(p => Matches(p, q));
     }
 
-    public IEnumerable<Product> Featured => _products.Where(p => p.IsFeatured).Take(8);
-    public IEnumerable<Product> FreshDrops => _products.Where(p => p.IsFreshDrop).Take(4);
-    public IEnumerable<Product> Favorites => _products.Where(p => p.IsFavorite || p.IsBestSeller).Take(4);
-    public IEnumerable<Product> BestSellers =>
-        _products.OrderByDescending(p => p.Sold)
-            .ThenByDescending(p => p.IsBestSeller || p.Badge == "Best Seller");
-    public IEnumerable<Product> NewArrivals => _products.Where(p => p.IsNewArrival || p.Badge == "New" || p.IsFreshDrop);
+    public IEnumerable<Product> Featured
+    {
+        get
+        {
+            var items = _products.Where(p => p.IsFeatured).Take(8).ToList();
+            if (items.Count > 0)
+                return items;
+            return _products.Take(8);
+        }
+    }
+
+    public IEnumerable<Product> FreshDrops
+    {
+        get
+        {
+            var items = _products.Where(p => p.IsFreshDrop || p.IsNewArrival || p.Badge == "New").Take(4).ToList();
+            if (items.Count > 0)
+                return items;
+            return _products.Count > 4 ? _products.Skip(4).Take(4) : _products.Take(4);
+        }
+    }
+
+    public IEnumerable<Product> Favorites
+    {
+        get
+        {
+            var items = _products.Where(p => p.IsFavorite || p.IsBestSeller || p.Rating >= 4.5).Take(4).ToList();
+            if (items.Count > 0)
+                return items;
+            return _products.OrderByDescending(p => p.Rating).ThenByDescending(p => p.Sold).Take(4);
+        }
+    }
+
+    public IEnumerable<Product> BestSellers
+    {
+        get
+        {
+            var items = _products.Where(p => p.IsBestSeller || p.Badge == "Best Seller").ToList();
+            if (items.Count > 0)
+                return items;
+            return _products.OrderByDescending(p => p.Sold).ThenByDescending(p => p.Rating);
+        }
+    }
+
+    public IEnumerable<Product> NewArrivals
+    {
+        get
+        {
+            var items = _products.Where(p => p.IsNewArrival || p.Badge == "New" || p.IsFreshDrop).ToList();
+            if (items.Count > 0)
+                return items;
+            return _products.OrderByDescending(p => p.Id);
+        }
+    }
+
     public IEnumerable<Product> Apparel => _products.Where(p =>
         p.Section == "apparel" ||
         p.Category is "T-Shirts" or "Polo Shirts" or "Hoodies" or "Jackets");
+
     public IEnumerable<Product> Accessories => _products.Where(p =>
         p.Section == "accessories" ||
         p.Category is "Accessories" or "Caps" or "Bags" or "Tumblers" or "School Supplies");

@@ -1,0 +1,155 @@
+@namespace NUBulldogsExchange.Web.Shared.Components.Mobile
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject ProductCatalogService Catalog
+@inject AdminProductService AdminProducts
+@inject AuthService Auth
+@inject NavigationManager Navigation
+@implements IDisposable
+
+<div class="mobile-home-container">
+    @* Greeting *@
+    <div class="mobile-greeting-wrap">
+        <h1 class="mobile-greeting-title">Hello, @(Auth.FirstName ?? "Gian")! 👋</h1>
+        <p class="mobile-greeting-sub">Ready to show your Bulldog pride?</p>
+    </div>
+
+    @* Search Bar with Settings Filter *@
+    <div class="mobile-search-card">
+        <Icon Name="search" Size="18" CssClass="mobile-search-icon" />
+        <input type="search"
+               class="mobile-search-input"
+               placeholder="Search NU merchandise..."
+               value="@_searchQuery"
+               @oninput="OnSearchInput"
+               @onkeydown="OnSearchKey" />
+        <button type="button" class="mobile-search-filter-btn" title="Filter" @onclick="GoToShop">
+            <Icon Name="sliders" Size="18" />
+        </button>
+    </div>
+
+    @* Hero Banner Promo Card: Campus Ready *@
+    <div class="mobile-hero-promo-card">
+        <div class="mobile-hero-promo-content">
+            <h2 class="mobile-hero-promo-title">Campus Ready</h2>
+            <p class="mobile-hero-promo-sub">Shop bags, tumblers, and school essentials.</p>
+            <a href="/accessories" class="mobile-hero-promo-btn">Shop Now</a>
+        </div>
+        <div class="mobile-hero-promo-media">
+            <img src="https://images.unsplash.com/photo-1553062407-98eeb64c6a62?w=500&auto=format&fit=crop&q=80"
+                 alt="Campus Ready Essentials"
+                 loading="eager" />
+        </div>
+        <div class="mobile-hero-promo-dots">
+            <span class="promo-dot"></span>
+            <span class="promo-dot"></span>
+            <span class="promo-dot active-dot"></span>
+        </div>
+    </div>
+
+    @* Shop by Category Horizontal Scroll *@
+    <section class="mobile-home-section">
+        <div class="mobile-home-section-header">
+            <h3 class="section-title">Shop by Category</h3>
+            <a href="/shop" class="section-see-all">See All</a>
+        </div>
+
+        <div class="mobile-category-row">
+            @foreach (var cat in Categories)
+            {
+                <a href="/shop?category=@Uri.EscapeDataString(cat.Name)" class="mobile-category-pill">
+                    <div class="mobile-cat-box" style="background-color: @cat.BgColor;">
+                        <span class="mobile-cat-icon">@cat.Icon</span>
+                    </div>
+                    <span class="mobile-cat-label">@cat.Name</span>
+                </a>
+            }
+        </div>
+    </section>
+
+    @* Featured Bulldogs Picks 2-Column Grid *@
+    <section class="mobile-home-section">
+        <div class="mobile-home-section-header">
+            <h3 class="section-title">Featured Bulldogs Picks</h3>
+            <a href="/shop" class="section-see-all">See All</a>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="mobile-loading-state">
+                <p>Loading Bulldogs merchandise...</p>
+            </div>
+        }
+        else
+        {
+            <div class="mobile-products-grid">
+                @foreach (var product in FeaturedProducts)
+                {
+                    <MobileProductCard @key="product.Id" Product="product" />
+                }
+            </div>
+        }
+    </section>
+</div>
+
+@code {
+    private string _searchQuery = string.Empty;
+    private bool _loading = true;
+
+    private record CategoryItem(string Name, string Icon, string BgColor);
+
+    private static readonly CategoryItem[] Categories =
+    [
+        new("Shirts", "👕", "#EBF3FF"),
+        new("Polo Shirts", "👔", "#E8F8F5"),
+        new("Hoodies", "🧥", "#FEF3E8"),
+        new("Jackets", "🧣", "#F3E8FE"),
+        new("Caps", "🧢", "#FEF9E8"),
+        new("Bags", "🎒", "#FCE8F3"),
+        new("Accessories", "🏷️", "#E6F9F6")
+    ];
+
+    private IEnumerable<Product> FeaturedProducts =>
+        Catalog.Products.Where(p => p.IsPublished).Take(6);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Catalog.OnChange += Refresh;
+        Auth.OnChange += Refresh;
+        try
+        {
+            await AdminProducts.EnsureLoadedAsync();
+            await Catalog.EnsureLoadedAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OnSearchInput(ChangeEventArgs e) =>
+        _searchQuery = e.Value?.ToString() ?? string.Empty;
+
+    private void OnSearchKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            GoToShop();
+    }
+
+    private void GoToShop()
+    {
+        if (string.IsNullOrWhiteSpace(_searchQuery))
+            Navigation.NavigateTo("/shop");
+        else
+            Navigation.NavigateTo($"/shop?q={Uri.EscapeDataString(_searchQuery.Trim())}");
+    }
+
+    public void Dispose()
+    {
+        Catalog.OnChange -= Refresh;
+        Auth.OnChange -= Refresh;
+    }
+}

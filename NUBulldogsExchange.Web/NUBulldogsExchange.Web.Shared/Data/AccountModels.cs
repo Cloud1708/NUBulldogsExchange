@@ -7,6 +7,7 @@ public class MockOrderItem
     public string ImageUrl { get; set; } = string.Empty;
     public int Quantity { get; set; } = 1;
     public decimal Price { get; set; }
+    public string Size { get; set; } = "Free Size";
 }
 
 public class MockOrder
@@ -19,8 +20,9 @@ public class MockOrder
 
     public int ItemCount => Items.Sum(i => i.Quantity);
     public string DateLabel => Date.ToString("yyyy-MM-dd");
+    public string FormattedDate => Date.ToString("MMM d, yyyy");
     public string ItemCountLabel => ItemCount == 1 ? "1 item" : $"{ItemCount} items";
-    public bool IsActive => Status is "Pending" or "Processing" or "Ready for Pickup";
+    public bool IsActive => Status is "Pending" or "Processing" or "Ready for Pickup" or "Confirmed";
     public bool CanCancel => Status == "Pending";
 
     public string StatusKey => Status switch
@@ -28,6 +30,7 @@ public class MockOrder
         "Ready for Pickup" => "ready",
         "Processing" => "processing",
         "Pending" => "pending",
+        "Confirmed" => "confirmed",
         "Completed" => "completed",
         "Cancelled" => "cancelled",
         _ => "pending"
@@ -45,7 +48,8 @@ public class MockOrder
             Name = i.Name,
             ImageUrl = i.ImageUrl,
             Quantity = i.Quantity,
-            Price = i.Price
+            Price = i.Price,
+            Size = "M"
         }).ToList()
     };
 }

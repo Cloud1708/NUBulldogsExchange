@@ -3,7 +3,7 @@ using Microsoft.Data.Sqlite;
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
 
-namespace NUBulldogsExchange.Web.Web.Data;
+namespace NUBulldogsExchange.Web.Shared.Data;
 
 public sealed partial class DatabaseService : IAppDatabase
 {
@@ -17,17 +17,62 @@ public sealed partial class DatabaseService : IAppDatabase
     private readonly SemaphoreSlim _openLock = new(1, 1);
     private bool _initialized;
 
-    public DatabaseService(IWebHostEnvironment env)
+    public DatabaseService(string? customDbPath = null)
     {
-        var dataDir = Path.Combine(env.ContentRootPath, "App_Data");
-        Directory.CreateDirectory(dataDir);
-        var dbPath = Path.Combine(dataDir, "NUBulldogsExchange.db");
+        var dbPath = customDbPath ?? ResolveDefaultDatabasePath();
+        var dataDir = Path.GetDirectoryName(dbPath);
+        if (!string.IsNullOrEmpty(dataDir))
+            Directory.CreateDirectory(dataDir);
+
         _connectionString = new SqliteConnectionStringBuilder
         {
             DataSource = dbPath,
             Mode = SqliteOpenMode.ReadWriteCreate,
             DefaultTimeout = 5
         }.ToString();
+    }
+
+    public static string ResolveDefaultDatabasePath()
+    {
+        var envPath = Environment.GetEnvironmentVariable("NU_DATABASE_PATH");
+        if (!string.IsNullOrWhiteSpace(envPath))
+            return envPath;
+
+        var current = new DirectoryInfo(AppContext.BaseDirectory);
+        while (current is not null)
+        {
+            var candidate1 = Path.Combine(current.FullName, "NUBulldogsExchange.Web", "NUBulldogsExchange.Web.Web", "App_Data", "NUBulldogsExchange.db");
+            if (File.Exists(candidate1)) return candidate1;
+
+            var candidate2 = Path.Combine(current.FullName, "NUBulldogsExchange.Web.Web", "App_Data", "NUBulldogsExchange.db");
+            if (File.Exists(candidate2)) return candidate2;
+
+            var candidate3 = Path.Combine(current.FullName, "App_Data", "NUBulldogsExchange.db");
+            if (File.Exists(candidate3)) return candidate3;
+
+            current = current.Parent;
+        }
+
+        try
+        {
+            var cwd = new DirectoryInfo(Directory.GetCurrentDirectory());
+            while (cwd is not null)
+            {
+                var candidate1 = Path.Combine(cwd.FullName, "NUBulldogsExchange.Web", "NUBulldogsExchange.Web.Web", "App_Data", "NUBulldogsExchange.db");
+                if (File.Exists(candidate1)) return candidate1;
+
+                var candidate2 = Path.Combine(cwd.FullName, "NUBulldogsExchange.Web.Web", "App_Data", "NUBulldogsExchange.db");
+                if (File.Exists(candidate2)) return candidate2;
+
+                var candidate3 = Path.Combine(cwd.FullName, "App_Data", "NUBulldogsExchange.db");
+                if (File.Exists(candidate3)) return candidate3;
+
+                cwd = cwd.Parent;
+            }
+        }
+        catch { }
+
+        return Path.Combine(AppContext.BaseDirectory, "App_Data", "NUBulldogsExchange.db");
     }
 
     public string DatabasePath

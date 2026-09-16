@@ -1,7 +1,9 @@
 @page "/wishlist"
 @using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Components.Mobile
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Services
+@inject IFormFactor FormFactor
 @inject WishlistService WishlistService
 @inject AuthService Auth
 @inject ProductCatalogService Catalog
@@ -10,46 +12,53 @@
 
 <PageTitle>Wishlist | NU Bulldogs Exchange</PageTitle>
 
-@if (!Auth.IsLoggedIn)
+@if (FormFactor.IsMobile)
 {
-    <section class="wishlist-guest-section">
-        <div class="container">
-            <div class="wishlist-guest">
-                <div class="wishlist-guest-icon" aria-hidden="true">
-                    <Icon Name="user-round" Size="34" />
-                </div>
-                <h1>Sign in to view your account</h1>
-                <p>Track orders, manage your wishlist, and more.</p>
-                <a href="/login?returnUrl=%2Fwishlist&redirect=%2Fwishlist" class="btn btn-navy wishlist-signin-btn">Sign In</a>
-            </div>
-        </div>
-    </section>
+    <MobileWishlistView />
 }
 else
 {
-    <AccountShell Active="wishlist">
-        <div class="wishlist-panel">
-            <h1>My Wishlist (@ItemCountLabel)</h1>
-
-            @if (!_products.Any())
-            {
-                <div class="wishlist-empty">
-                    <div class="wishlist-empty-icon" aria-hidden="true">
-                        <Icon Name="heart" Size="42" />
+    @if (!Auth.IsLoggedIn)
+    {
+        <section class="wishlist-guest-section">
+            <div class="container">
+                <div class="wishlist-guest">
+                    <div class="wishlist-guest-icon" aria-hidden="true">
+                        <Icon Name="user-round" Size="34" />
                     </div>
-                    <h2>Your wishlist is empty</h2>
-                    <p>Save items you love to your wishlist.</p>
-                    <a href="/shop" class="btn btn-navy wishlist-browse-btn">Browse Products</a>
+                    <h1>Sign in to view your account</h1>
+                    <p>Track orders, manage your wishlist, and more.</p>
+                    <a href="/login?returnUrl=%2Fwishlist&redirect=%2Fwishlist" class="btn btn-navy wishlist-signin-btn">Sign In</a>
                 </div>
-            }
-            else
-            {
-                <div class="wishlist-product-grid">
-                    <ProductGrid Products="_products" />
-                </div>
-            }
-        </div>
-    </AccountShell>
+            </div>
+        </section>
+    }
+    else
+    {
+        <AccountShell Active="wishlist">
+            <div class="wishlist-panel">
+                <h1>My Wishlist (@ItemCountLabel)</h1>
+
+                @if (!_products.Any())
+                {
+                    <div class="wishlist-empty">
+                        <div class="wishlist-empty-icon" aria-hidden="true">
+                            <Icon Name="heart" Size="42" />
+                        </div>
+                        <h2>Your wishlist is empty</h2>
+                        <p>Save items you love to your wishlist.</p>
+                        <a href="/shop" class="btn btn-navy wishlist-browse-btn">Browse Products</a>
+                    </div>
+                }
+                else
+                {
+                    <div class="wishlist-product-grid">
+                        <ProductGrid Products="_products" />
+                    </div>
+                }
+            </div>
+        </AccountShell>
+    }
 }
 
 @code {

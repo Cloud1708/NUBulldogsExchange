@@ -2,7 +2,7 @@ using System.Text.Json;
 using Microsoft.Data.Sqlite;
 using NUBulldogsExchange.Web.Shared.Data;
 
-namespace NUBulldogsExchange.Web.Web.Data;
+namespace NUBulldogsExchange.Web.Shared.Data;
 
 /// <summary>
 /// Extended schema, column migrations, and minimal seed data for the shared SQLite store.

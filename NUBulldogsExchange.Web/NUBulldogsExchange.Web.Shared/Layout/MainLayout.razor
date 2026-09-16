@@ -1,22 +1,39 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
 @using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Components.Mobile
+@using NUBulldogsExchange.Web.Shared.Services
+@inject IFormFactor FormFactor
 
 <AuthSessionRestorer />
 
-<div class="store-shell">
-    <header class="site-header">
-        <AnnouncementBar />
-        <SiteHeader />
-        <SiteNavbar />
-    </header>
+@if (FormFactor.IsMobile)
+{
+    <div class="mobile-app-shell">
+        <main class="mobile-store-main">
+            @Body
+        </main>
 
-    <main class="store-main">
-        @Body
-    </main>
+        <MobileBottomNav />
+        <ToastHost />
+    </div>
+}
+else
+{
+    <div class="store-shell">
+        <header class="site-header">
+            <AnnouncementBar />
+            <SiteHeader />
+            <SiteNavbar />
+        </header>
 
-    <SiteFooter />
-    <ToastHost />
-</div>
+        <main class="store-main">
+            @Body
+        </main>
+
+        <SiteFooter />
+        <ToastHost />
+    </div>
+}
 
 <div id="blazor-error-ui" data-nosnippet>
     An unhandled error has occurred.

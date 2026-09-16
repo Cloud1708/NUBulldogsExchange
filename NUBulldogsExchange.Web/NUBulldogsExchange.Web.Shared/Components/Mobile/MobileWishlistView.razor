@@ -1,0 +1,138 @@
+@namespace NUBulldogsExchange.Web.Shared.Components.Mobile
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject WishlistService WishlistService
+@inject CartService Cart
+@inject AuthService Auth
+@inject ProductCatalogService Catalog
+@inject AdminProductService AdminProducts
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="mobile-wishlist-container">
+    @* Top Header matching Mockup *@
+    <div class="mobile-wishlist-header">
+        <h1 class="mobile-wishlist-title">My Wishlist</h1>
+        <p class="mobile-wishlist-count">@ItemCountLabel</p>
+    </div>
+
+    @if (!_products.Any())
+    {
+        <div class="mobile-wishlist-empty">
+            <div class="empty-icon-circle" aria-hidden="true">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                </svg>
+            </div>
+            <h2 class="empty-title">Your wishlist is empty</h2>
+            <p class="empty-text">Explore our shop and tap the heart icon on items you love.</p>
+            <a href="/shop" class="empty-btn">Browse Products</a>
+        </div>
+    }
+    else
+    {
+        <div class="mobile-wishlist-grid">
+            @foreach (var product in _products)
+            {
+                <article class="wishlist-product-card" @key="product.Id" @onclick="() => ViewProduct(product.Id)">
+                    <div class="wishlist-img-box">
+                        <img src="@product.ImageUrl"
+                             alt="@product.Name"
+                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                        <button type="button"
+                                class="wishlist-heart-btn"
+                                title="Remove from wishlist"
+                                aria-label="Remove from wishlist"
+                                @onclick="() => RemoveFromWishlist(product)"
+                                @onclick:stopPropagation="true">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="#EF4444" stroke="#DC2626" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="wishlist-details">
+                        <h3 class="wishlist-title">@product.Name</h3>
+                        <div class="wishlist-rating-row">
+                            <svg class="star-svg" width="13" height="13" viewBox="0 0 24 24" fill="#F59E0B" stroke="#D97706" stroke-width="1">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                            </svg>
+                            <span class="rating-val">@(product.Rating > 0 ? product.Rating.ToString("0.0") : "4.7")</span>
+                        </div>
+                        <div class="wishlist-price">
+                            ₱@product.Price.ToString("N0")
+                        </div>
+                        <button type="button"
+                                class="wishlist-add-cart-btn"
+                                @onclick="() => AddToCart(product)"
+                                @onclick:stopPropagation="true">
+                            Add to Cart
+                        </button>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private List<Product> _products = [];
+
+    private string ItemCountLabel
+    {
+        get
+        {
+            var count = _products.Count;
+            return count == 1 ? "1 saved item" : $"{count} saved items";
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        WishlistService.OnChange += Refresh;
+        Auth.OnChange += Refresh;
+        await AdminProducts.EnsureLoadedAsync();
+        await Catalog.EnsureLoadedAsync();
+        Load();
+    }
+
+    private void Load()
+    {
+        _products = Catalog.Products.Where(p => WishlistService.Contains(p.Id)).ToList();
+    }
+
+    private void Refresh()
+    {
+        Load();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void ViewProduct(int productId)
+    {
+        Navigation.NavigateTo($"/product/{productId}");
+    }
+
+    private async Task RemoveFromWishlist(Product product)
+    {
+        WishlistService.Toggle(product.Id);
+        await WishlistService.PersistAsync(JS, Auth.Email);
+        Toast.Show($"Removed {product.Name} from wishlist.");
+    }
+
+    private async Task AddToCart(Product product)
+    {
+        var defaultSize = product.Sizes.FirstOrDefault();
+        var defaultColor = product.Colors.FirstOrDefault();
+        Cart.Add(product, 1, defaultColor, defaultSize);
+        await Cart.PersistAsync(Auth.Email);
+        Toast.Show($"Added {product.Name} to cart!");
+    }
+
+    public void Dispose()
+    {
+        WishlistService.OnChange -= Refresh;
+        Auth.OnChange -= Refresh;
+    }
+}

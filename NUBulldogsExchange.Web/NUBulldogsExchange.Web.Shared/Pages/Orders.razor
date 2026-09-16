@@ -1,8 +1,10 @@
 @page "/orders"
 @page "/my-orders"
 @using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Components.Mobile
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Services
+@inject IFormFactor FormFactor
 @inject AuthService Auth
 @inject OrderService OrderService
 @inject ToastService Toast
@@ -10,101 +12,108 @@
 
 <PageTitle>My Orders | NU Bulldogs Exchange</PageTitle>
 
-@if (!Auth.IsLoggedIn || Auth.CurrentUser is null)
+@if (FormFactor.IsMobile)
 {
-    <section class="wishlist-guest-section">
-        <div class="container">
-            <div class="wishlist-guest">
-                <div class="wishlist-guest-icon" aria-hidden="true">
-                    <Icon Name="package" Size="34" />
-                </div>
-                <h1>Sign in to view your orders</h1>
-                <p>Track campus pickup and past purchases from your account.</p>
-                <a href="/login?returnUrl=%2Forders" class="btn btn-navy wishlist-signin-btn">Sign In</a>
-            </div>
-        </div>
-    </section>
+    <MobileOrdersView />
 }
 else
 {
-    <AccountShell Active="orders">
-        <div class="account-panel account-orders-panel">
-            <h1>My Orders</h1>
-
-            <div class="order-filter-tabs" role="tablist" aria-label="Filter orders">
-                @foreach (var filter in Filters)
-                {
-                    <button type="button"
-                            role="tab"
-                            class="order-filter-tab @(_filter == filter ? "active" : "")"
-                            aria-selected="@(_filter == filter)"
-                            @onclick="() => _filter = filter">
-                        @filter
-                    </button>
-                }
-            </div>
-
-            @{
-                var visible = OrderService.Filter(_filter).ToList();
-            }
-
-            @if (!visible.Any())
-            {
-                <div class="wishlist-empty">
-                    <div class="wishlist-empty-icon" aria-hidden="true">
-                        <Icon Name="package" Size="42" />
+    @if (!Auth.IsLoggedIn || Auth.CurrentUser is null)
+    {
+        <section class="wishlist-guest-section">
+            <div class="container">
+                <div class="wishlist-guest">
+                    <div class="wishlist-guest-icon" aria-hidden="true">
+                        <Icon Name="package" Size="34" />
                     </div>
-                    <h2>No orders found</h2>
-                    <p>There are no orders in this filter.</p>
+                    <h1>Sign in to view your orders</h1>
+                    <p>Track campus pickup and past purchases from your account.</p>
+                    <a href="/login?returnUrl=%2Forders" class="btn btn-navy wishlist-signin-btn">Sign In</a>
                 </div>
-            }
-            else
-            {
-                <div class="order-card-list">
-                    @foreach (var order in visible)
+            </div>
+        </section>
+    }
+    else
+    {
+        <AccountShell Active="orders">
+            <div class="account-panel account-orders-panel">
+                <h1>My Orders</h1>
+
+                <div class="order-filter-tabs" role="tablist" aria-label="Filter orders">
+                    @foreach (var filter in Filters)
                     {
-                        <article class="order-card">
-                            <div class="order-card-top">
-                                <div>
-                                    <strong>@order.Id</strong>
-                                    <span>@order.DateLabel • @order.ItemCountLabel</span>
-                                </div>
-                                <span class="order-status status-@order.StatusKey">@order.Status</span>
-                            </div>
-
-                            <div class="order-card-items">
-                                @foreach (var item in order.Items)
-                                {
-                                    <div class="order-card-item">
-                                        <img src="@item.ImageUrl"
-                                             alt="@item.Name"
-                                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                                        <span class="order-card-item-name">@item.Name</span>
-                                        <span class="order-card-item-qty">x@item.Quantity</span>
-                                    </div>
-                                }
-                            </div>
-
-                            <div class="order-card-footer">
-                                <strong>₱@order.Total.ToString("N0")</strong>
-                                <div class="order-card-actions">
-                                    @if (order.CanCancel)
-                                    {
-                                        <button type="button" class="btn btn-cancel-order" @onclick="() => Cancel(order.Id)">
-                                            Cancel Order
-                                        </button>
-                                    }
-                                    <button type="button" class="btn btn-navy btn-view-order" @onclick="() => ViewOrder(order.Id)">
-                                        View Order
-                                    </button>
-                                </div>
-                            </div>
-                        </article>
+                        <button type="button"
+                                role="tab"
+                                class="order-filter-tab @(_filter == filter ? "active" : "")"
+                                aria-selected="@(_filter == filter)"
+                                @onclick="() => _filter = filter">
+                            @filter
+                        </button>
                     }
                 </div>
-            }
-        </div>
-    </AccountShell>
+
+                @{
+                    var visible = OrderService.Filter(_filter).ToList();
+                }
+
+                @if (!visible.Any())
+                {
+                    <div class="wishlist-empty">
+                        <div class="wishlist-empty-icon" aria-hidden="true">
+                            <Icon Name="package" Size="42" />
+                        </div>
+                        <h2>No orders found</h2>
+                        <p>There are no orders in this filter.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="order-card-list">
+                        @foreach (var order in visible)
+                        {
+                            <article class="order-card">
+                                <div class="order-card-top">
+                                    <div>
+                                        <strong>@order.Id</strong>
+                                        <span>@order.DateLabel • @order.ItemCountLabel</span>
+                                    </div>
+                                    <span class="order-status status-@order.StatusKey">@order.Status</span>
+                                </div>
+
+                                <div class="order-card-items">
+                                    @foreach (var item in order.Items)
+                                    {
+                                        <div class="order-card-item">
+                                            <img src="@item.ImageUrl"
+                                                 alt="@item.Name"
+                                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                            <span class="order-card-item-name">@item.Name</span>
+                                            <span class="order-card-item-qty">x@item.Quantity</span>
+                                        </div>
+                                    }
+                                </div>
+
+                                <div class="order-card-footer">
+                                    <strong>₱@order.Total.ToString("N0")</strong>
+                                    <div class="order-card-actions">
+                                        @if (order.CanCancel)
+                                        {
+                                            <button type="button" class="btn btn-cancel-order" @onclick="() => Cancel(order.Id)">
+                                                Cancel Order
+                                            </button>
+                                        }
+                                        <button type="button" class="btn btn-navy btn-view-order" @onclick="() => ViewOrder(order.Id)">
+                                            View Order
+                                        </button>
+                                    </div>
+                                </div>
+                            </article>
+                        }
+                    </div>
+                }
+            </div>
+        </AccountShell>
+    }
 }
 
 @code {

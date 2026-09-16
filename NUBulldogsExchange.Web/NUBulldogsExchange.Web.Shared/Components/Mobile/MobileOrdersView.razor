@@ -1,0 +1,389 @@
+@namespace NUBulldogsExchange.Web.Shared.Components.Mobile
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AuthService Auth
+@inject OrderService OrderService
+@inject CartService Cart
+@inject ProductCatalogService Catalog
+@inject ToastService Toast
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IDisposable
+
+<div class="mobile-orders-container">
+    @* Orders Header matching Figma Mockup *@
+    <div class="mobile-orders-header">
+        <h1 class="mobile-orders-title">My Orders</h1>
+    </div>
+
+    @* Horizontal Filter Pills *@
+    <div class="mobile-filter-pills-row" role="tablist" aria-label="Order Status Filters">
+        @foreach (var filter in Filters)
+        {
+            <button type="button"
+                    role="tab"
+                    class="mobile-filter-pill @(_filter == filter ? "active" : "")"
+                    aria-selected="@(_filter == filter)"
+                    @onclick="() => SetFilter(filter)">
+                @filter
+            </button>
+        }
+    </div>
+
+    @{
+        var visibleOrders = FilteredOrders.ToList();
+    }
+
+    @if (!visibleOrders.Any())
+    {
+        <div class="mobile-orders-empty">
+            <div class="empty-icon-circle" aria-hidden="true">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94A3B8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path>
+                    <path d="m3.3 7 8.7 5 8.7-5"></path>
+                    <path d="M12 22V12"></path>
+                </svg>
+            </div>
+            <h2 class="empty-title">No @(_filter == "All" ? "" : _filter.ToLowerInvariant()) orders found</h2>
+            <p class="empty-text">You don't have any orders under this status yet.</p>
+            <a href="/shop" class="empty-btn">Shop Merchandise</a>
+        </div>
+    }
+    else
+    {
+        <div class="mobile-orders-list">
+            @foreach (var order in visibleOrders)
+            {
+                <article class="mobile-order-card" @key="order.Id">
+                    <div class="mobile-order-card-header">
+                        <div class="mobile-order-header-left">
+                            <strong class="mobile-order-id">#@order.Id</strong>
+                            <span class="mobile-order-date">@FormatDate(order.Date)</span>
+                        </div>
+                        <span class="mobile-status-pill status-@order.StatusKey">@order.Status</span>
+                    </div>
+
+                    <div class="mobile-order-items-list">
+                        @foreach (var item in order.Items)
+                        {
+                            <div class="mobile-order-item-row">
+                                <img src="@item.ImageUrl"
+                                     alt="@item.Name"
+                                     class="mobile-order-item-thumb"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="mobile-order-item-info">
+                                    <h4 class="mobile-order-item-title">@item.Name</h4>
+                                    <span class="mobile-order-item-meta">Size: @(string.IsNullOrEmpty(item.Size) ? "Free Size" : item.Size) · Qty: @item.Quantity</span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="mobile-order-card-footer">
+                        <div class="mobile-order-total-block">
+                            <span class="mobile-order-total-label">Order Total</span>
+                            <strong class="mobile-order-total-val">₱@order.Total.ToString("N0")</strong>
+                        </div>
+
+                        <div class="mobile-order-actions-row">
+                            @if (order.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <button type="button" class="mobile-order-action-btn btn-outline" @onclick="() => BuyAgain(order)">Buy Again</button>
+                                <button type="button" class="mobile-order-action-btn btn-gold" @onclick="() => OpenReview(order)">Review</button>
+                                <button type="button" class="mobile-order-action-btn btn-outline" @onclick="() => OpenDetails(order)">Details</button>
+                            }
+                            else if (order.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <button type="button" class="mobile-order-action-btn btn-outline" @onclick="() => OpenDetails(order)">Details</button>
+                            }
+                            else
+                            {
+                                <button type="button" class="mobile-order-action-btn btn-outline" @onclick="() => OpenDetails(order)">Details</button>
+                                <button type="button" class="mobile-order-action-btn btn-navy" @onclick="() => TrackOrder(order)">Track</button>
+                            }
+                        </div>
+                    </div>
+                </article>
+            }
+        </div>
+    }
+</div>
+
+@* Order Details Sheet *@
+@if (_selectedOrder is not null)
+{
+    <div class="mobile-modal-backdrop" @onclick="CloseDetails">
+        <div class="mobile-modal-sheet" @onclick:stopPropagation="true">
+            <div class="mobile-modal-header">
+                <div>
+                    <h3 class="mobile-modal-title">Order #@_selectedOrder.Id</h3>
+                    <span class="mobile-order-date">Placed on @FormatDate(_selectedOrder.Date)</span>
+                </div>
+                <button type="button" class="mobile-modal-close-btn" @onclick="CloseDetails" aria-label="Close">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </div>
+
+            <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 13px; font-weight: 600; color: #475569;">Fulfillment Status</span>
+                <span class="mobile-status-pill status-@_selectedOrder.StatusKey">@_selectedOrder.Status</span>
+            </div>
+
+            <div style="background: #F8FAFC; border-radius: 14px; padding: 12px; margin-bottom: 16px;">
+                <div style="font-size: 12px; font-weight: 700; color: #14366A; margin-bottom: 4px;">📍 Pickup Location</div>
+                <div style="font-size: 12px; color: #475569;">NU Bulldogs Exchange Counter</div>
+                <div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">Bring your student ID upon claim</div>
+            </div>
+
+            <div style="font-size: 13px; font-weight: 700; color: #14366A; margin-bottom: 10px;">Ordered Items</div>
+            <div class="mobile-order-items-list" style="margin-bottom: 16px;">
+                @foreach (var item in _selectedOrder.Items)
+                {
+                    <div class="mobile-order-item-row" style="background: #FFFFFF; border: 1px solid #EDF2F7; border-radius: 12px; padding: 8px;">
+                        <img src="@item.ImageUrl" alt="@item.Name" class="mobile-order-item-thumb" onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                        <div class="mobile-order-item-info">
+                            <h4 class="mobile-order-item-title">@item.Name</h4>
+                            <span class="mobile-order-item-meta">Size: @(string.IsNullOrEmpty(item.Size) ? "Free Size" : item.Size) · Qty: @item.Quantity</span>
+                            <span style="font-size: 12px; font-weight: 800; color: #14366A;">₱@((item.Price * item.Quantity).ToString("N0"))</span>
+                        </div>
+                    </div>
+                }
+            </div>
+
+            <div style="border-top: 1px solid #F1F5F9; padding-top: 12px; margin-bottom: 18px; display: flex; flex-direction: column; gap: 6px;">
+                <div style="display: flex; justify-content: space-between; font-size: 13px; color: #64748B;">
+                    <span>Subtotal</span>
+                    <span>₱@_selectedOrder.Total.ToString("N0")</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 13px; color: #10B981; font-weight: 600;">
+                    <span>Campus Pickup</span>
+                    <span>FREE</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 15px; font-weight: 800; color: #14366A; margin-top: 4px;">
+                    <span>Total Amount</span>
+                    <span>₱@_selectedOrder.Total.ToString("N0")</span>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px;">
+                @if (_selectedOrder.CanCancel)
+                {
+                    <button type="button" class="mobile-order-action-btn btn-outline" style="flex: 1; padding: 10px;" @onclick="() => CancelOrder(_selectedOrder.Id)">
+                        Cancel Order
+                    </button>
+                }
+                <button type="button" class="mobile-order-action-btn btn-navy" style="flex: 2; padding: 10px;" @onclick="CloseDetails">
+                    Done
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@* Track Order Sheet *@
+@if (_trackingOrder is not null)
+{
+    <div class="mobile-modal-backdrop" @onclick="CloseTracking">
+        <div class="mobile-modal-sheet" @onclick:stopPropagation="true">
+            <div class="mobile-modal-header">
+                <div>
+                    <h3 class="mobile-modal-title">Track Order #@_trackingOrder.Id</h3>
+                    <span class="mobile-order-date">Expected Pickup: Today / Next School Day</span>
+                </div>
+                <button type="button" class="mobile-modal-close-btn" @onclick="CloseTracking" aria-label="Close">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </div>
+
+            <div style="margin: 20px 10px 24px 10px; display: flex; flex-direction: column; gap: 20px;">
+                <div style="display: flex; gap: 14px; align-items: flex-start;">
+                    <div style="width: 28px; height: 28px; border-radius: 50%; background: #10B981; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">✓</div>
+                    <div>
+                        <strong style="font-size: 13px; color: #14366A; display: block;">Order Placed & Confirmed</strong>
+                        <span style="font-size: 11px; color: #64748B;">@FormatDate(_trackingOrder.Date)</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 14px; align-items: flex-start;">
+                    <div style="width: 28px; height: 28px; border-radius: 50%; background: @(_trackingOrder.StatusKey is "processing" or "ready" or "completed" ? "#10B981" : "#E2E8F0"); color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">
+                        @(_trackingOrder.StatusKey is "processing" or "ready" or "completed" ? "✓" : "2")
+                    </div>
+                    <div>
+                        <strong style="font-size: 13px; color: #14366A; display: block;">Preparing at Inventory Counter</strong>
+                        <span style="font-size: 11px; color: #64748B;">Items are being packaged with receipt</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 14px; align-items: flex-start;">
+                    <div style="width: 28px; height: 28px; border-radius: 50%; background: @(_trackingOrder.StatusKey is "ready" or "completed" ? "#10B981" : "#E2E8F0"); color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">
+                        @(_trackingOrder.StatusKey is "ready" or "completed" ? "✓" : "3")
+                    </div>
+                    <div>
+                        <strong style="font-size: 13px; color: #14366A; display: block;">Ready for Campus Pickup</strong>
+                        <span style="font-size: 11px; color: #64748B;">Available at NU Bulldogs Exchange Counter</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 14px; align-items: flex-start;">
+                    <div style="width: 28px; height: 28px; border-radius: 50%; background: @(_trackingOrder.StatusKey == "completed" ? "#10B981" : "#E2E8F0"); color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">
+                        @(_trackingOrder.StatusKey == "completed" ? "✓" : "4")
+                    </div>
+                    <div>
+                        <strong style="font-size: 13px; color: #14366A; display: block;">Completed</strong>
+                        <span style="font-size: 11px; color: #64748B;">Claimed and verified</span>
+                    </div>
+                </div>
+            </div>
+
+            <button type="button" class="mobile-order-action-btn btn-navy" style="width: 100%; padding: 10px;" @onclick="CloseTracking">
+                Close Tracking
+            </button>
+        </div>
+    </div>
+}
+
+@* Review Order Sheet *@
+@if (_reviewOrder is not null)
+{
+    <div class="mobile-modal-backdrop" @onclick="CloseReview">
+        <div class="mobile-modal-sheet" @onclick:stopPropagation="true">
+            <div class="mobile-modal-header">
+                <div>
+                    <h3 class="mobile-modal-title">Review Order #@_reviewOrder.Id</h3>
+                    <span class="mobile-order-date">Share your feedback on your Bulldogs gear</span>
+                </div>
+                <button type="button" class="mobile-modal-close-btn" @onclick="CloseReview" aria-label="Close">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </div>
+
+            <div style="text-align: center; margin: 16px 0;">
+                <div style="font-size: 13px; font-weight: 700; color: #14366A; margin-bottom: 8px;">Rate your experience</div>
+                <div style="font-size: 28px; display: flex; justify-content: center; gap: 6px; cursor: pointer;">
+                    @for (int i = 1; i <= 5; i++)
+                    {
+                        var starIndex = i;
+                        <span @onclick="() => _ratingScore = starIndex">@(_ratingScore >= starIndex ? "⭐" : "☆")</span>
+                    }
+                </div>
+            </div>
+
+            <div style="margin-bottom: 16px;">
+                <label style="font-size: 12px; font-weight: 700; color: #475569; display: block; margin-bottom: 6px;">Your Comments</label>
+                <textarea rows="3"
+                          style="width: 100%; border: 1px solid #CBD5E1; border-radius: 12px; padding: 10px; font-family: inherit; font-size: 13px; outline: none; resize: none; box-sizing: border-box;"
+                          placeholder="Tell us about the fabric quality, fitting, and pickup experience..."
+                          @bind="_reviewComment"></textarea>
+            </div>
+
+            <button type="button" class="mobile-order-action-btn btn-navy" style="width: 100%; padding: 10px;" @onclick="SubmitReview">
+                Submit Review
+            </button>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly string[] Filters =
+    [
+        "All",
+        "Pending",
+        "Confirmed",
+        "Processing",
+        "Ready for Pickup",
+        "Completed",
+        "Cancelled"
+    ];
+
+    private string _filter = "All";
+    private MockOrder? _selectedOrder;
+    private MockOrder? _trackingOrder;
+    private MockOrder? _reviewOrder;
+    private int _ratingScore = 5;
+    private string _reviewComment = string.Empty;
+
+    private IEnumerable<MockOrder> FilteredOrders => OrderService.Filter(_filter);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Auth.OnChange += OnAuthChanged;
+        OrderService.OnChange += Refresh;
+        await OrderService.EnsureLoadedAsync(Auth.Email);
+        await Catalog.EnsureLoadedAsync();
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OnAuthChanged() => InvokeAsync(async () =>
+    {
+        await OrderService.EnsureLoadedAsync(Auth.Email);
+        StateHasChanged();
+    });
+
+    private void SetFilter(string filter) => _filter = filter;
+
+    private static string FormatDate(DateTime date) => date.ToString("MMM d, yyyy");
+
+    private void OpenDetails(MockOrder order) => _selectedOrder = order;
+    private void CloseDetails() => _selectedOrder = null;
+
+    private void TrackOrder(MockOrder order) => _trackingOrder = order;
+    private void CloseTracking() => _trackingOrder = null;
+
+    private void OpenReview(MockOrder order)
+    {
+        _reviewOrder = order;
+        _ratingScore = 5;
+        _reviewComment = string.Empty;
+    }
+    private void CloseReview() => _reviewOrder = null;
+
+    private void SubmitReview()
+    {
+        if (_reviewOrder is not null)
+        {
+            Toast.Show($"Thank you for rating Order #{_reviewOrder.Id} {_ratingScore} stars!");
+        }
+        _reviewOrder = null;
+    }
+
+    private async Task BuyAgain(MockOrder order)
+    {
+        int added = 0;
+        foreach (var item in order.Items)
+        {
+            var prod = Catalog.Products.FirstOrDefault(p => p.Id == item.ProductId || p.Name.Equals(item.Name, StringComparison.OrdinalIgnoreCase));
+            if (prod is not null)
+            {
+                Cart.Add(prod, item.Quantity, prod.Colors.FirstOrDefault(), item.Size);
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            await Cart.PersistAsync(Auth.Email);
+            Toast.Show("Items from order re-added to cart!");
+            Navigation.NavigateTo("/cart");
+        }
+        else
+        {
+            Toast.Show("Browsing catalog for similar items...");
+            Navigation.NavigateTo("/shop");
+        }
+    }
+
+    private void CancelOrder(string orderId)
+    {
+        OrderService.Cancel(orderId);
+        CloseDetails();
+        Toast.Show($"Order #{orderId} has been cancelled.");
+    }
+
+    public void Dispose()
+    {
+        Auth.OnChange -= OnAuthChanged;
+        OrderService.OnChange -= Refresh;
+    }
+}

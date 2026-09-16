@@ -1,67 +1,15 @@
-﻿<?xml version="1.0" encoding="utf-8" ?>
+<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:local="clr-namespace:NUBulldogsExchange.Mobile"
+             xmlns:shared="clr-namespace:NUBulldogsExchange.Web.Shared;assembly=NUBulldogsExchange.Web.Shared"
              x:Class="NUBulldogsExchange.Mobile.MainPage"
-             Title="NU Bulldogs Exchange">
+             BackgroundColor="{DynamicResource PageBackgroundColor}">
 
-    <Grid RowDefinitions="Auto,*,Auto" Padding="16" RowSpacing="12">
-        <VerticalStackLayout Grid.Row="0" Spacing="4">
-            <Label Text="NU Bulldogs Exchange"
-                   FontSize="24"
-                   FontAttributes="Bold" />
-            <Label Text="Shared catalog from the Web API"
-                   FontSize="14"
-                   TextColor="Gray" />
-        </VerticalStackLayout>
+    <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">
+        <BlazorWebView.RootComponents>
+            <RootComponent Selector="#app" ComponentType="{x:Type shared:Routes}" />
+        </BlazorWebView.RootComponents>
+    </BlazorWebView>
 
-        <CollectionView Grid.Row="1"
-                        x:Name="ProductsList"
-                        SelectionMode="None">
-            <CollectionView.EmptyView>
-                <VerticalStackLayout VerticalOptions="Center" HorizontalOptions="Center" Spacing="8">
-                    <Label Text="No listings available."
-                           HorizontalTextAlignment="Center"
-                           FontSize="16" />
-                    <Label Text="Add products from the Web admin, then refresh."
-                           HorizontalTextAlignment="Center"
-                           TextColor="Gray" />
-                </VerticalStackLayout>
-            </CollectionView.EmptyView>
-            <CollectionView.ItemTemplate>
-                <DataTemplate>
-                    <Border Stroke="#E2E8F0" StrokeThickness="1" Padding="12" Margin="0,0,0,8">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="8" />
-                        </Border.StrokeShape>
-                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                            <VerticalStackLayout>
-                                <Label Text="{Binding Name}" FontAttributes="Bold" FontSize="16" />
-                                <Label Text="{Binding Category}" TextColor="Gray" FontSize="13" />
-                                <Label FontSize="14">
-                                    <Label.FormattedText>
-                                        <FormattedString>
-                                            <Span Text="₱" />
-                                            <Span Text="{Binding Price, StringFormat='{0:N0}'}" />
-                                        </FormattedString>
-                                    </Label.FormattedText>
-                                </Label>
-                            </VerticalStackLayout>
-                            <Label Grid.Column="1"
-                                   Text="{Binding Stock, StringFormat='Stock: {0}'}"
-                                   VerticalOptions="Center"
-                                   TextColor="Gray" />
-                        </Grid>
-                    </Border>
-                </DataTemplate>
-            </CollectionView.ItemTemplate>
-        </CollectionView>
-
-        <VerticalStackLayout Grid.Row="2" Spacing="8">
-            <Label x:Name="StatusLabel" FontSize="13" TextColor="Gray" />
-            <Button Text="Refresh from API"
-                    Clicked="OnRefreshClicked" />
-            <Button Text="Add product via API"
-                    Clicked="OnAddClicked" />
-        </VerticalStackLayout>
-    </Grid>
 </ContentPage>

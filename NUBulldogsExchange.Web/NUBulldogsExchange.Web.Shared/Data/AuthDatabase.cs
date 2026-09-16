@@ -5,7 +5,7 @@ using Microsoft.Data.Sqlite;
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
 
-namespace NUBulldogsExchange.Web.Web.Data;
+namespace NUBulldogsExchange.Web.Shared.Data;
 
 public sealed partial class DatabaseService
 {

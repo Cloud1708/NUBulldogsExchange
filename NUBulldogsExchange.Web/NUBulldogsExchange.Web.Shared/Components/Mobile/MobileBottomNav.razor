@@ -1,0 +1,102 @@
+@namespace NUBulldogsExchange.Web.Shared.Components.Mobile
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject NavigationManager Navigation
+@inject CartService Cart
+@inject WishlistService Wishlist
+@inject AuthService Auth
+@implements IDisposable
+
+<nav class="mobile-bottom-nav" aria-label="Mobile Navigation">
+    <a href="/" class="mobile-nav-tab @(IsActive("/") ? "active" : "")">
+        <Icon Name="home" Size="22" />
+        <span>Home</span>
+    </a>
+
+    <a href="/shop" class="mobile-nav-tab @(IsActive("/shop") || IsActive("/apparel") || IsActive("/accessories") || IsActive("/new-arrivals") || IsActive("/best-sellers") ? "active" : "")">
+        <Icon Name="store" Size="22" />
+        <span>Shop</span>
+    </a>
+
+    <a href="/wishlist" class="mobile-nav-tab @(IsActive("/wishlist") ? "active" : "")">
+        <div class="mobile-tab-icon-wrap">
+            <Icon Name="heart" Size="22" />
+            @if (Wishlist.Count > 0)
+            {
+                <span class="mobile-badge-count">@Wishlist.Count</span>
+            }
+        </div>
+        <span>Wishlist</span>
+    </a>
+
+    <a href="/orders" class="mobile-nav-tab @(IsActive("/orders") || IsActive("/my-orders") ? "active" : "")">
+        <Icon Name="package" Size="22" />
+        <span>Orders</span>
+    </a>
+
+    @if (Auth.IsLoggedIn && Auth.IsAdmin)
+    {
+        <a href="/admin/dashboard" class="mobile-nav-tab @(IsActive("/admin") ? "active" : "")">
+            <Icon Name="user-round" Size="22" />
+            <span>Account</span>
+        </a>
+    }
+    else if (Auth.IsLoggedIn)
+    {
+        <a href="/account" class="mobile-nav-tab @(IsActive("/account") || IsActive("/profile") ? "active" : "")">
+            <Icon Name="user-round" Size="22" />
+            <span>Account</span>
+        </a>
+    }
+    else
+    {
+        <a href="/login" class="mobile-nav-tab @(IsActive("/login") || IsActive("/register") ? "active" : "")">
+            <Icon Name="user-round" Size="22" />
+            <span>Account</span>
+        </a>
+    }
+</nav>
+
+@code {
+    private string _currentPath = "/";
+
+    protected override void OnInitialized()
+    {
+        Cart.OnChange += Refresh;
+        Wishlist.OnChange += Refresh;
+        Auth.OnChange += Refresh;
+        Navigation.LocationChanged += OnLocationChanged;
+        UpdatePath();
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        UpdatePath();
+        InvokeAsync(StateHasChanged);
+    }
+
+    private void UpdatePath()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri);
+        _currentPath = "/" + relative.Split('?')[0].TrimEnd('/');
+    }
+
+    private bool IsActive(string path)
+    {
+        if (path == "/" && (_currentPath == "/" || string.IsNullOrEmpty(_currentPath)))
+            return true;
+        if (path != "/" && _currentPath.StartsWith(path, StringComparison.OrdinalIgnoreCase))
+            return true;
+        return false;
+    }
+
+    public void Dispose()
+    {
+        Cart.OnChange -= Refresh;
+        Wishlist.OnChange -= Refresh;
+        Auth.OnChange -= Refresh;
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}
