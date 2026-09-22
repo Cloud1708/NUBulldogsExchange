@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
+             xmlns:data="clr-namespace:NUBulldogsExchange.Web.Shared.Data;assembly=NUBulldogsExchange.Web.Shared"
+             x:Class="NUBulldogsExchange.Mobile.Controls.OrderCardView"
+             x:Name="Root"
+             x:DataType="vm:OrderCardModel">
+
+    <Border Stroke="#E8ECF1"
+            StrokeThickness="1"
+            BackgroundColor="White"
+            Padding="14"
+            Margin="0,0,0,10"
+            HorizontalOptions="Fill">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="14" />
+        </Border.StrokeShape>
+        <Border.Shadow>
+            <Shadow Brush="#12000000" Offset="0,2" Radius="8" Opacity="0.12" />
+        </Border.Shadow>
+
+        <VerticalStackLayout Spacing="10">
+            <!-- Header -->
+            <Grid ColumnDefinitions="*,Auto">
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="{Binding DisplayId}"
+                           FontSize="13"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}" />
+                    <Label Text="{Binding DateText}"
+                           FontSize="10"
+                           TextColor="{StaticResource MutedText}" />
+                </VerticalStackLayout>
+
+                <Border Grid.Column="1"
+                        BackgroundColor="{Binding BadgeBackground}"
+                        Padding="10,4"
+                        StrokeThickness="0"
+                        VerticalOptions="Start">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10" />
+                    </Border.StrokeShape>
+                    <Label Text="{Binding Status}"
+                           FontSize="10"
+                           FontAttributes="Bold"
+                           TextColor="{Binding BadgeTextColor}" />
+                </Border>
+            </Grid>
+
+            <!-- Items -->
+            <VerticalStackLayout BindableLayout.ItemsSource="{Binding Items}" Spacing="8">
+                <BindableLayout.ItemTemplate>
+                    <DataTemplate x:DataType="data:MockOrderItem">
+                        <Grid ColumnDefinitions="44,*" ColumnSpacing="10">
+                            <Border WidthRequest="44"
+                                    HeightRequest="44"
+                                    StrokeThickness="0"
+                                    BackgroundColor="#F1F5F9">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="9" />
+                                </Border.StrokeShape>
+                                <Image Source="{Binding ImageUrl}"
+                                       Aspect="AspectFill" />
+                            </Border>
+                            <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">
+                                <Label Text="{Binding Name}"
+                                       FontSize="11"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}"
+                                       LineBreakMode="TailTruncation"
+                                       MaxLines="2" />
+                                <Label FontSize="9" TextColor="{StaticResource MutedText}">
+                                    <Label.FormattedText>
+                                        <FormattedString>
+                                            <Span Text="Size: " />
+                                            <Span Text="{Binding Size}" />
+                                            <Span Text=" · Qty: " />
+                                            <Span Text="{Binding Quantity}" />
+                                        </FormattedString>
+                                    </Label.FormattedText>
+                                </Label>
+                            </VerticalStackLayout>
+                        </Grid>
+                    </DataTemplate>
+                </BindableLayout.ItemTemplate>
+            </VerticalStackLayout>
+
+            <BoxView Color="#EEF2F7" HeightRequest="1" />
+
+            <!-- Footer -->
+            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+                    <Label Text="Order Total"
+                           FontSize="9"
+                           TextColor="{StaticResource MutedText}" />
+                    <Label Text="{Binding TotalText}"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}" />
+                </VerticalStackLayout>
+
+                <FlexLayout Grid.Column="1"
+                            JustifyContent="End"
+                            AlignItems="Center"
+                            Wrap="Wrap"
+                            Direction="RowReverse">
+                    <!-- Track -->
+                    <Border IsVisible="{Binding ShowTrack}"
+                            BackgroundColor="{StaticResource NuNavy}"
+                            Padding="12,7"
+                            Margin="4,2"
+                            StrokeThickness="0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="14" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding TrackCommand, Source={x:Reference Root}}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="Track"
+                               TextColor="White"
+                               FontSize="11"
+                               FontAttributes="Bold" />
+                    </Border>
+
+                    <!-- Review -->
+                    <Border IsVisible="{Binding ShowReview}"
+                            BackgroundColor="{StaticResource NuGold}"
+                            Padding="12,7"
+                            Margin="4,2"
+                            StrokeThickness="0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="14" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding ReviewCommand, Source={x:Reference Root}}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="Review"
+                               TextColor="{StaticResource NuNavy}"
+                               FontSize="11"
+                               FontAttributes="Bold" />
+                    </Border>
+
+                    <!-- Buy Again -->
+                    <Border IsVisible="{Binding ShowBuyAgain}"
+                            BackgroundColor="White"
+                            Stroke="#CBD5E1"
+                            StrokeThickness="1"
+                            Padding="10,6"
+                            Margin="4,2">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="14" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding BuyAgainCommand, Source={x:Reference Root}}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="Buy Again"
+                               TextColor="{StaticResource NuNavy}"
+                               FontSize="11" />
+                    </Border>
+
+                    <!-- Details -->
+                    <Border IsVisible="{Binding ShowDetails}"
+                            BackgroundColor="White"
+                            Stroke="{StaticResource NuNavy}"
+                            StrokeThickness="1"
+                            Padding="12,6"
+                            Margin="4,2">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="14" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding DetailsCommand, Source={x:Reference Root}}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="Details"
+                               TextColor="{StaticResource NuNavy}"
+                               FontSize="11"
+                               FontAttributes="Bold" />
+                    </Border>
+                </FlexLayout>
+            </Grid>
+        </VerticalStackLayout>
+    </Border>
+</ContentView>

@@ -1,0 +1,430 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:NUBulldogsExchange.Mobile.Controls"
+             xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
+             xmlns:conv="clr-namespace:NUBulldogsExchange.Mobile.Converters"
+             x:Class="NUBulldogsExchange.Mobile.Pages.AccountPage"
+             x:DataType="vm:AccountViewModel"
+             Title="Account"
+             BackgroundColor="#F8F9FA"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <conv:IsStringNotNullOrEmptyConverter x:Key="IsStringNotNullOrEmptyConverter" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid RowDefinitions="*,Auto">
+        <ScrollView Grid.Row="0">
+            <VerticalStackLayout Padding="16,12,16,24" Spacing="14">
+
+                <Label Text="Account"
+                       FontSize="19"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NuNavy}" />
+
+                <!-- ========== GUEST PROFILE ========== -->
+                <Border IsVisible="{Binding IsGuest}"
+                        BackgroundColor="#F1F3F6"
+                        StrokeThickness="0"
+                        Padding="18,20"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16" />
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="8" HorizontalOptions="Center">
+                        <Border BackgroundColor="#EDE9FE"
+                                WidthRequest="56"
+                                HeightRequest="56"
+                                StrokeThickness="0"
+                                HorizontalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="28" />
+                            </Border.StrokeShape>
+                            <Label Text="👤"
+                                   FontSize="26"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                        <Label Text="Guest"
+                               FontSize="16"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}"
+                               HorizontalTextAlignment="Center" />
+                        <Label Text="Login to access your account."
+                               FontSize="12"
+                               TextColor="{StaticResource MutedText}"
+                               HorizontalTextAlignment="Center"
+                               Margin="0,0,0,6" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,4,0,0">
+                            <Border BackgroundColor="{StaticResource NuNavy}"
+                                    HeightRequest="40"
+                                    StrokeThickness="0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ShowLoginFormCommand}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="Login"
+                                       TextColor="White"
+                                       FontAttributes="Bold"
+                                       FontSize="13"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Border>
+                            <Border Grid.Column="1"
+                                    BackgroundColor="White"
+                                    Stroke="{StaticResource NuNavy}"
+                                    StrokeThickness="1.5"
+                                    HeightRequest="40">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ShowRegisterFormCommand}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="Register"
+                                       TextColor="{StaticResource NuNavy}"
+                                       FontAttributes="Bold"
+                                       FontSize="13"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Border>
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- ========== AUTH PROFILE ========== -->
+                <Border IsVisible="{Binding IsLoggedIn}"
+                        BackgroundColor="#F1F3F6"
+                        StrokeThickness="0"
+                        Padding="14"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16" />
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                        <Border BackgroundColor="{StaticResource NuNavy}"
+                                WidthRequest="54"
+                                HeightRequest="54"
+                                StrokeThickness="0"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="27" />
+                            </Border.StrokeShape>
+                            <Label Text="{Binding Initial}"
+                                   TextColor="{StaticResource NuGold}"
+                                   FontSize="22"
+                                   FontAttributes="Bold"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+
+                        <VerticalStackLayout Grid.Column="1"
+                                             VerticalOptions="Center"
+                                             Spacing="2">
+                            <Label Text="{Binding DisplayName}"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   LineBreakMode="TailTruncation" />
+                            <Label Text="{Binding Email}"
+                                   FontSize="11"
+                                   TextColor="{StaticResource MutedText}"
+                                   LineBreakMode="TailTruncation" />
+                            <Label Text="{Binding StudentIdLabel}"
+                                   IsVisible="{Binding HasStudentId}"
+                                   FontSize="10"
+                                   TextColor="#94A3B8" />
+                        </VerticalStackLayout>
+
+                        <Border Grid.Column="2"
+                                BackgroundColor="White"
+                                Stroke="{StaticResource NuNavy}"
+                                StrokeThickness="1"
+                                Padding="12,6"
+                                VerticalOptions="Center"
+                                HeightRequest="32">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="16" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding EditProfileCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Edit"
+                                   TextColor="{StaticResource NuNavy}"
+                                   FontSize="11"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- ========== EDIT PROFILE FORM ========== -->
+                <Border IsVisible="{Binding ShowEditProfileForm}"
+                        BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        Padding="14"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14" />
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Edit Profile" FontAttributes="Bold" FontSize="15" TextColor="{StaticResource NuNavy}" />
+                        <Entry Placeholder="First name" Text="{Binding EditFirstName}" />
+                        <Entry Placeholder="Last name" Text="{Binding EditLastName}" />
+                        <Entry Placeholder="Phone" Keyboard="Telephone" Text="{Binding EditPhone}" />
+                        <Entry Placeholder="Student ID" Text="{Binding EditStudentId}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <Button Text="Cancel" Command="{Binding CancelFormsCommand}"
+                                    BackgroundColor="#F1F5F9" TextColor="{StaticResource NuNavy}" />
+                            <Button Grid.Column="1" Text="Save" Command="{Binding SaveProfileCommand}"
+                                    BackgroundColor="{StaticResource NuNavy}" TextColor="White" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- ========== CHANGE PASSWORD FORM ========== -->
+                <Border IsVisible="{Binding ShowChangePasswordForm}"
+                        BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        Padding="14"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14" />
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="8">
+                        <Label Text="Change Password" FontAttributes="Bold" FontSize="15" TextColor="{StaticResource NuNavy}" />
+                        <Entry Placeholder="Current password" IsPassword="True" Text="{Binding CurrentPassword}" />
+                        <Entry Placeholder="New password" IsPassword="True" Text="{Binding NewPassword}" />
+                        <Entry Placeholder="Confirm new password" IsPassword="True" Text="{Binding ConfirmNewPassword}" />
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                            <Button Text="Cancel" Command="{Binding CancelFormsCommand}"
+                                    BackgroundColor="#F1F5F9" TextColor="{StaticResource NuNavy}" />
+                            <Button Grid.Column="1" Text="Update" Command="{Binding SavePasswordCommand}"
+                                    BackgroundColor="{StaticResource NuNavy}" TextColor="White" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <Label Text="{Binding StatusMessage}"
+                       FontSize="12"
+                       TextColor="{StaticResource MutedText}"
+                       IsVisible="{Binding StatusMessage, Converter={StaticResource IsStringNotNullOrEmptyConverter}}" />
+
+                <!-- ========== GUEST MENU ========== -->
+                <Border IsVisible="{Binding IsGuest}"
+                        BackgroundColor="White"
+                        Stroke="#E8ECF1"
+                        StrokeThickness="1"
+                        Padding="4,2"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16" />
+                    </Border.StrokeShape>
+                    <VerticalStackLayout>
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoHelpCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FCE7F3" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="❓" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Help Center" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoTermsCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FEF3C7" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="📋" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Terms &amp; Conditions" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoPrivacyCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#DBEAFE" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="🛡" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Privacy Policy" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- ========== AUTH MENU ========== -->
+                <Border IsVisible="{Binding IsLoggedIn}"
+                        BackgroundColor="White"
+                        Stroke="#E8ECF1"
+                        StrokeThickness="1"
+                        Padding="4,2"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16" />
+                    </Border.StrokeShape>
+                    <VerticalStackLayout>
+                        <!-- My Profile -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoMyProfileCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#EDE9FE" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="👤" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="My Profile" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <!-- My Orders -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoOrdersCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FEF3C7" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="📦" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="My Orders" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <!-- Wishlist -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoWishlistCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FEE2E2" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="♥" FontSize="14" TextColor="#EF4444" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Wishlist" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <!-- Notifications -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoNotificationsCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FEF9C3" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="🔔" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Notifications" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <!-- Addresses -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoAddressesCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FCE7F3" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="📍" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Addresses" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <!-- Change Password -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenChangePasswordCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FFEDD5" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="🔒" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Change Password" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <!-- Help -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoHelpCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FCE7F3" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="❓" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Help Center" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <!-- Terms -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoTermsCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#FEF3C7" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="📋" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Terms &amp; Conditions" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
+                        <!-- Privacy -->
+                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoPrivacyCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Border BackgroundColor="#DBEAFE" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
+                                <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
+                                <Label Text="🛡" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="1" Text="Privacy Policy" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                        </Grid>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- ========== LOGOUT ========== -->
+                <Border IsVisible="{Binding IsLoggedIn}"
+                        BackgroundColor="White"
+                        Stroke="#FECACA"
+                        StrokeThickness="1.5"
+                        Padding="14"
+                        Margin="0,4,0,8"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14" />
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding LogoutCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="🚪" FontSize="16" VerticalOptions="Center" />
+                        <Label Grid.Column="1"
+                               Text="Logout"
+                               FontSize="14"
+                               FontAttributes="Bold"
+                               TextColor="#EF4444"
+                               VerticalOptions="Center" />
+                        <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#EF4444" VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <controls:BottomNavBar Grid.Row="1" ActiveTab="account" />
+    </Grid>
+</ContentPage>

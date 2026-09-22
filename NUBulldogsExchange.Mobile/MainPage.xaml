@@ -1,15 +1,503 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:local="clr-namespace:NUBulldogsExchange.Mobile"
-             xmlns:shared="clr-namespace:NUBulldogsExchange.Web.Shared;assembly=NUBulldogsExchange.Web.Shared"
+             xmlns:controls="clr-namespace:NUBulldogsExchange.Mobile.Controls"
+             xmlns:models="clr-namespace:NUBulldogsExchange.Mobile.Models"
+             xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
+             xmlns:conv="clr-namespace:NUBulldogsExchange.Mobile.Converters"
+             xmlns:data="clr-namespace:NUBulldogsExchange.Web.Shared.Data;assembly=NUBulldogsExchange.Web.Shared"
              x:Class="NUBulldogsExchange.Mobile.MainPage"
-             BackgroundColor="{DynamicResource PageBackgroundColor}">
+             x:Name="HomePage"
+             x:DataType="vm:HomeViewModel"
+             Title="Home"
+             BackgroundColor="{StaticResource PageBackgroundColor}"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False">
 
-    <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html">
-        <BlazorWebView.RootComponents>
-            <RootComponent Selector="#app" ComponentType="{x:Type shared:Routes}" />
-        </BlazorWebView.RootComponents>
-    </BlazorWebView>
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <conv:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+            <conv:IsStringNotNullOrEmptyConverter x:Key="IsStringNotNullOrEmptyConverter" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
 
+    <Grid RowDefinitions="*,Auto"
+          HorizontalOptions="Fill"
+          VerticalOptions="Fill">
+
+        <ScrollView Grid.Row="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill">
+            <VerticalStackLayout Padding="14,10,14,16"
+                                 Spacing="14"
+                                 HorizontalOptions="Fill">
+
+                <!-- Header -->
+                <Grid ColumnDefinitions="Auto,*,Auto,Auto"
+                      ColumnSpacing="8">
+                    <Border BackgroundColor="{StaticResource NuNavy}"
+                            WidthRequest="30"
+                            HeightRequest="30"
+                            StrokeThickness="0"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="7" />
+                        </Border.StrokeShape>
+                        <Label Text="NU"
+                               TextColor="{StaticResource NuGold}"
+                               FontAttributes="Bold"
+                               FontSize="11"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+
+                    <Label Grid.Column="1"
+                           Text="Bulldogs Exchange"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}"
+                           VerticalOptions="Center"
+                           LineBreakMode="TailTruncation" />
+
+                    <Grid Grid.Column="2" WidthRequest="34" HeightRequest="34">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenNotificationsCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="🔔"
+                               FontSize="16"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"
+                               TextColor="#E0B000" />
+                        <Border IsVisible="{Binding HasNotifications}"
+                                BackgroundColor="#EF4444"
+                                WidthRequest="15"
+                                HeightRequest="15"
+                                StrokeThickness="0"
+                                HorizontalOptions="End"
+                                VerticalOptions="Start"
+                                Margin="0,-1,-1,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8" />
+                            </Border.StrokeShape>
+                            <Label Text="{Binding NotificationCount}"
+                                   TextColor="White"
+                                   FontSize="8"
+                                   FontAttributes="Bold"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+
+                    <Grid Grid.Column="3"
+                          WidthRequest="40"
+                          HeightRequest="40"
+                          BackgroundColor="Transparent">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenCartCommand}"
+                                                  NumberOfTapsRequired="1" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="🛒"
+                               FontSize="16"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center"
+                               InputTransparent="True" />
+                        <Border IsVisible="{Binding HasCartItems}"
+                                BackgroundColor="{StaticResource NuNavy}"
+                                WidthRequest="15"
+                                HeightRequest="15"
+                                StrokeThickness="0"
+                                HorizontalOptions="End"
+                                VerticalOptions="Start"
+                                Margin="0,-1,-1,0"
+                                InputTransparent="True">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8" />
+                            </Border.StrokeShape>
+                            <Label Text="{Binding CartCount}"
+                                   TextColor="White"
+                                   FontSize="8"
+                                   FontAttributes="Bold"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   InputTransparent="True" />
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <!-- Greeting -->
+                <VerticalStackLayout Spacing="2">
+                    <Label Text="{Binding GreetingTitle}"
+                           FontSize="17"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}" />
+                    <Label Text="{Binding GreetingSubtitle}"
+                           FontSize="11"
+                           TextColor="{StaticResource MutedText}" />
+                </VerticalStackLayout>
+
+                <!-- Search -->
+                <Border BackgroundColor="{StaticResource SearchBackground}"
+                        StrokeThickness="0"
+                        HeightRequest="44"
+                        Padding="12,0"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
+                        <Label Text="🔍" FontSize="14" VerticalOptions="Center" />
+                        <Entry Grid.Column="1"
+                               Placeholder="Search NU merchandise..."
+                               Text="{Binding SearchQuery}"
+                               BackgroundColor="Transparent"
+                               FontSize="13"
+                               VerticalOptions="Center"
+                               ReturnCommand="{Binding SearchCommand}" />
+                        <Border Grid.Column="2"
+                                WidthRequest="32"
+                                HeightRequest="32"
+                                StrokeThickness="0"
+                                VerticalOptions="Center">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenShopCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="⚙"
+                                   FontSize="15"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center"
+                                   TextColor="{StaticResource NuNavy}" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Hero -->
+                <CarouselView ItemsSource="{Binding HeroBanners}"
+                              HeightRequest="158"
+                              Loop="True"
+                              IndicatorView="HeroIndicators"
+                              HorizontalOptions="Fill"
+                              PeekAreaInsets="0">
+                    <CarouselView.ItemTemplate>
+                        <DataTemplate x:DataType="models:HeroBannerItem">
+                            <Border BackgroundColor="{StaticResource NuNavy}"
+                                    StrokeThickness="0"
+                                    HeightRequest="158"
+                                    HorizontalOptions="Fill">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="18" />
+                                </Border.StrokeShape>
+                                <Grid ColumnDefinitions="1.1*,0.9*" Padding="14,12">
+                                    <VerticalStackLayout Spacing="5" VerticalOptions="Center">
+                                        <Label Text="{Binding Title}"
+                                               TextColor="White"
+                                               FontAttributes="Bold"
+                                               FontSize="15"
+                                               LineBreakMode="WordWrap"
+                                               MaxLines="2" />
+                                        <Label Text="{Binding Subtitle}"
+                                               TextColor="#CBD5E1"
+                                               FontSize="11"
+                                               LineBreakMode="WordWrap"
+                                               MaxLines="2" />
+                                        <Border BackgroundColor="{StaticResource NuGold}"
+                                                Padding="12,6"
+                                                HorizontalOptions="Start"
+                                                Margin="0,4,0,0"
+                                                StrokeThickness="0">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="10" />
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding BindingContext.ShopNowCommand, Source={x:Reference HomePage}}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <Label Text="{Binding ButtonText}"
+                                                   TextColor="{StaticResource NuNavy}"
+                                                   FontAttributes="Bold"
+                                                   FontSize="11" />
+                                        </Border>
+                                    </VerticalStackLayout>
+
+                                    <Border Grid.Column="1"
+                                            StrokeThickness="0"
+                                            Margin="6,0,0,0">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="12" />
+                                        </Border.StrokeShape>
+                                        <Image Source="{Binding ImageUrl}" Aspect="AspectFill" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CarouselView.ItemTemplate>
+                </CarouselView>
+                <IndicatorView x:Name="HeroIndicators"
+                               IndicatorColor="#CBD5E1"
+                               SelectedIndicatorColor="{StaticResource NuGold}"
+                               HorizontalOptions="End"
+                               Margin="0,-8,8,0"
+                               HeightRequest="14" />
+
+                <!-- Categories -->
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Shop by Category"
+                               FontSize="15"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}" />
+                        <Label Grid.Column="1"
+                               Text="See All"
+                               FontSize="11"
+                               TextColor="#2563EB"
+                               VerticalOptions="Center">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SeeAllCategoriesCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+
+                    <CollectionView ItemsSource="{Binding Categories}"
+                                    HeightRequest="82"
+                                    ItemsLayout="HorizontalList"
+                                    HorizontalScrollBarVisibility="Never"
+                                    SelectionMode="None">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="models:CategoryChip">
+                                <Grid WidthRequest="64"
+                                      Margin="0,0,6,0"
+                                      VerticalOptions="Start">
+                                    <Grid.GestureRecognizers>
+                                        <TapGestureRecognizer
+                                            Command="{Binding BindingContext.OpenCategoryCommand, Source={x:Reference HomePage}}"
+                                            CommandParameter="{Binding .}" />
+                                    </Grid.GestureRecognizers>
+                                    <VerticalStackLayout Spacing="5" HorizontalOptions="Center">
+                                        <Border BackgroundColor="{Binding Background}"
+                                                WidthRequest="48"
+                                                HeightRequest="48"
+                                                HorizontalOptions="Center"
+                                                StrokeThickness="0">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="14" />
+                                            </Border.StrokeShape>
+                                            <Label Text="{Binding Icon}"
+                                                   FontSize="20"
+                                                   HorizontalOptions="Center"
+                                                   VerticalOptions="Center" />
+                                        </Border>
+                                        <Label Text="{Binding Name}"
+                                               FontSize="9"
+                                               TextColor="{StaticResource MutedText}"
+                                               HorizontalTextAlignment="Center"
+                                               LineBreakMode="TailTruncation"
+                                               MaxLines="1" />
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Featured -->
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Featured Bulldogs Picks"
+                               FontSize="15"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}" />
+                        <Label Grid.Column="1"
+                               Text="See All"
+                               FontSize="11"
+                               TextColor="#2563EB"
+                               VerticalOptions="Center">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SeeAllFeaturedCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+
+                    <ActivityIndicator IsRunning="{Binding IsBusy}"
+                                       IsVisible="{Binding IsBusy}"
+                                       Color="{StaticResource NuNavy}"
+                                       HeightRequest="28" />
+
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding FeaturedRows}"
+                                         Spacing="10"
+                                         IsVisible="{Binding HasFeatured}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="models:ProductPair">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                    <controls:ProductCardView
+                                        Product="{Binding Left}"
+                                        ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
+                                        AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
+                                        OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
+                                    <controls:ProductCardView
+                                        Grid.Column="1"
+                                        IsVisible="{Binding HasRight}"
+                                        Product="{Binding Right}"
+                                        ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
+                                        AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
+                                        OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
+                <!-- Fresh Drops -->
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Fresh Drops"
+                               FontSize="15"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}" />
+                        <Label Grid.Column="1"
+                               Text="View All"
+                               FontSize="11"
+                               TextColor="#2563EB"
+                               VerticalOptions="Center">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SeeAllFreshCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+
+                    <CollectionView ItemsSource="{Binding FreshDrops}"
+                                    IsVisible="{Binding HasFresh}"
+                                    HeightRequest="200"
+                                    ItemsLayout="HorizontalList"
+                                    HorizontalScrollBarVisibility="Never"
+                                    SelectionMode="None">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="data:Product">
+                                <Border WidthRequest="132"
+                                        Margin="0,0,10,0"
+                                        Stroke="{StaticResource SoftBorder}"
+                                        StrokeThickness="1"
+                                        BackgroundColor="White"
+                                        Padding="0"
+                                        VerticalOptions="Start">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="14" />
+                                    </Border.StrokeShape>
+                                    <VerticalStackLayout>
+                                        <Image Source="{Binding ImageUrl}"
+                                               HeightRequest="108"
+                                               Aspect="AspectFill" />
+                                        <VerticalStackLayout Padding="8" Spacing="2">
+                                            <Label Text="{Binding Name}"
+                                                   FontSize="11"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{StaticResource NuNavy}"
+                                                   LineBreakMode="TailTruncation"
+                                                   MaxLines="2"
+                                                   HeightRequest="30" />
+                                            <Label FontSize="13"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{StaticResource NuNavy}">
+                                                <Label.FormattedText>
+                                                    <FormattedString>
+                                                        <Span Text="₱" />
+                                                        <Span Text="{Binding Price, StringFormat='{0:N0}'}" />
+                                                    </FormattedString>
+                                                </Label.FormattedText>
+                                            </Label>
+                                        </VerticalStackLayout>
+                                    </VerticalStackLayout>
+                                </Border>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
+                </VerticalStackLayout>
+
+                <!-- Campus promo -->
+                <Border BackgroundColor="{StaticResource CampusPromo}"
+                        StrokeThickness="0"
+                        Padding="14"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="16" />
+                    </Border.StrokeShape>
+                    <VerticalStackLayout Spacing="5">
+                        <Label Text="Complete Your Campus Look"
+                               FontSize="15"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}" />
+                        <Label Text="Find everything you need to represent NU."
+                               FontSize="11"
+                               TextColor="{StaticResource NuNavy}" />
+                        <Border BackgroundColor="{StaticResource NuNavy}"
+                                Padding="12,7"
+                                HorizontalOptions="Start"
+                                Margin="0,4,0,0"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="10" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ExploreCollectionCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Explore Collection"
+                                   TextColor="White"
+                                   FontAttributes="Bold"
+                                   FontSize="11" />
+                        </Border>
+                    </VerticalStackLayout>
+                </Border>
+
+                <!-- Favorites -->
+                <VerticalStackLayout Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Bulldog Favorites"
+                               FontSize="15"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}" />
+                        <Label Grid.Column="1"
+                               Text="See All"
+                               FontSize="11"
+                               TextColor="#2563EB"
+                               VerticalOptions="Center">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SeeAllFavoritesCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </Grid>
+
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding FavoriteRows}"
+                                         Spacing="10">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="models:ProductPair">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                    <controls:ProductCardView
+                                        Product="{Binding Left}"
+                                        ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
+                                        AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
+                                        OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
+                                    <controls:ProductCardView
+                                        Grid.Column="1"
+                                        IsVisible="{Binding HasRight}"
+                                        Product="{Binding Right}"
+                                        ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
+                                        AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
+                                        OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
+                                </Grid>
+                            </DataTemplate>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
+
+                <Label Text="{Binding StatusMessage}"
+                       IsVisible="{Binding StatusMessage, Converter={StaticResource IsStringNotNullOrEmptyConverter}}"
+                       TextColor="#EF4444"
+                       FontSize="11"
+                       HorizontalTextAlignment="Center" />
+            </VerticalStackLayout>
+        </ScrollView>
+
+        <controls:BottomNavBar Grid.Row="1"
+                               ActiveTab="home"
+                               HorizontalOptions="Fill" />
+    </Grid>
 </ContentPage>

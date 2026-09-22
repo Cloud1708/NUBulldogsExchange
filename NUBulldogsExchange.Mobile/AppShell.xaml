@@ -4,11 +4,26 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:local="clr-namespace:NUBulldogsExchange.Mobile"
-    Title="NUBulldogsExchange.Mobile">
+    xmlns:pages="clr-namespace:NUBulldogsExchange.Mobile.Pages"
+    FlyoutBehavior="Disabled"
+    NavBarIsVisible="False"
+    Title="NU Bulldogs Exchange">
 
-    <ShellContent
-        Title="Home"
-        ContentTemplate="{DataTemplate local:MainPage}"
-        Route="MainPage" />
-
+    <TabBar>
+        <ShellContent Route="home"
+                      Title="Home"
+                      ContentTemplate="{DataTemplate local:MainPage}" />
+        <ShellContent Route="shop"
+                      Title="Shop"
+                      ContentTemplate="{DataTemplate pages:ShopPage}" />
+        <ShellContent Route="wishlist"
+                      Title="Wishlist"
+                      ContentTemplate="{DataTemplate pages:WishlistPage}" />
+        <ShellContent Route="orders"
+                      Title="Orders"
+                      ContentTemplate="{DataTemplate pages:OrdersPage}" />
+        <ShellContent Route="account"
+                      Title="Account"
+                      ContentTemplate="{DataTemplate pages:AccountPage}" />
+    </TabBar>
 </Shell>

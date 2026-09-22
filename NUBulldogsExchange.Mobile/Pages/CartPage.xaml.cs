@@ -1,15 +1,16 @@
 using NUBulldogsExchange.Mobile.ViewModels;
 
-namespace NUBulldogsExchange.Mobile;
+namespace NUBulldogsExchange.Mobile.Pages;
 
-public partial class MainPage : ContentPage
+public partial class CartPage : ContentPage
 {
-    private readonly HomeViewModel _vm;
+    private readonly CartViewModel _vm;
 
-    public MainPage(HomeViewModel vm)
+    public CartPage(CartViewModel vm)
     {
         InitializeComponent();
         _vm = vm;
+        _vm.HostPage = this;
         BindingContext = _vm;
     }
 
@@ -21,7 +22,7 @@ public partial class MainPage : ContentPage
 
     protected override void OnDisappearing()
     {
-        // Keep subscriptions alive for the singleton ViewModel / services.
         base.OnDisappearing();
+        _vm.Detach();
     }
 }

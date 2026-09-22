@@ -1,0 +1,357 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
+             xmlns:conv="clr-namespace:NUBulldogsExchange.Mobile.Converters"
+             x:Class="NUBulldogsExchange.Mobile.Pages.RegisterPage"
+             x:DataType="vm:RegisterViewModel"
+             Title="Create Your Account"
+             BackgroundColor="#F6F7F9"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <conv:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+            <Style TargetType="Entry">
+                <Setter Property="TextColor" Value="#0F172A" />
+                <Setter Property="PlaceholderColor" Value="#94A3B8" />
+                <Setter Property="BackgroundColor" Value="Transparent" />
+            </Style>
+        </ResourceDictionary>
+    </ContentPage.Resources>
+
+    <Grid>
+        <ScrollView>
+            <VerticalStackLayout Padding="22,36,22,28" Spacing="0">
+
+                <!-- Header: Back + Title -->
+                <Grid ColumnDefinitions="Auto,*"
+                      ColumnSpacing="12"
+                      Margin="0,0,0,20"
+                      VerticalOptions="Center">
+                    <Border WidthRequest="36"
+                            HeightRequest="36"
+                            BackgroundColor="White"
+                            Stroke="#E2E8F0"
+                            StrokeThickness="1"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="18" />
+                        </Border.StrokeShape>
+                        <Border.Shadow>
+                            <Shadow Brush="#000000"
+                                    Offset="0,1"
+                                    Radius="3"
+                                    Opacity="0.08" />
+                        </Border.Shadow>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding BackCommand}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="←"
+                               FontSize="16"
+                               TextColor="#0F172A"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+                    <Label Grid.Column="1"
+                           Text="Create Your Account"
+                           FontSize="19"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}"
+                           VerticalOptions="Center" />
+                </Grid>
+
+                <!-- First Name -->
+                <Label Text="First Name"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#475569"
+                       Margin="2,0,0,6" />
+                <Border BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        HeightRequest="46"
+                        Padding="14,0"
+                        Margin="0,0,0,14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Entry Placeholder="Juan"
+                           Text="{Binding FirstName}"
+                           ReturnType="Next"
+                           BackgroundColor="Transparent"
+                           FontSize="14"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Last Name -->
+                <Label Text="Last Name"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#475569"
+                       Margin="2,0,0,6" />
+                <Border BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        HeightRequest="46"
+                        Padding="14,0"
+                        Margin="0,0,0,14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Entry Placeholder="Dela Cruz"
+                           Text="{Binding LastName}"
+                           ReturnType="Next"
+                           BackgroundColor="Transparent"
+                           FontSize="14"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Email -->
+                <Label Text="Email Address"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#475569"
+                       Margin="2,0,0,6" />
+                <Border BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        HeightRequest="46"
+                        Padding="14,0"
+                        Margin="0,0,0,14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Entry Placeholder="juan@nu.edu.ph"
+                           Text="{Binding Email}"
+                           Keyboard="Email"
+                           ReturnType="Next"
+                           IsTextPredictionEnabled="False"
+                           BackgroundColor="Transparent"
+                           FontSize="14"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Contact Number -->
+                <Label Text="Contact Number"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#475569"
+                       Margin="2,0,0,6" />
+                <Border BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        HeightRequest="46"
+                        Padding="14,0"
+                        Margin="0,0,0,14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Entry Placeholder="09XX XXX XXXX"
+                           Text="{Binding PhoneNumber}"
+                           Keyboard="Telephone"
+                           ReturnType="Next"
+                           BackgroundColor="Transparent"
+                           FontSize="14"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Student / Employee ID (Optional) -->
+                <Label Text="Student / Employee ID (Optional)"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#475569"
+                       Margin="2,0,0,6" />
+                <Border BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        HeightRequest="46"
+                        Padding="14,0"
+                        Margin="0,0,0,14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Entry Placeholder="N-XXXXXX"
+                           Text="{Binding StudentId}"
+                           ReturnType="Next"
+                           BackgroundColor="Transparent"
+                           FontSize="14"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Password -->
+                <Label Text="Password"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#475569"
+                       Margin="2,0,0,6" />
+                <Border BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        HeightRequest="46"
+                        Padding="14,0"
+                        Margin="0,0,0,14">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Entry Placeholder="Password"
+                               Text="{Binding Password}"
+                               IsPassword="{Binding IsPasswordHidden}"
+                               ReturnType="Next"
+                               BackgroundColor="Transparent"
+                               FontSize="14"
+                               VerticalOptions="Center" />
+                        <Border Grid.Column="1"
+                                WidthRequest="36"
+                                HeightRequest="36"
+                                StrokeThickness="0"
+                                VerticalOptions="Center"
+                                BackgroundColor="Transparent">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding TogglePasswordCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="{Binding PasswordToggleGlyph}"
+                                   FontSize="16"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Confirm Password -->
+                <Label Text="Confirm Password"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="#475569"
+                       Margin="2,0,0,6" />
+                <Border BackgroundColor="White"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        HeightRequest="46"
+                        Padding="14,0"
+                        Margin="0,0,0,16">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Entry Placeholder="Confirm Password"
+                               Text="{Binding ConfirmPassword}"
+                               IsPassword="{Binding IsConfirmPasswordHidden}"
+                               ReturnType="Done"
+                               ReturnCommand="{Binding RegisterCommand}"
+                               BackgroundColor="Transparent"
+                               FontSize="14"
+                               VerticalOptions="Center" />
+                        <Border Grid.Column="1"
+                                WidthRequest="36"
+                                HeightRequest="36"
+                                StrokeThickness="0"
+                                VerticalOptions="Center"
+                                BackgroundColor="Transparent">
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleConfirmPasswordCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="{Binding ConfirmPasswordToggleGlyph}"
+                                   FontSize="16"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Terms agreement -->
+                <Grid ColumnDefinitions="Auto,*"
+                      ColumnSpacing="8"
+                      Margin="0,0,0,16">
+                    <CheckBox IsChecked="{Binding HasAcceptedTerms}"
+                              Color="{StaticResource NuNavy}"
+                              VerticalOptions="Start" />
+                    <FlexLayout Grid.Column="1"
+                                Wrap="Wrap"
+                                AlignItems="Center"
+                                VerticalOptions="Center">
+                        <Label Text="I agree to the "
+                               FontSize="12"
+                               TextColor="#475569"
+                               Margin="0,2,0,2" />
+                        <Label Text="Terms and Conditions"
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}"
+                               Margin="0,2,0,2">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenTermsCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                        <Label Text=" and "
+                               FontSize="12"
+                               TextColor="#475569"
+                               Margin="0,2,0,2" />
+                        <Label Text="Privacy Policy."
+                               FontSize="12"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}"
+                               Margin="0,2,0,2">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding OpenPrivacyCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                    </FlexLayout>
+                </Grid>
+
+                <Label Text="{Binding ErrorMessage}"
+                       IsVisible="{Binding HasError}"
+                       TextColor="#EF4444"
+                       FontSize="12"
+                       Margin="0,0,0,10" />
+
+                <!-- Create Account -->
+                <Border BackgroundColor="{StaticResource NuNavy}"
+                        HeightRequest="48"
+                        StrokeThickness="0"
+                        Margin="0,0,0,16"
+                        IsEnabled="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="24" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding RegisterCommand}" />
+                    </Border.GestureRecognizers>
+                    <Grid>
+                        <Label Text="Create Account"
+                               IsVisible="{Binding IsBusy, Converter={StaticResource InvertedBoolConverter}}"
+                               TextColor="White"
+                               FontSize="15"
+                               FontAttributes="Bold"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                        <ActivityIndicator IsRunning="{Binding IsBusy}"
+                                           IsVisible="{Binding IsBusy}"
+                                           Color="White"
+                                           HeightRequest="24"
+                                           WidthRequest="24"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
+                <!-- Login link -->
+                <HorizontalStackLayout HorizontalOptions="Center" Spacing="4">
+                    <Label Text="Already have an account?"
+                           FontSize="13"
+                           TextColor="{StaticResource MutedText}" />
+                    <Label Text="Login"
+                           FontSize="13"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}">
+                        <Label.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding GoLoginCommand}" />
+                        </Label.GestureRecognizers>
+                    </Label>
+                </HorizontalStackLayout>
+            </VerticalStackLayout>
+        </ScrollView>
+    </Grid>
+</ContentPage>

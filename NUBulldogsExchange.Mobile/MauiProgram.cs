@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
+using NUBulldogsExchange.Mobile.Pages;
 using NUBulldogsExchange.Mobile.Services;
+using NUBulldogsExchange.Mobile.ViewModels;
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
 
@@ -20,27 +22,22 @@ namespace NUBulldogsExchange.Mobile
 
             builder.Services.AddSingleton<IFormFactor, FormFactor>();
 
-            // Direct SQLite database connection for desktop/Windows with instant sync,
-            // or HTTP client for Android/iOS mobile devices connecting to Web API.
+            // Direct SQLite on Windows; HTTP API on Android/iOS.
             if (DeviceInfo.Platform == DevicePlatform.WinUI)
             {
-                builder.Services.AddSingleton<DatabaseService>();
+                builder.Services.AddSingleton<DatabaseService>(_ =>
+                    new DatabaseService(ResolveWindowsDatabasePath()));
                 builder.Services.AddSingleton<IAppDatabase>(sp => sp.GetRequiredService<DatabaseService>());
             }
             else
             {
-                var apiBase = DeviceInfo.Platform == DevicePlatform.Android
-                    ? "http://10.0.2.2:5016/"
-                    : "http://localhost:5016/";
-
                 builder.Services.AddHttpClient<IAppDatabase, HttpAppDatabase>(client =>
                 {
-                    client.BaseAddress = new Uri(apiBase);
+                    client.BaseAddress = new Uri(MobileWebUrls.ApiBase);
                     client.Timeout = TimeSpan.FromSeconds(30);
                 });
             }
 
-            // Register shared business logic services
             builder.Services.AddSingleton<ProductCatalogService>();
             builder.Services.AddSingleton<CartService>();
             builder.Services.AddSingleton<WishlistService>();
@@ -59,14 +56,61 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddSingleton<AdminReportService>();
             builder.Services.AddSingleton<AdminNotificationService>();
 
-            builder.Services.AddMauiBlazorWebView();
+            builder.Services.AddSingleton<HomeViewModel>();
+            builder.Services.AddTransient<ShopViewModel>();
+            builder.Services.AddTransient<WishlistViewModel>();
+            builder.Services.AddTransient<OrdersViewModel>();
+            builder.Services.AddTransient<AccountViewModel>();
+            builder.Services.AddTransient<LoginViewModel>();
+            builder.Services.AddTransient<RegisterViewModel>();
+            builder.Services.AddTransient<CartViewModel>();
+            builder.Services.AddTransient<CheckoutViewModel>();
+            builder.Services.AddTransient<MainPage>();
+            builder.Services.AddTransient<ShopPage>();
+            builder.Services.AddTransient<WishlistPage>();
+            builder.Services.AddTransient<OrdersPage>();
+            builder.Services.AddTransient<AccountPage>();
+            builder.Services.AddTransient<LoginPage>();
+            builder.Services.AddTransient<RegisterPage>();
+            builder.Services.AddTransient<CartPage>();
+            builder.Services.AddTransient<CheckoutPage>();
 
 #if DEBUG
-            builder.Services.AddBlazorWebViewDeveloperTools();
             builder.Logging.AddDebug();
 #endif
 
             return builder.Build();
+        }
+
+        /// <summary>
+        /// Prefer the shared Web.Web App_Data database when running from the repo,
+        /// so Mobile Windows preview uses the same storefront data as the web API.
+        /// </summary>
+        private static string? ResolveWindowsDatabasePath()
+        {
+            try
+            {
+                var current = new DirectoryInfo(AppContext.BaseDirectory);
+                while (current is not null)
+                {
+                    var webDb = Path.Combine(current.FullName,
+                        "NUBulldogsExchange.Web", "NUBulldogsExchange.Web.Web", "App_Data", "NUBulldogsExchange.db");
+                    if (File.Exists(webDb))
+                        return webDb;
+
+                    var webDbAlt = Path.Combine(current.FullName,
+                        "NUBulldogsExchange.Web.Web", "App_Data", "NUBulldogsExchange.db");
+                    if (File.Exists(webDbAlt))
+                        return webDbAlt;
+
+                    current = current.Parent;
+                }
+            }
+            catch
+            {
+            }
+
+            return null; // DatabaseService default resolver
         }
     }
 }

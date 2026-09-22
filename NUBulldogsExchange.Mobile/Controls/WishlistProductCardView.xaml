@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentView xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="NUBulldogsExchange.Mobile.Controls.WishlistProductCardView"
+             x:Name="Root">
+
+    <Border Stroke="{StaticResource SoftBorder}"
+            StrokeThickness="1"
+            BackgroundColor="White"
+            Padding="0"
+            HorizontalOptions="Fill">
+        <Border.StrokeShape>
+            <RoundRectangle CornerRadius="14" />
+        </Border.StrokeShape>
+        <Border.Shadow>
+            <Shadow Brush="#14000000" Offset="0,2" Radius="8" Opacity="0.14" />
+        </Border.Shadow>
+
+        <Grid RowDefinitions="Auto,Auto">
+            <Grid HeightRequest="130">
+                <Border BackgroundColor="#F1F5F9" StrokeThickness="0">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14,14,0,0" />
+                    </Border.StrokeShape>
+                    <Image Source="{Binding DisplayImage, Source={x:Reference Root}}"
+                           Aspect="AspectFill"
+                           HorizontalOptions="Fill"
+                           VerticalOptions="Fill" />
+                </Border>
+
+                <Border BackgroundColor="White"
+                        WidthRequest="30"
+                        HeightRequest="30"
+                        Margin="8"
+                        HorizontalOptions="End"
+                        VerticalOptions="Start"
+                        StrokeThickness="0">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="15" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnHeartTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="♥"
+                           FontSize="14"
+                           TextColor="#EF4444"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+            </Grid>
+
+            <VerticalStackLayout Grid.Row="1" Padding="10,8,10,10" Spacing="4">
+                <Label Text="{Binding Product.Name, Source={x:Reference Root}}"
+                       FontSize="12"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NuNavy}"
+                       LineBreakMode="TailTruncation"
+                       MaxLines="2"
+                       HeightRequest="32" />
+
+                <Label FontSize="10" TextColor="{StaticResource MutedText}"
+                       IsVisible="{Binding HasRating, Source={x:Reference Root}}">
+                    <Label.FormattedText>
+                        <FormattedString>
+                            <Span Text="⭐ " />
+                            <Span Text="{Binding RatingText, Source={x:Reference Root}}" />
+                        </FormattedString>
+                    </Label.FormattedText>
+                </Label>
+
+                <Label Text="{Binding PriceText, Source={x:Reference Root}}"
+                       FontSize="14"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NuNavy}"
+                       Margin="0,2,0,0" />
+
+                <Border BackgroundColor="{StaticResource NuNavy}"
+                        HeightRequest="36"
+                        Margin="0,6,0,0"
+                        StrokeThickness="0"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="18" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Tapped="OnAddTapped" />
+                    </Border.GestureRecognizers>
+                    <Label Text="Add to Cart"
+                           TextColor="White"
+                           FontSize="12"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+            </VerticalStackLayout>
+        </Grid>
+    </Border>
+</ContentView>

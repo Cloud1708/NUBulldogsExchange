@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:controls="clr-namespace:NUBulldogsExchange.Mobile.Controls"
+             xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
+             xmlns:data="clr-namespace:NUBulldogsExchange.Web.Shared.Data;assembly=NUBulldogsExchange.Web.Shared"
+             x:Class="NUBulldogsExchange.Mobile.Pages.WishlistPage"
+             x:Name="WishlistRoot"
+             x:DataType="vm:WishlistViewModel"
+             Title="Wishlist"
+             BackgroundColor="#F7F8FB"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto,*,Auto"
+          HorizontalOptions="Fill"
+          VerticalOptions="Fill">
+
+        <!-- Header -->
+        <Border Grid.Row="0"
+                BackgroundColor="White"
+                StrokeThickness="0"
+                Padding="16,14,16,12"
+                HorizontalOptions="Fill">
+            <VerticalStackLayout Spacing="2">
+                <Label Text="My Wishlist"
+                       FontSize="19"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NuNavy}" />
+                <Label Text="{Binding CountLabel}"
+                       IsVisible="{Binding HasWishlistItems}"
+                       FontSize="12"
+                       TextColor="{StaticResource MutedText}" />
+            </VerticalStackLayout>
+        </Border>
+
+        <!-- Content -->
+        <Grid Grid.Row="1" BackgroundColor="#F7F8FB">
+
+            <!-- Empty state -->
+            <VerticalStackLayout IsVisible="{Binding IsWishlistEmpty}"
+                                 VerticalOptions="Center"
+                                 HorizontalOptions="Center"
+                                 Spacing="10"
+                                 Padding="28,0">
+                <Label Text="❤️"
+                       FontSize="56"
+                       HorizontalTextAlignment="Center"
+                       Margin="0,0,0,4" />
+                <Label Text="Your wishlist is empty"
+                       FontSize="17"
+                       FontAttributes="Bold"
+                       TextColor="{StaticResource NuNavy}"
+                       HorizontalTextAlignment="Center" />
+                <Label Text="Save your favorite Bulldog merchandise here."
+                       FontSize="12"
+                       TextColor="{StaticResource MutedText}"
+                       HorizontalTextAlignment="Center"
+                       Margin="8,0" />
+                <Border BackgroundColor="{StaticResource NuNavy}"
+                        HeightRequest="40"
+                        WidthRequest="156"
+                        HorizontalOptions="Center"
+                        Margin="0,10,0,0"
+                        StrokeThickness="0">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ExploreProductsCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="Explore Products"
+                           TextColor="White"
+                           FontSize="13"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+            </VerticalStackLayout>
+
+            <!-- Populated grid -->
+            <CollectionView ItemsSource="{Binding WishlistItems}"
+                            IsVisible="{Binding HasWishlistItems}"
+                            SelectionMode="None"
+                            Margin="14,12,14,8">
+                <CollectionView.ItemsLayout>
+                    <GridItemsLayout Orientation="Vertical"
+                                     Span="2"
+                                     HorizontalItemSpacing="10"
+                                     VerticalItemSpacing="10" />
+                </CollectionView.ItemsLayout>
+                <CollectionView.ItemTemplate>
+                    <DataTemplate x:DataType="data:Product">
+                        <controls:WishlistProductCardView
+                            Product="{Binding .}"
+                            RemoveCommand="{Binding BindingContext.RemoveFromWishlistCommand, Source={x:Reference WishlistRoot}}"
+                            AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference WishlistRoot}}"
+                            OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference WishlistRoot}}" />
+                    </DataTemplate>
+                </CollectionView.ItemTemplate>
+            </CollectionView>
+
+            <ActivityIndicator IsRunning="{Binding IsBusy}"
+                               IsVisible="{Binding IsBusy}"
+                               Color="{StaticResource NuNavy}"
+                               VerticalOptions="Center"
+                               HorizontalOptions="Center" />
+        </Grid>
+
+        <controls:BottomNavBar Grid.Row="2"
+                               ActiveTab="wishlist"
+                               HorizontalOptions="Fill" />
+    </Grid>
+</ContentPage>
