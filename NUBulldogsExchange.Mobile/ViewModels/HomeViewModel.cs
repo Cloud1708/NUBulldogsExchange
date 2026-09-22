@@ -350,7 +350,7 @@ public sealed class HomeViewModel : INotifyPropertyChanged
     private async Task OnProductAsync(Product? product)
     {
         if (product is null) return;
-        await GoAsync("shop");
+        await GoAsync($"product?id={product.Id}");
     }
 
     private async Task OnHeroAsync(HeroBannerItem? hero) =>
@@ -377,7 +377,13 @@ public sealed class HomeViewModel : INotifyPropertyChanged
     private async Task OnAddToCartAsync(Product? product)
     {
         if (product is null) return;
-        _cart.Add(product, 1, product.Colors.FirstOrDefault(), product.Sizes.FirstOrDefault());
+        if (product.HasSizeVariants)
+        {
+            await OnProductAsync(product);
+            return;
+        }
+
+        _cart.Add(product, 1, product.Colors.FirstOrDefault(), null);
         await _cart.PersistAsync(_auth.Email);
         _toast.Show($"Added {product.Name} to cart!");
         RefreshHeader();

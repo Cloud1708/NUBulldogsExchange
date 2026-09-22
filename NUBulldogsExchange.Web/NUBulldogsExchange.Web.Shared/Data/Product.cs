@@ -16,6 +16,8 @@ public class Product
     public string? Badge { get; set; }
     public List<string> Colors { get; set; } = [];
     public List<string> Sizes { get; set; } = [];
+    public List<ProductVariant> Variants { get; set; } = [];
+    public bool HasSizeVariants => Variants.Count > 0;
     public string Material { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
     public bool InStock { get; set; } = true;
@@ -66,4 +68,20 @@ public class CartItem
     public int Quantity { get; set; } = 1;
     public string? SelectedColor { get; set; }
     public string? SelectedSize { get; set; }
+    public int? VariantId { get; set; }
+
+    public int AvailableStock
+    {
+        get
+        {
+            if (VariantId is int vid && Product.Variants.Count > 0)
+            {
+                var variant = Product.Variants.FirstOrDefault(v => v.Id == vid);
+                if (variant is not null)
+                    return Math.Max(0, variant.StockQuantity);
+            }
+
+            return Math.Max(0, Product.Stock);
+        }
+    }
 }

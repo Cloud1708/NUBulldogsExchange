@@ -9,6 +9,7 @@
             Routing.RegisterRoute("register", typeof(Pages.RegisterPage));
             Routing.RegisterRoute("cart", typeof(Pages.CartPage));
             Routing.RegisterRoute("checkout", typeof(Pages.CheckoutPage));
+            Routing.RegisterRoute("product", typeof(Pages.ProductDetailsPage));
         }
     }
 }

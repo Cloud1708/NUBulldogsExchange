@@ -85,7 +85,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged
         ClearFiltersCommand = new Command(ClearFilters);
         ToggleWishlistCommand = new Command<Product>(async p => await OnToggleWishlistAsync(p));
         AddToCartCommand = new Command<Product>(async p => await OnAddToCartAsync(p));
-        OpenProductCommand = new Command<Product>(_ => { });
+        OpenProductCommand = new Command<Product>(async p => await OnOpenProductAsync(p));
 
         _catalog.OnChange += OnCatalogChanged;
         _cart.OnChange += OnCartChanged;
@@ -357,10 +357,22 @@ public sealed class ShopViewModel : INotifyPropertyChanged
         ApplyFilters();
     }
 
+    private async Task OnOpenProductAsync(Product? product)
+    {
+        if (product is null) return;
+        await GoAsync($"product?id={product.Id}");
+    }
+
     private async Task OnAddToCartAsync(Product? product)
     {
         if (product is null) return;
-        _cart.Add(product, 1, product.Colors.FirstOrDefault(), product.Sizes.FirstOrDefault());
+        if (product.HasSizeVariants)
+        {
+            await OnOpenProductAsync(product);
+            return;
+        }
+
+        _cart.Add(product, 1, product.Colors.FirstOrDefault(), null);
         await _cart.PersistAsync(_auth.Email);
         _toast.Show($"Added {product.Name} to cart!");
         CartCount = _cart.TotalCount;

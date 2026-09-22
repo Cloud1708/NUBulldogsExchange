@@ -19,6 +19,11 @@ public interface IAppDatabase
     Task<List<ProductReview>> GetProductReviewsAsync(int productId);
     Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews);
 
+    // Product variants (size stock)
+    Task<List<ProductVariant>> GetProductVariantsAsync(int productId);
+    Task<List<ProductVariant>> GetProductVariantsByProductIdsAsync(IEnumerable<int> productIds);
+    Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants);
+
     // Categories
     Task<List<AdminCategory>> GetCategoriesAsync();
     Task<AdminCategory> UpsertCategoryAsync(AdminCategory category);

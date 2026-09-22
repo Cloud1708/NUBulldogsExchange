@@ -47,14 +47,23 @@ public class CartService
         OnChange?.Invoke();
     }
 
-    public void Add(Product product, int quantity = 1, string? color = null, string? size = null)
+    public void Add(Product product, int quantity = 1, string? color = null, string? size = null, int? variantId = null)
     {
         quantity = Math.Max(1, quantity);
         var colorKey = Normalize(color);
         var sizeKey = Normalize(size);
 
+        if (variantId is null && !string.IsNullOrWhiteSpace(size) && product.HasSizeVariants)
+        {
+            variantId = product.Variants
+                .FirstOrDefault(v => v.IsActive &&
+                                     v.Size.Equals(size, StringComparison.OrdinalIgnoreCase))
+                ?.Id;
+        }
+
         var existing = _items.FirstOrDefault(i =>
             i.Product.Id == product.Id &&
+            i.VariantId == variantId &&
             Normalize(i.SelectedColor) == colorKey &&
             Normalize(i.SelectedSize) == sizeKey);
 
@@ -67,7 +76,8 @@ public class CartService
                 Product = product,
                 Quantity = quantity,
                 SelectedColor = string.IsNullOrWhiteSpace(color) ? null : color,
-                SelectedSize = string.IsNullOrWhiteSpace(size) ? null : size
+                SelectedSize = string.IsNullOrWhiteSpace(size) ? null : size,
+                VariantId = variantId
             });
         }
 
@@ -91,7 +101,7 @@ public class CartService
         var item = _items.FirstOrDefault(i => i.Key == key);
         if (item is null) return;
 
-        var max = item.Product.Stock > 0 ? item.Product.Stock : int.MaxValue;
+        var max = item.AvailableStock > 0 ? item.AvailableStock : int.MaxValue;
         item.Quantity = Math.Clamp(quantity, 1, max);
         OnChange?.Invoke();
     }
@@ -130,7 +140,8 @@ public class CartService
                     Product = product,
                     Quantity = Math.Max(1, row.Quantity),
                     SelectedColor = row.SelectedColor,
-                    SelectedSize = row.SelectedSize
+                    SelectedSize = row.SelectedSize,
+                    VariantId = row.VariantId
                 });
             }
 
@@ -152,6 +163,7 @@ public class CartService
             var dtos = _items.Select(i => new CartItemDto
             {
                 ProductId = i.Product.Id,
+                VariantId = i.VariantId,
                 Quantity = i.Quantity,
                 UnitPrice = i.Product.Price,
                 SelectedColor = i.SelectedColor,

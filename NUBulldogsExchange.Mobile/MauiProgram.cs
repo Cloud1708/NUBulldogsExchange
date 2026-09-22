@@ -80,6 +80,7 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddTransient<RegisterViewModel>();
             builder.Services.AddTransient<CartViewModel>();
             builder.Services.AddTransient<CheckoutViewModel>();
+            builder.Services.AddTransient<ProductDetailsViewModel>();
 
             // Pages
             builder.Services.AddTransient<MainPage>();
@@ -91,6 +92,7 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddTransient<RegisterPage>();
             builder.Services.AddTransient<CartPage>();
             builder.Services.AddTransient<CheckoutPage>();
+            builder.Services.AddTransient<ProductDetailsPage>();
 
 #if DEBUG
             builder.Logging.AddDebug();

@@ -7,6 +7,9 @@ public class AdminOrderItem
     public string ImageUrl { get; set; } = string.Empty;
     public int Quantity { get; set; } = 1;
     public decimal Price { get; set; }
+    public int? VariantId { get; set; }
+    public string? Size { get; set; }
+    public string? VariantSku { get; set; }
 }
 
 public class AdminOrder

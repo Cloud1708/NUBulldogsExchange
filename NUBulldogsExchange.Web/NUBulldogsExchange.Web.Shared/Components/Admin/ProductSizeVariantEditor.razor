@@ -1,0 +1,243 @@
+@namespace NUBulldogsExchange.Web.Shared.Components.Admin
+@using NUBulldogsExchange.Web.Shared.Data
+
+<div class="admin-size-variants">
+    <label class="admin-size-variants-toggle">
+        <input type="checkbox"
+               checked="@HasSizeVariants"
+               @onchange="OnToggleChanged"
+               disabled="@Disabled" />
+        <span>This product has size variants</span>
+    </label>
+
+    @if (!HasSizeVariants)
+    {
+        <label class="admin-field admin-product-stock-field">
+            <span>Stock Quantity</span>
+            <input type="number"
+                   min="0"
+                   step="1"
+                   value="@StockText"
+                   disabled="@Disabled"
+                   @oninput="OnStockInput"
+                   placeholder="100" />
+            @if (!string.IsNullOrWhiteSpace(StockError))
+            {
+                <em>@StockError</em>
+            }
+        </label>
+    }
+    else
+    {
+        <div class="admin-size-variants-panel">
+            <div class="admin-size-variants-head">
+                <strong>Size Variants</strong>
+                <span class="admin-size-variants-total">Total Stock: @TotalStock</span>
+            </div>
+
+            <div class="admin-size-variants-table" role="table">
+                <div class="admin-size-variants-row is-header" role="row">
+                    <span role="columnheader">Size</span>
+                    <span role="columnheader">Stock</span>
+                    <span role="columnheader">SKU</span>
+                    <span role="columnheader">Status</span>
+                    <span role="columnheader" class="admin-size-variants-actions"> </span>
+                </div>
+
+                @for (var i = 0; i < Variants.Count; i++)
+                {
+                    var index = i;
+                    var row = Variants[index];
+                    <div class="admin-size-variants-row" role="row">
+                        <input type="text"
+                               value="@row.Size"
+                               placeholder="M"
+                               disabled="@Disabled"
+                               @oninput="e => OnSizeChanged(index, e)" />
+                        <input type="number"
+                               min="0"
+                               step="1"
+                               value="@row.StockQuantity"
+                               disabled="@Disabled"
+                               @oninput="e => OnVariantStockChanged(index, e)" />
+                        <input type="text"
+                               value="@row.Sku"
+                               placeholder="NUBE-TS-M"
+                               disabled="@Disabled"
+                               @oninput="e => OnSkuChanged(index, e)" />
+                        <select value="@(string.IsNullOrWhiteSpace(row.Status) ? "Active" : row.Status)"
+                                disabled="@Disabled"
+                                @onchange="e => OnVariantStatusChanged(index, e)">
+                            <option value="Active">Active</option>
+                            <option value="Inactive">Inactive</option>
+                        </select>
+                        <button type="button"
+                                class="admin-size-variants-remove"
+                                title="Remove size"
+                                disabled="@Disabled"
+                                @onclick="() => RemoveRow(index)">
+                            <Icon Name="trash" Size="14" />
+                        </button>
+                    </div>
+                }
+            </div>
+
+            <div class="admin-size-variants-suggestions">
+                @foreach (var size in SuggestedSizes)
+                {
+                    var already = Variants.Any(v => v.Size.Equals(size, StringComparison.OrdinalIgnoreCase));
+                    <button type="button"
+                            class="admin-size-chip @(already ? "is-used" : "")"
+                            disabled="@(Disabled || already)"
+                            @onclick="() => AddSuggested(size)">
+                        @size
+                    </button>
+                }
+            </div>
+
+            <button type="button"
+                    class="btn btn-outline-navy admin-size-variants-add"
+                    disabled="@Disabled"
+                    @onclick="AddEmptyRow">
+                + Add Size
+            </button>
+
+            @if (!string.IsNullOrWhiteSpace(VariantsError))
+            {
+                <em class="admin-size-variants-error">@VariantsError</em>
+            }
+        </div>
+    }
+</div>
+
+@code {
+    public static readonly string[] DefaultSuggestions = ["XS", "S", "M", "L", "XL", "2XL", "3XL"];
+
+    [Parameter] public bool HasSizeVariants { get; set; }
+    [Parameter] public EventCallback<bool> HasSizeVariantsChanged { get; set; }
+    [Parameter] public List<ProductVariant> Variants { get; set; } = [];
+    [Parameter] public EventCallback<List<ProductVariant>> VariantsChanged { get; set; }
+    [Parameter] public string StockText { get; set; } = "0";
+    [Parameter] public EventCallback<string> StockTextChanged { get; set; }
+    [Parameter] public string? StockError { get; set; }
+    [Parameter] public string? VariantsError { get; set; }
+    [Parameter] public string BaseSku { get; set; } = string.Empty;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string[]? SizeSuggestions { get; set; }
+
+    private IEnumerable<string> SuggestedSizes => SizeSuggestions ?? DefaultSuggestions;
+
+    private int TotalStock => Variants.Sum(v => Math.Max(0, v.StockQuantity));
+
+    private async Task OnToggleChanged(ChangeEventArgs e)
+    {
+        var enabled = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        HasSizeVariants = enabled;
+        await HasSizeVariantsChanged.InvokeAsync(enabled);
+
+        if (enabled && Variants.Count == 0)
+        {
+            foreach (var size in new[] { "S", "M", "L", "XL" })
+                Variants.Add(CreateRow(size, 0));
+            await VariantsChanged.InvokeAsync(Variants);
+        }
+    }
+
+    private async Task OnStockInput(ChangeEventArgs e)
+    {
+        StockText = e.Value?.ToString() ?? string.Empty;
+        await StockTextChanged.InvokeAsync(StockText);
+    }
+
+    private async Task OnSizeChanged(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        Variants[index].Size = e.Value?.ToString() ?? string.Empty;
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnVariantStockChanged(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        if (!int.TryParse(e.Value?.ToString(), out var stock) || stock < 0)
+            stock = 0;
+        Variants[index].StockQuantity = stock;
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnSkuChanged(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        Variants[index].Sku = e.Value?.ToString();
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnVariantStatusChanged(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        var status = e.Value?.ToString();
+        Variants[index].Status = string.IsNullOrWhiteSpace(status) ? "Active" : status;
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task AddSuggested(string size)
+    {
+        if (Variants.Any(v => v.Size.Equals(size, StringComparison.OrdinalIgnoreCase)))
+            return;
+        Variants.Add(CreateRow(size, 0));
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task AddEmptyRow()
+    {
+        Variants.Add(CreateRow(string.Empty, 0));
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task RemoveRow(int index)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        Variants.RemoveAt(index);
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private ProductVariant CreateRow(string size, int stock)
+    {
+        var suffix = string.IsNullOrWhiteSpace(size)
+            ? string.Empty
+            : "-" + size.Trim().ToUpperInvariant().Replace(' ', '-');
+        var baseSku = (BaseSku ?? string.Empty).Trim().TrimEnd('-');
+        return new ProductVariant
+        {
+            Size = size,
+            StockQuantity = stock,
+            Sku = string.IsNullOrWhiteSpace(baseSku) || string.IsNullOrWhiteSpace(suffix)
+                ? null
+                : $"{baseSku}{suffix}",
+            PriceAdjustment = 0,
+            Status = "Active"
+        };
+    }
+
+    public static string? Validate(bool hasVariants, IReadOnlyList<ProductVariant> variants)
+    {
+        if (!hasVariants)
+            return null;
+
+        if (variants.Count == 0)
+            return "Add at least one size variant.";
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var variant in variants)
+        {
+            if (string.IsNullOrWhiteSpace(variant.Size))
+                return "Each size variant needs a size name.";
+            if (variant.StockQuantity < 0)
+                return "Variant stock cannot be negative.";
+            if (!seen.Add(variant.Size.Trim()))
+                return $"Duplicate product size: {variant.Size.Trim()}";
+        }
+
+        return null;
+    }
+}

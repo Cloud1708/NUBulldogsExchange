@@ -46,6 +46,23 @@ public sealed class HttpAppDatabase : IAppDatabase
         return response.IsSuccessStatusCode;
     }
 
+    public async Task<List<ProductVariant>> GetProductVariantsAsync(int productId) =>
+        await _http.GetFromJsonAsync<List<ProductVariant>>($"api/products/{productId}/variants") ?? [];
+
+    public async Task<List<ProductVariant>> GetProductVariantsByProductIdsAsync(IEnumerable<int> productIds)
+    {
+        var ids = string.Join(",", productIds.Distinct().Where(id => id > 0));
+        if (string.IsNullOrWhiteSpace(ids))
+            return [];
+        return await _http.GetFromJsonAsync<List<ProductVariant>>($"api/products/variants?ids={ids}") ?? [];
+    }
+
+    public async Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants)
+    {
+        var response = await _http.PutAsJsonAsync($"api/products/{productId}/variants", variants);
+        response.EnsureSuccessStatusCode();
+    }
+
     public async Task<List<ProductReview>> GetProductReviewsAsync(int productId) =>
         await _http.GetFromJsonAsync<List<ProductReview>>($"api/products/{productId}/reviews") ?? [];
 

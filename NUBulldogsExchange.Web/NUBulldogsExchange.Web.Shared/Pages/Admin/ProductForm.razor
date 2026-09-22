@@ -1,6 +1,8 @@
 @page "/admin/products/new"
 @page "/admin/products/{Id:int}/edit"
 @layout AdminLayout
+@using Microsoft.AspNetCore.Components.Forms
+@using NUBulldogsExchange.Web.Shared.Components.Admin
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
@@ -33,7 +35,7 @@
     {
         <form class="admin-card admin-product-form" @onsubmit="Save" @onsubmit:preventDefault="true">
             <div class="admin-form-grid">
-                <label class="admin-field">
+                <label class="admin-field admin-field-full">
                     <span>Product Name *</span>
                     <input type="text" @bind="_name" @bind:event="oninput" placeholder="NU Bulldogs Classic Shirt" />
                     @if (_errors.ContainsKey(nameof(_name)))
@@ -42,13 +44,9 @@
                     }
                 </label>
 
-                <label class="admin-field">
-                    <span>SKU *</span>
-                    <input type="text" @bind="_sku" @bind:event="oninput" placeholder="NUBE-TS-001" />
-                    @if (_errors.ContainsKey(nameof(_sku)))
-                    {
-                        <em>@_errors[nameof(_sku)]</em>
-                    }
+                <label class="admin-field admin-field-full">
+                    <span>Description</span>
+                    <textarea rows="4" @bind="_description" @bind:event="oninput" placeholder="Product description"></textarea>
                 </label>
 
                 <label class="admin-field">
@@ -88,44 +86,68 @@
                 </label>
 
                 <label class="admin-field">
-                    <span>Stock *</span>
-                    <input type="number" min="0" step="1" @bind="_stock" @bind:event="oninput" />
-                    @if (_errors.ContainsKey(nameof(_stock)))
+                    <span>SKU *</span>
+                    <input type="text" @bind="_sku" @bind:event="oninput" placeholder="NUBE-TS-001" />
+                    @if (_errors.ContainsKey(nameof(_sku)))
                     {
-                        <em>@_errors[nameof(_stock)]</em>
+                        <em>@_errors[nameof(_sku)]</em>
                     }
                 </label>
 
-                <label class="admin-field admin-field-full">
-                    <span>Image URL</span>
-                    <input type="url" @bind="_imageUrl" @bind:event="oninput" placeholder="https://..." />
-                </label>
+                <div class="admin-field-full">
+                    <ProductSizeVariantEditor HasSizeVariants="_hasSizeVariants"
+                                              HasSizeVariantsChanged="OnHasSizeVariantsChanged"
+                                              Variants="_variants"
+                                              VariantsChanged="OnVariantsChanged"
+                                              StockText="@_stock.ToString()"
+                                              StockTextChanged="OnStockTextChanged"
+                                              StockError="@(_errors.GetValueOrDefault(nameof(_stock)))"
+                                              VariantsError="@(_errors.GetValueOrDefault("variants"))"
+                                              BaseSku="_sku" />
+                </div>
 
                 <label class="admin-field admin-field-full">
-                    <span>Description</span>
-                    <textarea rows="4" @bind="_description" @bind:event="oninput" placeholder="Product description"></textarea>
-                </label>
-
-                <label class="admin-field">
                     <span>Colors (comma-separated)</span>
                     <input type="text" @bind="_colors" @bind:event="oninput" placeholder="navy, gold, white" />
                 </label>
 
-                <label class="admin-field">
-                    <span>Sizes (comma-separated)</span>
-                    <input type="text" @bind="_sizes" @bind:event="oninput" placeholder="S, M, L, XL" />
-                </label>
-            </div>
-
-            @if (!string.IsNullOrWhiteSpace(_imageUrl))
-            {
-                <div class="admin-form-preview">
-                    <span>Image preview</span>
-                    <img src="@_imageUrl"
-                         alt="Preview"
-                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                <div class="admin-field admin-field-full admin-product-image-section">
+                    <span>Product Image</span>
+                    @if (!string.IsNullOrWhiteSpace(_imageUrl))
+                    {
+                        <div class="admin-product-image-current">
+                            <img src="@_imageUrl"
+                                 alt="Preview"
+                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                            <div class="admin-product-image-actions">
+                                <button type="button" class="btn btn-outline-navy">
+                                    Replace Image
+                                    <InputFile OnChange="OnReplaceImageSelected"
+                                               accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                               class="admin-product-upload-input" />
+                                </button>
+                            </div>
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="admin-product-upload">
+                            <InputFile OnChange="OnReplaceImageSelected"
+                                       accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                       class="admin-product-upload-input" />
+                            <div class="admin-product-upload-content" aria-hidden="true">
+                                <Icon Name="upload" Size="28" CssClass="admin-product-upload-icon" />
+                                <p>Click to upload a product image</p>
+                                <small>PNG, JPG up to 10MB</small>
+                            </div>
+                        </div>
+                    }
+                    @if (_errors.ContainsKey(nameof(_imageUrl)))
+                    {
+                        <em>@_errors[nameof(_imageUrl)]</em>
+                    }
                 </div>
-            }
+            </div>
 
             <div class="admin-form-actions">
                 <button type="submit" class="btn btn-navy">@(IsEdit ? "Save Changes" : "Add Product")</button>
@@ -136,6 +158,8 @@
 </div>
 
 @code {
+    private const long MaxImageBytes = 10 * 1024 * 1024;
+
     [Parameter] public int? Id { get; set; }
 
     private bool IsEdit => Id is > 0;
@@ -151,7 +175,8 @@
     private string _imageUrl = string.Empty;
     private string _description = string.Empty;
     private string _colors = string.Empty;
-    private string _sizes = string.Empty;
+    private bool _hasSizeVariants;
+    private List<ProductVariant> _variants = [];
     private int _sold;
     private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
 
@@ -185,7 +210,8 @@
             _imageUrl = string.Empty;
             _description = string.Empty;
             _colors = string.Empty;
-            _sizes = string.Empty;
+            _hasSizeVariants = false;
+            _variants = [];
             return;
         }
 
@@ -207,7 +233,73 @@
         _imageUrl = product.ImageUrl;
         _description = product.Description;
         _colors = string.Join(", ", product.Colors);
-        _sizes = string.Join(", ", product.Sizes);
+        _hasSizeVariants = product.HasSizeVariants;
+        _variants = product.Variants.Select(v => v.Clone()).ToList();
+    }
+
+    private Task OnHasSizeVariantsChanged(bool value)
+    {
+        _hasSizeVariants = value;
+        _errors.Remove(nameof(_stock));
+        _errors.Remove("variants");
+        return Task.CompletedTask;
+    }
+
+    private Task OnVariantsChanged(List<ProductVariant> variants)
+    {
+        _variants = variants;
+        _errors.Remove("variants");
+        return Task.CompletedTask;
+    }
+
+    private Task OnStockTextChanged(string value)
+    {
+        if (!int.TryParse(value, out var stock) || stock < 0)
+            stock = 0;
+        _stock = stock;
+        _errors.Remove(nameof(_stock));
+        return Task.CompletedTask;
+    }
+
+    private async Task OnReplaceImageSelected(InputFileChangeEventArgs e)
+    {
+        _errors.Remove(nameof(_imageUrl));
+        var file = e.File;
+        if (file is null) return;
+
+        var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
+        var name = file.Name?.ToLowerInvariant() ?? string.Empty;
+        var isPng = contentType is "image/png" || name.EndsWith(".png");
+        var isJpg = contentType is "image/jpeg" or "image/jpg" ||
+                    name.EndsWith(".jpg") || name.EndsWith(".jpeg");
+
+        if (!isPng && !isJpg)
+        {
+            _errors[nameof(_imageUrl)] = "Image must be PNG or JPG.";
+            return;
+        }
+
+        if (file.Size > MaxImageBytes)
+        {
+            _errors[nameof(_imageUrl)] = "Image must not exceed 10MB.";
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxImageBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            if (bytes.Length == 0) return;
+
+            var mime = isPng ? "image/png" : "image/jpeg";
+            _imageUrl = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch
+        {
+            _errors[nameof(_imageUrl)] = "Image must not exceed 10MB.";
+        }
     }
 
     private bool Validate()
@@ -218,6 +310,8 @@
             _errors[nameof(_name)] = "Product name is required.";
         if (string.IsNullOrWhiteSpace(_sku))
             _errors[nameof(_sku)] = "SKU is required.";
+        else if (ProductService.SkuExists(_sku, IsEdit ? _editId : null))
+            _errors[nameof(_sku)] = "This SKU already exists.";
         if (string.IsNullOrWhiteSpace(_category))
             _errors[nameof(_category)] = "Category is required.";
         else if (!FormCategoryNames.Any(c => c.Equals(_category, StringComparison.OrdinalIgnoreCase)) &&
@@ -225,8 +319,17 @@
             _errors[nameof(_category)] = "Please select a valid category.";
         if (_price <= 0)
             _errors[nameof(_price)] = "Price must be greater than 0.";
-        if (_stock < 0)
+
+        if (_hasSizeVariants)
+        {
+            var variantError = ProductSizeVariantEditor.Validate(true, _variants);
+            if (variantError is not null)
+                _errors["variants"] = variantError;
+        }
+        else if (_stock < 0)
+        {
             _errors[nameof(_stock)] = "Stock must be 0 or greater.";
+        }
 
         return _errors.Count == 0;
     }
@@ -234,6 +337,10 @@
     private async Task Save()
     {
         if (!Validate()) return;
+
+        var variants = _hasSizeVariants
+            ? _variants.Select(v => v.Clone()).ToList()
+            : [];
 
         var model = new AdminProduct
         {
@@ -243,12 +350,14 @@
             Category = _category,
             Status = _status,
             Price = _price,
-            Stock = _stock,
+            Stock = _hasSizeVariants ? variants.Sum(v => Math.Max(0, v.StockQuantity)) : _stock,
             Sold = _sold,
             ImageUrl = string.IsNullOrWhiteSpace(_imageUrl) ? MockData.PlaceholderImage : _imageUrl.Trim(),
+            Images = string.IsNullOrWhiteSpace(_imageUrl) ? [] : [_imageUrl.Trim()],
             Description = _description.Trim(),
             Colors = SplitList(_colors),
-            Sizes = SplitList(_sizes)
+            Sizes = _hasSizeVariants ? variants.Select(v => v.Size).ToList() : [],
+            Variants = variants
         };
 
         if (IsEdit)

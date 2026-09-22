@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
+             xmlns:data="clr-namespace:NUBulldogsExchange.Web.Shared.Data;assembly=NUBulldogsExchange.Web.Shared"
+             x:Class="NUBulldogsExchange.Mobile.Pages.ProductDetailsPage"
+             x:DataType="vm:ProductDetailsViewModel"
+             Title="Product"
+             BackgroundColor="#F8FAFC">
+
+    <ScrollView>
+        <VerticalStackLayout Padding="20" Spacing="16">
+            <Button Text="← Back"
+                    Command="{Binding BackCommand}"
+                    BackgroundColor="Transparent"
+                    TextColor="#123A63"
+                    HorizontalOptions="Start"
+                    Padding="0" />
+
+            <Border StrokeThickness="0"
+                    StrokeShape="RoundRectangle 16"
+                    BackgroundColor="White">
+                <Image Source="{Binding ImageUrl}"
+                       Aspect="AspectFill"
+                       HeightRequest="280" />
+            </Border>
+
+            <Label Text="{Binding Name}"
+                   FontSize="24"
+                   FontAttributes="Bold"
+                   TextColor="#123A63" />
+
+            <Label Text="{Binding PriceLabel}"
+                   FontSize="20"
+                   FontAttributes="Bold"
+                   TextColor="#0F766E" />
+
+            <VerticalStackLayout IsVisible="{Binding HasSizeVariants}" Spacing="10">
+                <Label Text="Select Size"
+                       FontAttributes="Bold"
+                       TextColor="#334155" />
+
+                <FlexLayout BindableLayout.ItemsSource="{Binding SizeVariants}"
+                            Wrap="Wrap"
+                            AlignItems="Start"
+                            JustifyContent="Start">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="data:ProductVariant">
+                            <Button Text="{Binding Size}"
+                                    Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.SelectSizeCommand}"
+                                    CommandParameter="{Binding .}"
+                                    Margin="0,0,8,8"
+                                    MinimumWidthRequest="52"
+                                    HeightRequest="40"
+                                    CornerRadius="10"
+                                    BackgroundColor="#FFFFFF"
+                                    TextColor="#123A63"
+                                    BorderColor="#CBD5E1"
+                                    BorderWidth="1"
+                                    IsEnabled="{Binding IsInStock}" />
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </FlexLayout>
+
+                <Label Text="{Binding SelectedSize, StringFormat='Selected: {0}'}"
+                       TextColor="#64748B"
+                       FontSize="13" />
+            </VerticalStackLayout>
+
+            <HorizontalStackLayout Spacing="12">
+                <Label Text="Quantity"
+                       FontAttributes="Bold"
+                       VerticalOptions="Center"
+                       TextColor="#334155" />
+                <Button Text="−" Command="{Binding DecreaseCommand}" WidthRequest="44" HeightRequest="40" />
+                <Label Text="{Binding Quantity}"
+                       VerticalOptions="Center"
+                       FontAttributes="Bold"
+                       FontSize="18"
+                       WidthRequest="28"
+                       HorizontalTextAlignment="Center" />
+                <Button Text="+" Command="{Binding IncreaseCommand}" WidthRequest="44" HeightRequest="40" />
+            </HorizontalStackLayout>
+
+            <Label Text="{Binding StockHint}" TextColor="#64748B" FontSize="13" />
+            <Label Text="{Binding ErrorMessage}" TextColor="#DC2626" FontAttributes="Bold" />
+
+            <Button Text="Add to Cart"
+                    Command="{Binding AddToCartCommand}"
+                    BackgroundColor="#123A63"
+                    TextColor="White"
+                    HeightRequest="48"
+                    CornerRadius="12"
+                    FontAttributes="Bold" />
+        </VerticalStackLayout>
+    </ScrollView>
+</ContentPage>

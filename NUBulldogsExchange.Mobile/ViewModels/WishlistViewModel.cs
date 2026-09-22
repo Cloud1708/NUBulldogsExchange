@@ -42,7 +42,7 @@ public sealed class WishlistViewModel : INotifyPropertyChanged
         ExploreProductsCommand = new Command(async () => await GoAsync("//shop"));
         RemoveFromWishlistCommand = new Command<Product>(async p => await OnRemoveAsync(p));
         AddToCartCommand = new Command<Product>(async p => await OnAddToCartAsync(p));
-        OpenProductCommand = new Command<Product>(_ => { });
+        OpenProductCommand = new Command<Product>(async p => await OnOpenProductAsync(p));
 
         _wishlist.OnChange += OnWishlistChanged;
         _catalog.OnChange += OnWishlistChanged;
@@ -163,10 +163,23 @@ public sealed class WishlistViewModel : INotifyPropertyChanged
         RefreshItems();
     }
 
+    private async Task OnOpenProductAsync(Product? product)
+    {
+        if (product is null) return;
+        try { await Shell.Current.GoToAsync($"product?id={product.Id}"); }
+        catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+    }
+
     private async Task OnAddToCartAsync(Product? product)
     {
         if (product is null) return;
-        _cart.Add(product, 1, product.Colors.FirstOrDefault(), product.Sizes.FirstOrDefault());
+        if (product.HasSizeVariants)
+        {
+            await OnOpenProductAsync(product);
+            return;
+        }
+
+        _cart.Add(product, 1, product.Colors.FirstOrDefault(), null);
         await _cart.PersistAsync(_auth.Email);
         _toast.Show($"Added {product.Name} to cart!");
     }

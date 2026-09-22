@@ -1,6 +1,7 @@
 @page "/admin/products"
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components.Forms
+@using NUBulldogsExchange.Web.Shared.Components.Admin
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
@@ -202,13 +203,13 @@
     <div class="admin-menu-backdrop" @onclick="CloseMenu"></div>
 }
 
-@if (_addModalOpen)
+@if (_productModalOpen)
 {
-    <div class="admin-modal-backdrop admin-product-modal-backdrop" @onclick="RequestCloseAddModal">
-        <div class="admin-product-modal" role="dialog" aria-modal="true" aria-labelledby="add-product-title" @onclick:stopPropagation="true">
+    <div class="admin-modal-backdrop admin-product-modal-backdrop" @onclick="RequestCloseProductModal">
+        <div class="admin-product-modal" role="dialog" aria-modal="true" aria-labelledby="product-modal-title" @onclick:stopPropagation="true">
             <header class="admin-product-modal-header">
-                <h2 id="add-product-title">Add New Product</h2>
-                <button type="button" class="admin-product-modal-close" aria-label="Close" @onclick="RequestCloseAddModal">
+                <h2 id="product-modal-title">@(_isEditMode ? "Edit Product" : "Add New Product")</h2>
+                <button type="button" class="admin-product-modal-close" aria-label="Close" @onclick="RequestCloseProductModal">
                     <Icon Name="x" Size="18" />
                 </button>
             </header>
@@ -259,6 +260,10 @@
                         <select value="@_formStatus" @onchange="OnStatusSelect">
                             <option value="Active">Active</option>
                             <option value="Inactive">Inactive</option>
+                            @if (_isEditMode && string.Equals(_formStatus, "Draft", StringComparison.OrdinalIgnoreCase))
+                            {
+                                <option value="Draft">Draft</option>
+                            }
                         </select>
                         @if (_formErrors.ContainsKey("status"))
                         {
@@ -295,72 +300,120 @@
                     </label>
                 </div>
 
-                <label class="admin-field admin-product-stock-field">
-                    <span>Stock Quantity</span>
-                    <input type="number"
-                           min="0"
-                           step="1"
-                           value="@_formStockText"
-                           @oninput="OnStockInput"
-                           placeholder="100" />
-                    @if (_formErrors.ContainsKey("stock"))
-                    {
-                        <em>@_formErrors["stock"]</em>
-                    }
-                </label>
+                <ProductSizeVariantEditor HasSizeVariants="_hasSizeVariants"
+                                          HasSizeVariantsChanged="OnHasSizeVariantsChanged"
+                                          Variants="_formVariants"
+                                          VariantsChanged="OnVariantsChanged"
+                                          StockText="_formStockText"
+                                          StockTextChanged="OnStockTextChanged"
+                                          StockError="@(_formErrors.GetValueOrDefault("stock"))"
+                                          VariantsError="@(_formErrors.GetValueOrDefault("variants"))"
+                                          BaseSku="_formSku" />
 
-                <div class="admin-field">
-                    <span>Product Images</span>
-                    <div class="admin-product-upload @(_isDragOver ? "is-dragover" : "") @(_previewImages.Count > 0 ? "has-previews" : "")"
-                         @ondragenter="OnDragEnter"
-                         @ondragenter:preventDefault
-                         @ondragover="OnDragOver"
-                         @ondragover:preventDefault
-                         @ondragleave="OnDragLeave">
-                        @if (_previewImages.Count == 0)
+                @if (_isEditMode)
+                {
+                    <label class="admin-field">
+                        <span>Colors</span>
+                        <input type="text"
+                               value="@_formColors"
+                               @oninput="OnColorsInput"
+                               placeholder="navy, white" />
+                    </label>
+                }
+
+                <div class="admin-field admin-product-image-section">
+                    <span>Product Image@(_isEditMode ? "" : "s")</span>
+                    @if (_isEditMode)
+                    {
+                        @if (_previewImages.Count > 0)
                         {
-                            <InputFile OnChange="OnImagesSelected"
-                                       accept="image/png,image/jpeg,.png,.jpg,.jpeg"
-                                       multiple
-                                       class="admin-product-upload-input" />
-                            <div class="admin-product-upload-content" aria-hidden="true">
-                                <Icon Name="upload" Size="28" CssClass="admin-product-upload-icon" />
-                                <p>Drag &amp; drop images here, or click to upload</p>
-                                <small>PNG, JPG up to 10MB each</small>
+                            <div class="admin-product-image-current">
+                                <img src="@_previewImages[0].DataUrl"
+                                     alt="Product preview"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="admin-product-image-actions">
+                                    <button type="button" class="btn btn-outline-navy">
+                                        Replace Image
+                                        <InputFile OnChange="OnReplaceImageSelected"
+                                                   accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                                   class="admin-product-upload-input" />
+                                    </button>
+                                </div>
                             </div>
                         }
                         else
                         {
-                            <div class="admin-product-previews">
-                                @for (var i = 0; i < _previewImages.Count; i++)
-                                {
-                                    var index = i;
-                                    var preview = _previewImages[index];
-                                    <div class="admin-product-preview">
-                                        <img src="@preview.DataUrl" alt="@($"Product image {index + 1}")" />
-                                        @if (index == 0)
-                                        {
-                                            <span class="admin-product-preview-main">Main</span>
-                                        }
-                                        <button type="button"
-                                                class="admin-product-preview-remove"
-                                                aria-label="Remove image"
-                                                @onclick="() => RemoveImage(index)">
-                                            <Icon Name="x" Size="12" />
-                                        </button>
-                                    </div>
-                                }
-                                <div class="admin-product-preview admin-product-preview-add">
-                                    <InputFile OnChange="OnImagesSelected"
-                                               accept="image/png,image/jpeg,.png,.jpg,.jpeg"
-                                               multiple
-                                               class="admin-product-upload-input" />
-                                    <Icon Name="plus" Size="22" CssClass="admin-product-upload-icon" />
-                                    <span>Add</span>
+                            <div class="admin-product-upload @(_isDragOver ? "is-dragover" : "")"
+                                 @ondragenter="OnDragEnter"
+                                 @ondragenter:preventDefault
+                                 @ondragover="OnDragOver"
+                                 @ondragover:preventDefault
+                                 @ondragleave="OnDragLeave">
+                                <InputFile OnChange="OnImagesSelected"
+                                           accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                           multiple
+                                           class="admin-product-upload-input" />
+                                <div class="admin-product-upload-content" aria-hidden="true">
+                                    <Icon Name="upload" Size="28" CssClass="admin-product-upload-icon" />
+                                    <p>Drag &amp; drop images here, or click to upload</p>
+                                    <small>PNG, JPG up to 10MB each</small>
                                 </div>
                             </div>
                         }
-                    </div>
+                    }
+                    else
+                    {
+                        <div class="admin-product-upload @(_isDragOver ? "is-dragover" : "") @(_previewImages.Count > 0 ? "has-previews" : "")"
+                             @ondragenter="OnDragEnter"
+                             @ondragenter:preventDefault
+                             @ondragover="OnDragOver"
+                             @ondragover:preventDefault
+                             @ondragleave="OnDragLeave">
+                            @if (_previewImages.Count == 0)
+                            {
+                                <InputFile OnChange="OnImagesSelected"
+                                           accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                           multiple
+                                           class="admin-product-upload-input" />
+                                <div class="admin-product-upload-content" aria-hidden="true">
+                                    <Icon Name="upload" Size="28" CssClass="admin-product-upload-icon" />
+                                    <p>Drag &amp; drop images here, or click to upload</p>
+                                    <small>PNG, JPG up to 10MB each</small>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="admin-product-previews">
+                                    @for (var i = 0; i < _previewImages.Count; i++)
+                                    {
+                                        var index = i;
+                                        var preview = _previewImages[index];
+                                        <div class="admin-product-preview">
+                                            <img src="@preview.DataUrl" alt="@($"Product image {index + 1}")" />
+                                            @if (index == 0)
+                                            {
+                                                <span class="admin-product-preview-main">Main</span>
+                                            }
+                                            <button type="button"
+                                                    class="admin-product-preview-remove"
+                                                    aria-label="Remove image"
+                                                    @onclick="() => RemoveImage(index)">
+                                                <Icon Name="x" Size="12" />
+                                            </button>
+                                        </div>
+                                    }
+                                    <div class="admin-product-preview admin-product-preview-add">
+                                        <InputFile OnChange="OnImagesSelected"
+                                                   accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                                   multiple
+                                                   class="admin-product-upload-input" />
+                                        <Icon Name="plus" Size="22" CssClass="admin-product-upload-icon" />
+                                        <span>Add</span>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
                     @if (_formErrors.ContainsKey("images"))
                     {
                         <em>@_formErrors["images"]</em>
@@ -368,16 +421,28 @@
                 </div>
             </div>
 
-            <footer class="admin-product-modal-footer">
-                <button type="button" class="btn btn-navy admin-product-save-btn" @onclick="SaveProduct">
-                    Save Product
-                </button>
-                <button type="button" class="btn btn-outline-navy" @onclick="SaveDraft">
-                    Save Draft
-                </button>
-                <button type="button" class="btn btn-outline-navy" @onclick="RequestCloseAddModal">
-                    Cancel
-                </button>
+            <footer class="admin-product-modal-footer @(_isEditMode ? "is-edit" : null)">
+                @if (_isEditMode)
+                {
+                    <button type="button" class="btn btn-outline-navy" @onclick="RequestCloseProductModal">
+                        Cancel
+                    </button>
+                    <button type="button" class="btn btn-navy admin-product-save-btn" @onclick="SaveEditedProduct">
+                        Save Changes
+                    </button>
+                }
+                else
+                {
+                    <button type="button" class="btn btn-navy admin-product-save-btn" @onclick="SaveProduct">
+                        Save Product
+                    </button>
+                    <button type="button" class="btn btn-outline-navy" @onclick="SaveDraft">
+                        Save Draft
+                    </button>
+                    <button type="button" class="btn btn-outline-navy" @onclick="RequestCloseProductModal">
+                        Cancel
+                    </button>
+                }
             </footer>
         </div>
     </div>
@@ -387,7 +452,7 @@
 {
     <div class="admin-modal-backdrop admin-product-modal-backdrop" style="z-index: 90;" @onclick="KeepEditing">
         <div class="admin-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>Discard unsaved product?</h2>
+            <h2>Discard unsaved changes?</h2>
             <p>Your changes will be lost if you close this form.</p>
             <p class="admin-modal-note">This action cannot be undone.</p>
             <div class="admin-modal-actions">
@@ -432,11 +497,14 @@
     private bool _bulkDelete;
     private readonly HashSet<int> _selectedIds = [];
 
-    private bool _addModalOpen;
+    private bool _productModalOpen;
     private bool _discardConfirm;
     private bool _isDragOver;
     private bool _skuTouched;
     private bool _formDirty;
+    private int? _editProductId;
+    private string _originalCategory = string.Empty;
+    private int _formSold;
 
     private string _formName = string.Empty;
     private string _formDescription = string.Empty;
@@ -445,8 +513,13 @@
     private string _formPriceText = string.Empty;
     private string _formSku = string.Empty;
     private string _formStockText = string.Empty;
+    private string _formColors = string.Empty;
+    private bool _hasSizeVariants;
+    private List<ProductVariant> _formVariants = [];
     private readonly List<ImagePreview> _previewImages = [];
     private readonly Dictionary<string, string> _formErrors = new(StringComparer.Ordinal);
+
+    private bool _isEditMode => _editProductId is > 0;
 
     private List<AdminProduct> Filtered =>
         ProductService.Filter(_search, _category, _status).ToList();
@@ -499,13 +572,29 @@
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
 
-    private IEnumerable<string> FormCategoryNames =>
-        CategoryService.All
-            .Where(c => c.IsActive)
-            .Select(c => c.Name)
-            .Where(n => !string.IsNullOrWhiteSpace(n))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
+    private IEnumerable<string> FormCategoryNames
+    {
+        get
+        {
+            var names = CategoryService.All
+                .Where(c => c.IsActive ||
+                            (!string.IsNullOrWhiteSpace(_formCategory) &&
+                             c.Name.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
+                .Select(c => c.Name)
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            if (!string.IsNullOrWhiteSpace(_formCategory) &&
+                !names.Any(n => n.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
+            {
+                names.Insert(0, _formCategory);
+            }
+
+            return names;
+        }
+    }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
@@ -615,10 +704,43 @@
         Navigation.NavigateTo($"/admin/products/{id}");
     }
 
-    private void EditProduct(int id)
+    private async Task EditProduct(int id)
     {
         CloseMenu();
-        Navigation.NavigateTo($"/admin/products/{id}/edit");
+        var product = ProductService.GetById(id);
+        if (product is null)
+        {
+            Toast.Show("Product not found.");
+            return;
+        }
+
+        ResetForm();
+        _editProductId = product.Id;
+        _originalCategory = product.Category;
+        _formName = product.Name;
+        _formDescription = product.Description ?? string.Empty;
+        _formCategory = product.Category;
+        _formStatus = string.IsNullOrWhiteSpace(product.Status) ? "Active" : product.Status;
+        _formPriceText = product.Price.ToString("0");
+        _formSku = product.Sku;
+        _formStockText = product.Stock.ToString();
+        _formSold = product.Sold;
+        _formColors = string.Join(", ", product.Colors ?? []);
+        _hasSizeVariants = product.HasSizeVariants;
+        _formVariants = product.Variants.Select(v => v.Clone()).ToList();
+        _skuTouched = true;
+
+        var images = product.Images is { Count: > 0 }
+            ? product.Images
+            : string.IsNullOrWhiteSpace(product.ImageUrl)
+                ? []
+                : [product.ImageUrl];
+        foreach (var image in images.Where(i => !string.IsNullOrWhiteSpace(i)))
+            _previewImages.Add(new ImagePreview(image));
+
+        _productModalOpen = true;
+        _discardConfirm = false;
+        await SetBodyScrollLock(true);
     }
 
     private async Task DuplicateProduct(int id)
@@ -696,12 +818,12 @@
     {
         CloseMenu();
         ResetForm();
-        _addModalOpen = true;
+        _productModalOpen = true;
         _discardConfirm = false;
         await SetBodyScrollLock(true);
     }
 
-    private void RequestCloseAddModal()
+    private void RequestCloseProductModal()
     {
         if (_formDirty)
         {
@@ -709,7 +831,7 @@
             return;
         }
 
-        _ = CloseAddModalAsync();
+        _ = CloseProductModalAsync();
     }
 
     private void KeepEditing() => _discardConfirm = false;
@@ -717,12 +839,12 @@
     private void DiscardAndClose()
     {
         _discardConfirm = false;
-        _ = CloseAddModalAsync();
+        _ = CloseProductModalAsync();
     }
 
-    private async Task CloseAddModalAsync()
+    private async Task CloseProductModalAsync()
     {
-        _addModalOpen = false;
+        _productModalOpen = false;
         _discardConfirm = false;
         ResetForm();
         await SetBodyScrollLock(false);
@@ -730,6 +852,9 @@
 
     private void ResetForm()
     {
+        _editProductId = null;
+        _originalCategory = string.Empty;
+        _formSold = 0;
         _formName = string.Empty;
         _formDescription = string.Empty;
         _formCategory = string.Empty;
@@ -737,6 +862,9 @@
         _formPriceText = string.Empty;
         _formSku = string.Empty;
         _formStockText = string.Empty;
+        _formColors = string.Empty;
+        _hasSizeVariants = false;
+        _formVariants = [];
         _previewImages.Clear();
         _formErrors.Clear();
         _skuTouched = false;
@@ -791,11 +919,42 @@
         _formErrors.Remove("sku");
     }
 
+    private void OnColorsInput(ChangeEventArgs e)
+    {
+        _formColors = e.Value?.ToString() ?? string.Empty;
+        MarkDirty();
+    }
+
     private void OnStockInput(ChangeEventArgs e)
     {
         _formStockText = e.Value?.ToString() ?? string.Empty;
         MarkDirty();
         _formErrors.Remove("stock");
+    }
+
+    private Task OnStockTextChanged(string value)
+    {
+        _formStockText = value;
+        MarkDirty();
+        _formErrors.Remove("stock");
+        return Task.CompletedTask;
+    }
+
+    private Task OnHasSizeVariantsChanged(bool value)
+    {
+        _hasSizeVariants = value;
+        MarkDirty();
+        _formErrors.Remove("stock");
+        _formErrors.Remove("variants");
+        return Task.CompletedTask;
+    }
+
+    private Task OnVariantsChanged(List<ProductVariant> variants)
+    {
+        _formVariants = variants;
+        MarkDirty();
+        _formErrors.Remove("variants");
+        return Task.CompletedTask;
     }
 
     private void OnDragEnter(DragEventArgs _) => _isDragOver = true;
@@ -810,40 +969,63 @@
 
         foreach (var file in e.GetMultipleFiles(12))
         {
-            var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
-            var name = file.Name?.ToLowerInvariant() ?? string.Empty;
-            var isPng = contentType is "image/png" || name.EndsWith(".png");
-            var isJpg = contentType is "image/jpeg" or "image/jpg" ||
-                        name.EndsWith(".jpg") || name.EndsWith(".jpeg");
+            var dataUrl = await ReadImageDataUrlAsync(file);
+            if (dataUrl is null) continue;
+            _previewImages.Add(new ImagePreview(dataUrl));
+        }
+    }
 
-            if (!isPng && !isJpg)
-            {
-                _formErrors["images"] = "Image must be PNG or JPG.";
-                continue;
-            }
+    private async Task OnReplaceImageSelected(InputFileChangeEventArgs e)
+    {
+        _isDragOver = false;
+        _formErrors.Remove("images");
+        MarkDirty();
 
-            if (file.Size > MaxImageBytes)
-            {
-                _formErrors["images"] = "Image must not exceed 10MB.";
-                continue;
-            }
+        var file = e.File;
+        if (file is null) return;
 
-            try
-            {
-                await using var stream = file.OpenReadStream(MaxImageBytes);
-                using var ms = new MemoryStream();
-                await stream.CopyToAsync(ms);
-                var bytes = ms.ToArray();
-                if (bytes.Length == 0) continue;
+        var dataUrl = await ReadImageDataUrlAsync(file);
+        if (dataUrl is null) return;
 
-                var mime = isPng ? "image/png" : "image/jpeg";
-                var dataUrl = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
-                _previewImages.Add(new ImagePreview(dataUrl));
-            }
-            catch
-            {
-                _formErrors["images"] = "Image must not exceed 10MB.";
-            }
+        _previewImages.Clear();
+        _previewImages.Add(new ImagePreview(dataUrl));
+    }
+
+    private async Task<string?> ReadImageDataUrlAsync(IBrowserFile file)
+    {
+        var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
+        var name = file.Name?.ToLowerInvariant() ?? string.Empty;
+        var isPng = contentType is "image/png" || name.EndsWith(".png");
+        var isJpg = contentType is "image/jpeg" or "image/jpg" ||
+                    name.EndsWith(".jpg") || name.EndsWith(".jpeg");
+
+        if (!isPng && !isJpg)
+        {
+            _formErrors["images"] = "Image must be PNG or JPG.";
+            return null;
+        }
+
+        if (file.Size > MaxImageBytes)
+        {
+            _formErrors["images"] = "Image must not exceed 10MB.";
+            return null;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxImageBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            if (bytes.Length == 0) return null;
+
+            var mime = isPng ? "image/png" : "image/jpeg";
+            return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch
+        {
+            _formErrors["images"] = "Image must not exceed 10MB.";
+            return null;
         }
     }
 
@@ -865,7 +1047,8 @@
 
         if (string.IsNullOrWhiteSpace(_formCategory))
             _formErrors["category"] = "Please select a category.";
-        else if (!FormCategoryNames.Any(c => c.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
+        else if (!FormCategoryNames.Any(c => c.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)) &&
+                 !CategoryService.All.Any(c => c.Name.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
             _formErrors["category"] = "Please select a valid category.";
 
         if (string.IsNullOrWhiteSpace(_formStatus))
@@ -878,10 +1061,16 @@
 
         if (string.IsNullOrWhiteSpace(_formSku))
             _formErrors["sku"] = "SKU is required.";
-        else if (ProductService.SkuExists(_formSku))
+        else if (ProductService.SkuExists(_formSku, _editProductId))
             _formErrors["sku"] = "This SKU already exists.";
 
-        if (!int.TryParse(_formStockText, out var stock))
+        if (_hasSizeVariants)
+        {
+            var variantError = ProductSizeVariantEditor.Validate(true, _formVariants);
+            if (variantError is not null)
+                _formErrors["variants"] = variantError;
+        }
+        else if (!int.TryParse(_formStockText, out var stock))
             _formErrors["stock"] = "Stock quantity is required.";
         else if (stock < 0)
             _formErrors["stock"] = "Stock quantity cannot be negative.";
@@ -904,7 +1093,34 @@
         }
         finally
         {
-            await CloseAddModalAsync();
+            await CloseProductModalAsync();
+        }
+    }
+
+    private async Task SaveEditedProduct()
+    {
+        if (!_isEditMode)
+            return;
+
+        // Edit keeps existing image if present; only require an image when none is set.
+        if (!ValidateForm(requireImages: _previewImages.Count == 0))
+            return;
+
+        try
+        {
+            var ok = await PersistProductAsync(_formStatus);
+            if (!ok)
+            {
+                Toast.Show("Product could not be updated.");
+                return;
+            }
+
+            Toast.Show("Product updated successfully.");
+            await CloseProductModalAsync();
+        }
+        catch
+        {
+            Toast.Show("Product could not be updated.");
         }
     }
 
@@ -939,7 +1155,7 @@
                 _formSku = ProductService.SuggestSku(_formCategory);
         }
 
-        if (!string.IsNullOrWhiteSpace(_formSku) && ProductService.SkuExists(_formSku))
+        if (!string.IsNullOrWhiteSpace(_formSku) && ProductService.SkuExists(_formSku, _editProductId))
         {
             _formErrors.Clear();
             _formErrors["sku"] = "This SKU already exists.";
@@ -951,18 +1167,31 @@
         if (string.IsNullOrWhiteSpace(_formStockText))
             _formStockText = "0";
 
-        if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
+        if (!_hasSizeVariants)
         {
-            _formErrors.Clear();
-            _formErrors["price"] = "Price cannot be negative.";
-            return;
-        }
+            if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
+            {
+                _formErrors.Clear();
+                _formErrors["price"] = "Price cannot be negative.";
+                return;
+            }
 
-        if (!int.TryParse(_formStockText, out var stock) || stock < 0)
+            if (!int.TryParse(_formStockText, out var stock) || stock < 0)
+            {
+                _formErrors.Clear();
+                _formErrors["stock"] = "Stock quantity cannot be negative.";
+                return;
+            }
+        }
+        else
         {
-            _formErrors.Clear();
-            _formErrors["stock"] = "Stock quantity cannot be negative.";
-            return;
+            var variantError = ProductSizeVariantEditor.Validate(true, _formVariants);
+            if (variantError is not null)
+            {
+                _formErrors.Clear();
+                _formErrors["variants"] = variantError;
+                return;
+            }
         }
 
         try
@@ -972,20 +1201,28 @@
         }
         finally
         {
-            await CloseAddModalAsync();
+            await CloseProductModalAsync();
         }
     }
 
-    private async Task PersistProductAsync(string status)
+    private async Task<bool> PersistProductAsync(string status)
     {
         decimal.TryParse(_formPriceText, out var price);
         int.TryParse(_formStockText, out var stock);
         price = Math.Max(0, price);
         stock = Math.Max(0, stock);
 
-        var images = _previewImages.Select(p => p.DataUrl).ToList();
+        var variants = _hasSizeVariants
+            ? _formVariants.Select(v => v.Clone()).ToList()
+            : [];
+
+        if (_hasSizeVariants)
+            stock = variants.Sum(v => Math.Max(0, v.StockQuantity));
+
+        var images = _previewImages.Select(p => p.DataUrl).Where(u => !string.IsNullOrWhiteSpace(u)).ToList();
         var model = new AdminProduct
         {
+            Id = _editProductId ?? 0,
             Name = _formName.Trim(),
             Description = _formDescription.Trim(),
             Category = _formCategory.Trim(),
@@ -995,16 +1232,41 @@
                 ? ProductService.SuggestSku(_formCategory)
                 : _formSku.Trim().ToUpperInvariant(),
             Stock = stock,
-            Sold = 0,
+            Sold = _isEditMode ? _formSold : 0,
             Images = images,
             ImageUrl = images.Count > 0 ? images[0] : MockData.PlaceholderImage,
+            Colors = SplitColors(_formColors),
+            Sizes = _hasSizeVariants
+                ? variants.Select(v => v.Size).ToList()
+                : [],
+            Variants = variants,
             CreatedAt = DateTime.Now
         };
+
+        if (_isEditMode)
+        {
+            var ok = await ProductService.UpdateAsync(model);
+            if (!ok) return false;
+
+            if (!string.Equals(_originalCategory, model.Category, StringComparison.OrdinalIgnoreCase))
+            {
+                await CategoryService.AdjustProductCountAsync(_originalCategory, -1);
+                await CategoryService.AdjustProductCountAsync(model.Category, 1);
+            }
+
+            return true;
+        }
 
         await ProductService.AddAsync(model);
         await CategoryService.AdjustProductCountAsync(model.Category, 1);
         _currentPage = 1;
+        return true;
     }
+
+    private static List<string> SplitColors(string value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? []
+            : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
 
     private async Task SetBodyScrollLock(bool locked)
     {

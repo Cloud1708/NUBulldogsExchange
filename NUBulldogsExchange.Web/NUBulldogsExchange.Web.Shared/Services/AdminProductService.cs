@@ -65,6 +65,24 @@ public class AdminProductService
         var products = await _db.GetProductsAsync();
         _products.Clear();
         _products.AddRange(products.Select(AdminProduct.FromProduct));
+        var variantRows = await _db.GetProductVariantsByProductIdsAsync(_products.Select(p => p.Id));
+        foreach (var group in variantRows.GroupBy(v => v.ProductId))
+        {
+            var product = _products.FirstOrDefault(p => p.Id == group.Key);
+            if (product is null) continue;
+            product.Variants = group.Select(v => v.Clone()).ToList();
+            if (product.HasSizeVariants)
+            {
+                product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+                product.Sizes = product.Variants
+                    .Where(v => v.IsActive)
+                    .Select(v => v.Size)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
+        }
+
         _nextId = _products.Count == 0 ? 1 : _products.Max(p => p.Id) + 1;
         await _catalog.ReloadAsync();
         _loaded = true;
@@ -161,8 +179,14 @@ public class AdminProductService
         else if (string.IsNullOrWhiteSpace(product.ImageUrl))
             product.ImageUrl = CatalogHelpers.PlaceholderImage;
 
+        NormalizeVariantState(product);
+
         var stored = await PersistAsync(product);
         product.Id = stored.Id;
+        await _db.ReplaceProductVariantsAsync(product.Id, product.Variants);
+        product.Variants = await _db.GetProductVariantsAsync(product.Id);
+        NormalizeVariantState(product);
+
         _products.Add(product);
         SyncStorefront(product);
         OnChange?.Invoke();
@@ -194,7 +218,12 @@ public class AdminProductService
         existing.Description = product.Description?.Trim() ?? string.Empty;
         existing.Colors = [.. product.Colors];
         existing.Sizes = [.. product.Sizes];
+        existing.Variants = product.Variants?.Select(v => v.Clone()).ToList() ?? [];
+        NormalizeVariantState(existing);
         await PersistAsync(existing);
+        await _db.ReplaceProductVariantsAsync(existing.Id, existing.Variants);
+        existing.Variants = await _db.GetProductVariantsAsync(existing.Id);
+        NormalizeVariantState(existing);
         SyncStorefront(existing);
         OnChange?.Invoke();
         return true;
@@ -211,6 +240,12 @@ public class AdminProductService
         copy.Sku = $"{source.Sku}-COPY";
         copy.Sold = 0;
         copy.CreatedAt = DateTime.Now;
+        foreach (var variant in copy.Variants)
+        {
+            variant.Id = 0;
+            variant.ProductId = 0;
+        }
+
         return await AddAsync(copy);
     }
 
@@ -373,7 +408,35 @@ public class AdminProductService
         target.Images = product.Images.Count > 0 ? [.. product.Images] : [product.ImageUrl];
         if (product.Colors.Count > 0) target.Colors = [.. product.Colors];
         if (product.Sizes.Count > 0) target.Sizes = [.. product.Sizes];
+        target.Variants = product.Variants.Select(v => v.Clone()).ToList();
         target.Section = ResolveSection(product.Category);
+    }
+
+    private static void NormalizeVariantState(AdminProduct product)
+    {
+        product.Variants ??= [];
+        product.Variants = product.Variants
+            .Where(v => !string.IsNullOrWhiteSpace(v.Size))
+            .Select(v =>
+            {
+                v.Size = v.Size.Trim();
+                v.Sku = string.IsNullOrWhiteSpace(v.Sku) ? null : v.Sku.Trim().ToUpperInvariant();
+                v.StockQuantity = Math.Max(0, v.StockQuantity);
+                v.Status = string.IsNullOrWhiteSpace(v.Status) ? "Active" : v.Status.Trim();
+                v.PriceAdjustment = 0;
+                return v;
+            })
+            .ToList();
+
+        if (product.HasSizeVariants)
+        {
+            product.Stock = product.Variants.Sum(v => v.StockQuantity);
+            product.Sizes = product.Variants
+                .Where(v => v.IsActive)
+                .Select(v => v.Size)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
     }
 
     private static Product ToStoreProduct(AdminProduct product) => new()
@@ -395,7 +458,10 @@ public class AdminProductService
         ImageUrl = product.ImageUrl,
         Images = product.Images.Count > 0 ? [.. product.Images] : [product.ImageUrl],
         Colors = product.Colors.Count > 0 ? [.. product.Colors] : ["navy"],
-        Sizes = product.Sizes.Count > 0 ? [.. product.Sizes] : ["One Size"],
+        Sizes = product.HasSizeVariants
+            ? product.Variants.Where(v => v.IsActive).Select(v => v.Size).ToList()
+            : product.Sizes.Count > 0 ? [.. product.Sizes] : ["One Size"],
+        Variants = product.Variants.Select(v => v.Clone()).ToList(),
         Rating = 0,
         Reviews = 0,
         Section = ResolveSection(product.Category),

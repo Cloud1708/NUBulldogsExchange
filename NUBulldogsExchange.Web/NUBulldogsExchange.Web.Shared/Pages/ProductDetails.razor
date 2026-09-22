@@ -138,7 +138,37 @@ else
                         </div>
                     }
 
-                    @if (_product.Sizes.Count > 0)
+                    @if (_product.HasSizeVariants)
+                    {
+                        <div class="pdp-option">
+                            <div class="pdp-option-head">
+                                <span>Select Size</span>
+                                <button type="button" class="pdp-size-guide-link" @onclick="() => _showSizeGuide = true">Size Guide</button>
+                            </div>
+                            <div class="pdp-sizes">
+                                @foreach (var variant in _product.Variants.Where(v => v.IsActive))
+                                {
+                                    var soldOut = variant.StockQuantity <= 0;
+                                    <button type="button"
+                                            class="pdp-size @(_selectedVariantId == variant.Id ? "selected" : "") @(soldOut ? "is-sold-out" : "")"
+                                            disabled="@soldOut"
+                                            title="@(soldOut ? "Sold Out" : variant.Size)"
+                                            @onclick="() => SelectVariant(variant)">
+                                        @variant.Size
+                                        @if (soldOut)
+                                        {
+                                            <span class="pdp-size-soldout">Sold Out</span>
+                                        }
+                                    </button>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_sizeError))
+                            {
+                                <p class="pdp-size-error">@_sizeError</p>
+                            }
+                        </div>
+                    }
+                    else if (_product.Sizes.Count > 0)
                     {
                         <div class="pdp-option">
                             <div class="pdp-option-head">
@@ -165,33 +195,33 @@ else
                         <div class="pdp-qty-row">
                             <div class="qty-controls pdp-qty">
                                 <button type="button"
-                                        disabled="@(_quantity <= 1 || _product.Stock <= 0)"
+                                        disabled="@(_quantity <= 1 || AvailableStock <= 0)"
                                         @onclick="DecreaseQty"
                                         aria-label="Decrease quantity">
                                     <Icon Name="minus" Size="14" />
                                 </button>
                                 <span>@_quantity</span>
                                 <button type="button"
-                                        disabled="@(_quantity >= _product.Stock || _product.Stock <= 0)"
+                                        disabled="@(_quantity >= AvailableStock || AvailableStock <= 0)"
                                         @onclick="IncreaseQty"
                                         aria-label="Increase quantity">
                                     <Icon Name="plus" Size="14" />
                                 </button>
                             </div>
-                            <span class="pdp-stock-hint">@_product.Stock pieces available</span>
+                            <span class="pdp-stock-hint">@AvailableStock pieces available</span>
                         </div>
                     </div>
 
                     <div class="detail-actions pdp-actions">
                         <button type="button"
                                 class="btn btn-navy pdp-btn"
-                                disabled="@(_product.Stock <= 0)"
+                                disabled="@(AvailableStock <= 0)"
                                 @onclick="AddToCart">
                             <Icon Name="cart" Size="18" /> Add to Cart
                         </button>
                         <button type="button"
                                 class="btn btn-gold pdp-btn"
-                                disabled="@(_product.Stock <= 0)"
+                                disabled="@(AvailableStock <= 0)"
                                 @onclick="BuyNow">
                             <Icon Name="zap" Size="18" /> Buy Now
                         </button>
@@ -436,6 +466,8 @@ else
     private string _selectedImage = string.Empty;
     private string? _selectedColor;
     private string? _selectedSize;
+    private int? _selectedVariantId;
+    private string? _sizeError;
     private int _quantity = 1;
     private string _activeTab = "Description";
     private string _stockClass = "in-stock";
@@ -445,6 +477,26 @@ else
     private string _reviewName = string.Empty;
     private int _reviewRating = 5;
     private string _reviewText = string.Empty;
+
+    private int AvailableStock
+    {
+        get
+        {
+            if (_product is null) return 0;
+            if (_product.HasSizeVariants)
+            {
+                if (_selectedVariantId is int id)
+                {
+                    var variant = _product.Variants.FirstOrDefault(v => v.Id == id);
+                    return variant?.StockQuantity ?? 0;
+                }
+
+                return _product.Variants.Where(v => v.IsActive).Sum(v => Math.Max(0, v.StockQuantity));
+            }
+
+            return Math.Max(0, _product.Stock);
+        }
+    }
 
     private string CategoryHref =>
         _product is null
@@ -491,19 +543,37 @@ else
 
         _selectedImage = _gallery.FirstOrDefault() ?? product.ImageUrl;
         _selectedColor = product.Colors.FirstOrDefault();
-        _selectedSize = product.Sizes.Count == 1
-            ? product.Sizes[0]
-            : product.Sizes.Contains("M")
-                ? "M"
-                : product.Sizes.FirstOrDefault();
-        _quantity = product.Stock > 0 ? 1 : 0;
+        _selectedVariantId = null;
+        _selectedSize = null;
+        _sizeError = null;
+
+        if (product.HasSizeVariants)
+        {
+            var firstInStock = product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity > 0);
+            if (firstInStock is not null)
+            {
+                _selectedVariantId = firstInStock.Id;
+                _selectedSize = firstInStock.Size;
+            }
+        }
+        else if (product.Sizes.Count > 0)
+        {
+            _selectedSize = product.Sizes.Count == 1
+                ? product.Sizes[0]
+                : product.Sizes.Contains("M")
+                    ? "M"
+                    : product.Sizes.FirstOrDefault();
+        }
+
+        _quantity = AvailableStock > 0 ? 1 : 0;
     }
 
     private void UpdateStockClass()
     {
-        if (_product is null || _product.Stock <= 0)
+        var stock = AvailableStock;
+        if (_product is null || stock <= 0)
             _stockClass = "out-of-stock";
-        else if (_product.Stock <= 10)
+        else if (stock <= 10)
             _stockClass = "low-stock";
         else
             _stockClass = "in-stock";
@@ -520,7 +590,23 @@ else
 
     private void SelectImage(string src) => _selectedImage = src;
     private void SelectColor(string color) => _selectedColor = color;
-    private void SelectSize(string size) => _selectedSize = size;
+
+    private void SelectSize(string size)
+    {
+        _selectedSize = size;
+        _sizeError = null;
+    }
+
+    private void SelectVariant(ProductVariant variant)
+    {
+        if (variant.StockQuantity <= 0) return;
+        _selectedVariantId = variant.Id;
+        _selectedSize = variant.Size;
+        _sizeError = null;
+        if (_quantity > variant.StockQuantity)
+            _quantity = variant.StockQuantity;
+        UpdateStockClass();
+    }
 
     private void DecreaseQty()
     {
@@ -530,16 +616,16 @@ else
 
     private void IncreaseQty()
     {
-        if (_product is null) return;
-        if (_quantity < _product.Stock)
+        if (_quantity < AvailableStock)
             _quantity++;
     }
 
     private bool ValidateSelection()
     {
         if (_product is null) return false;
+        _sizeError = null;
 
-        if (_product.Stock <= 0)
+        if (AvailableStock <= 0)
         {
             Toast.Show("This product is out of stock.");
             return false;
@@ -551,7 +637,23 @@ else
             return false;
         }
 
-        if (_product.Sizes.Count > 0 && string.IsNullOrWhiteSpace(_selectedSize))
+        if (_product.HasSizeVariants)
+        {
+            if (_selectedVariantId is null)
+            {
+                _sizeError = "Please select a size.";
+                Toast.Show("Please select a size.");
+                return false;
+            }
+
+            var variant = _product.Variants.FirstOrDefault(v => v.Id == _selectedVariantId);
+            if (variant is null || variant.StockQuantity < _quantity)
+            {
+                Toast.Show("Not enough stock for the selected size.");
+                return false;
+            }
+        }
+        else if (_product.Sizes.Count > 0 && string.IsNullOrWhiteSpace(_selectedSize))
         {
             Toast.Show("Please select a size.");
             return false;
@@ -564,7 +666,7 @@ else
     {
         if (_product is null || !ValidateSelection()) return;
 
-        Cart.Add(_product, _quantity, _selectedColor, _selectedSize);
+        Cart.Add(_product, _quantity, _selectedColor, _selectedSize, _selectedVariantId);
         Toast.Show("Product added to cart.");
     }
 
@@ -572,7 +674,7 @@ else
     {
         if (_product is null || !ValidateSelection()) return;
 
-        Cart.Add(_product, _quantity, _selectedColor, _selectedSize);
+        Cart.Add(_product, _quantity, _selectedColor, _selectedSize, _selectedVariantId);
         Toast.Show("Product added to cart.");
         Navigation.NavigateTo("/cart");
     }

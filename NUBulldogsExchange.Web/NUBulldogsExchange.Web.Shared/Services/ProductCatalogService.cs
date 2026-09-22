@@ -61,6 +61,8 @@ public class ProductCatalogService
                 .Select(NormalizeProduct));
         }
 
+        await AttachVariantsAsync(_products);
+
         _categories.Clear();
         foreach (var c in categories.Where(c => c.IsActive))
         {
@@ -78,13 +80,63 @@ public class ProductCatalogService
         OnChange?.Invoke();
     }
 
+    private async Task AttachVariantsAsync(List<Product> products)
+    {
+        if (products.Count == 0) return;
+
+        try
+        {
+            var rows = await _db.GetProductVariantsByProductIdsAsync(products.Select(p => p.Id));
+            var byProduct = rows.GroupBy(v => v.ProductId)
+                .ToDictionary(g => g.Key, g => g.Select(v => v.Clone()).ToList());
+
+            foreach (var product in products)
+            {
+                if (!byProduct.TryGetValue(product.Id, out var variants))
+                {
+                    product.Variants = [];
+                    continue;
+                }
+
+                product.Variants = variants;
+                if (product.HasSizeVariants)
+                {
+                    product.Sizes = product.Variants
+                        .Where(v => v.IsActive)
+                        .Select(v => v.Size)
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+                    product.InStock = product.Stock > 0;
+                }
+            }
+        }
+        catch
+        {
+            // Table may not exist yet before migration; catalog still works without variants.
+        }
+    }
+
     public void ApplyPurchase(IEnumerable<AdminOrderItem> items)
     {
         foreach (var item in items)
         {
             var product = GetById(item.ProductId);
             if (product is null) continue;
-            product.Stock = Math.Max(0, product.Stock - item.Quantity);
+
+            if (item.VariantId is int variantId && product.Variants.Count > 0)
+            {
+                var variant = product.Variants.FirstOrDefault(v => v.Id == variantId);
+                if (variant is not null)
+                    variant.StockQuantity = Math.Max(0, variant.StockQuantity - item.Quantity);
+                product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+            }
+            else
+            {
+                product.Stock = Math.Max(0, product.Stock - item.Quantity);
+            }
+
             product.Sold += item.Quantity;
             product.InStock = product.Stock > 0;
         }
@@ -214,11 +266,22 @@ public class ProductCatalogService
 
     private static Product NormalizeProduct(Product product)
     {
-        if (product.Sizes.Count == 0)
+        product.Variants ??= [];
+
+        if (product.HasSizeVariants)
         {
-            product.Sizes = product.Section == "apparel"
-                ? [.. ApparelSizes]
-                : [.. OneSize];
+            product.Sizes = product.Variants
+                .Where(v => v.IsActive)
+                .Select(v => v.Size)
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+        }
+        else if (product.Sizes.Count == 0)
+        {
+            // No invented apparel sizes — empty means no size selector required.
+            product.Sizes = [];
         }
 
         if (product.Images.Count == 0 && !string.IsNullOrWhiteSpace(product.ImageUrl))

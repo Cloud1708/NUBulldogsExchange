@@ -138,6 +138,60 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     }
 
     // ========================================================
+    // Product variants
+    // ========================================================
+
+    public async Task<List<ProductVariant>> GetProductVariantsAsync(int productId)
+    {
+        return await GetListAsync<ProductVariant>(
+            $"rest/v1/product_variants?select=*&product_id=eq.{productId}&order=id.asc");
+    }
+
+    public async Task<List<ProductVariant>> GetProductVariantsByProductIdsAsync(IEnumerable<int> productIds)
+    {
+        var ids = productIds.Distinct().Where(id => id > 0).ToList();
+        if (ids.Count == 0)
+            return [];
+
+        var inList = string.Join(",", ids);
+        return await GetListAsync<ProductVariant>(
+            $"rest/v1/product_variants?select=*&product_id=in.({inList})&order=id.asc");
+    }
+
+    public async Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants)
+    {
+        using (var delete = await SendAsync(
+                   HttpMethod.Delete,
+                   $"rest/v1/product_variants?product_id=eq.{productId}"))
+        {
+            await EnsureSuccessAsync(delete);
+        }
+
+        if (variants.Count == 0)
+            return;
+
+        var now = DateTime.UtcNow;
+        var rows = variants.Select(v => new Dictionary<string, object?>
+        {
+            ["product_id"] = productId,
+            ["size"] = v.Size.Trim(),
+            ["sku"] = string.IsNullOrWhiteSpace(v.Sku) ? null : v.Sku.Trim(),
+            ["stock_quantity"] = Math.Max(0, v.StockQuantity),
+            ["price_adjustment"] = v.PriceAdjustment,
+            ["status"] = string.IsNullOrWhiteSpace(v.Status) ? "Active" : v.Status.Trim(),
+            ["created_at"] = v.CreatedAt ?? now,
+            ["updated_at"] = now
+        }).ToList();
+
+        using var insert = await SendAsync(
+            HttpMethod.Post,
+            "rest/v1/product_variants",
+            rows,
+            "return=minimal");
+        await EnsureSuccessAsync(insert);
+    }
+
+    // ========================================================
     // Categories
     // ========================================================
 
@@ -331,7 +385,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
                 ["product_id"] = i.ProductId,
                 ["quantity"] = i.Quantity,
                 ["selected_color"] = null,
-                ["selected_size"] = null
+                ["selected_size"] = string.IsNullOrWhiteSpace(i.Size) ? null : i.Size.Trim(),
+                ["variant_id"] = i.VariantId
             }).ToList(),
             ["p_promo_code"] = string.IsNullOrWhiteSpace(promoCode) ? null : promoCode.Trim()
         };
@@ -1532,7 +1587,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
     private async Task<List<AdminOrderItem>> GetOrderItemsAsync(string orderId) =>
         await GetListAsync<AdminOrderItem>(
-            $"rest/v1/order_items?select=product_id,name,image_url,quantity,price&order_id=eq.{Esc(orderId)}&order=id.asc");
+            $"rest/v1/order_items?select=product_id,name,image_url,quantity,price,variant_id,size,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");
 
     private async Task<MockUser?> BuildMockUserAsync(string authUserId, string accessToken)
     {

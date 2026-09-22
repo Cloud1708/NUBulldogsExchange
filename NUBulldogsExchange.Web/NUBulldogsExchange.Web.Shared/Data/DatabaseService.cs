@@ -304,6 +304,103 @@ public sealed partial class DatabaseService : IAppDatabase
         return await command.ExecuteNonQueryAsync() > 0;
     }
 
+    public async Task<List<ProductVariant>> GetProductVariantsAsync(int productId)
+    {
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        return await LoadProductVariantsAsync(connection, productId);
+    }
+
+    public async Task<List<ProductVariant>> GetProductVariantsByProductIdsAsync(IEnumerable<int> productIds)
+    {
+        await EnsureReadyAsync();
+        var ids = productIds.Distinct().Where(id => id > 0).ToList();
+        if (ids.Count == 0)
+            return [];
+
+        await using var connection = await OpenAsync();
+        var result = new List<ProductVariant>();
+        foreach (var id in ids)
+            result.AddRange(await LoadProductVariantsAsync(connection, id));
+        return result;
+    }
+
+    public async Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants)
+    {
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
+
+        await using (var delete = connection.CreateCommand())
+        {
+            delete.Transaction = tx;
+            delete.CommandText = "DELETE FROM ProductVariants WHERE ProductId = $productId;";
+            delete.Parameters.AddWithValue("$productId", productId);
+            await delete.ExecuteNonQueryAsync();
+        }
+
+        var now = DateTime.UtcNow.ToString("O");
+        foreach (var variant in variants)
+        {
+            await using var insert = connection.CreateCommand();
+            insert.Transaction = tx;
+            insert.CommandText = """
+                INSERT INTO ProductVariants (
+                    ProductId, Sku, VariantName, Size, Color, AdditionalPrice, StockQuantity,
+                    LowStockThreshold, IsActive, CreatedAt, UpdatedAt
+                ) VALUES (
+                    $productId, $sku, $name, $size, '', $price, $stock,
+                    20, $active, $createdAt, $updatedAt
+                );
+                """;
+            insert.Parameters.AddWithValue("$productId", productId);
+            insert.Parameters.AddWithValue("$sku", (object?)variant.Sku ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$name", variant.Size.Trim());
+            insert.Parameters.AddWithValue("$size", variant.Size.Trim());
+            insert.Parameters.AddWithValue("$price", variant.PriceAdjustment);
+            insert.Parameters.AddWithValue("$stock", Math.Max(0, variant.StockQuantity));
+            insert.Parameters.AddWithValue("$active",
+                string.IsNullOrWhiteSpace(variant.Status) ||
+                variant.Status.Equals("Active", StringComparison.OrdinalIgnoreCase) ? 1 : 0);
+            insert.Parameters.AddWithValue("$createdAt", now);
+            insert.Parameters.AddWithValue("$updatedAt", now);
+            await insert.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+    }
+
+    private static async Task<List<ProductVariant>> LoadProductVariantsAsync(SqliteConnection connection, int productId)
+    {
+        var list = new List<ProductVariant>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Id, ProductId, Sku, Size, AdditionalPrice, StockQuantity, IsActive, CreatedAt, UpdatedAt
+            FROM ProductVariants
+            WHERE ProductId = $productId
+            ORDER BY Id ASC;
+            """;
+        command.Parameters.AddWithValue("$productId", productId);
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            list.Add(new ProductVariant
+            {
+                Id = reader.GetInt32(0),
+                ProductId = reader.GetInt32(1),
+                Sku = reader.IsDBNull(2) ? null : reader.GetString(2),
+                Size = reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                PriceAdjustment = reader.IsDBNull(4) ? 0 : Convert.ToDecimal(reader.GetDouble(4)),
+                StockQuantity = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
+                Status = !reader.IsDBNull(6) && reader.GetInt32(6) == 0 ? "Inactive" : "Active",
+                CreatedAt = reader.IsDBNull(7) ? null : DateTime.TryParse(reader.GetString(7), out var c) ? c : null,
+                UpdatedAt = reader.IsDBNull(8) ? null : DateTime.TryParse(reader.GetString(8), out var u) ? u : null
+            });
+        }
+
+        return list;
+    }
+
     public async Task<List<ProductReview>> GetProductReviewsAsync(int productId)
     {
         await EnsureReadyAsync();

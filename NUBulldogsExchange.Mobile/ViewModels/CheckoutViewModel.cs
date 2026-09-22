@@ -199,7 +199,12 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
                     Name = i.Product.Name,
                     ImageUrl = i.Product.ImageUrl,
                     Quantity = i.Quantity,
-                    Price = i.Product.Price
+                    Price = i.Product.Price,
+                    VariantId = i.VariantId,
+                    Size = i.SelectedSize,
+                    VariantSku = i.VariantId is int vid
+                        ? i.Product.Variants.FirstOrDefault(v => v.Id == vid)?.Sku
+                        : null
                 }).ToList()
             };
 

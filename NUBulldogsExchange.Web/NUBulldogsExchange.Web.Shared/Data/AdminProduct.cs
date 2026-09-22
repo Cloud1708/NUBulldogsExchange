@@ -17,6 +17,8 @@ public class AdminProduct
     public string Description { get; set; } = string.Empty;
     public List<string> Colors { get; set; } = [];
     public List<string> Sizes { get; set; } = [];
+    public List<ProductVariant> Variants { get; set; } = [];
+    public bool HasSizeVariants => Variants.Count > 0;
     public DateTime CreatedAt { get; set; } = DateTime.Now;
 
     public bool IsActive => Status.Equals("Active", StringComparison.OrdinalIgnoreCase);
@@ -54,6 +56,7 @@ public class AdminProduct
         Description = Description,
         Colors = [.. Colors],
         Sizes = [.. Sizes],
+        Variants = Variants.Select(v => v.Clone()).ToList(),
         CreatedAt = CreatedAt
     };
 
@@ -77,6 +80,7 @@ public class AdminProduct
             ? product.Description
             : product.FullDescription,
         Colors = [.. product.Colors],
-        Sizes = [.. product.Sizes]
+        Sizes = [.. product.Sizes],
+        Variants = product.Variants.Select(v => v.Clone()).ToList()
     };
 }
