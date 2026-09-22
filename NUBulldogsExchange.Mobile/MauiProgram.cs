@@ -2,7 +2,6 @@ using Microsoft.Extensions.Logging;
 using NUBulldogsExchange.Mobile.Pages;
 using NUBulldogsExchange.Mobile.Services;
 using NUBulldogsExchange.Mobile.ViewModels;
-using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
 
 namespace NUBulldogsExchange.Mobile
@@ -22,22 +21,37 @@ namespace NUBulldogsExchange.Mobile
 
             builder.Services.AddSingleton<IFormFactor, FormFactor>();
 
-            // Direct SQLite on Windows; HTTP API on Android/iOS.
-            if (DeviceInfo.Platform == DevicePlatform.WinUI)
-            {
-                builder.Services.AddSingleton<DatabaseService>(_ =>
-                    new DatabaseService(ResolveWindowsDatabasePath()));
-                builder.Services.AddSingleton<IAppDatabase>(sp => sp.GetRequiredService<DatabaseService>());
-            }
-            else
-            {
-                builder.Services.AddHttpClient<IAppDatabase, HttpAppDatabase>(client =>
-                {
-                    client.BaseAddress = new Uri(MobileWebUrls.ApiBase);
-                    client.Timeout = TimeSpan.FromSeconds(30);
-                });
-            }
+            // ============================================================
+            // Direct Supabase connection
+            // ============================================================
+            var supabaseOptions = new SupabaseOptions(
+                SupabaseClientConfig.Url,
+                SupabaseClientConfig.PublishableKey);
 
+            builder.Services.AddSingleton(supabaseOptions);
+            builder.Services.AddSingleton<SupabaseSessionState>();
+
+            builder.Services.AddSingleton<SupabaseAppDatabase>(sp =>
+            {
+                var options = sp.GetRequiredService<SupabaseOptions>();
+                var http = new HttpClient
+                {
+                    BaseAddress = new Uri(options.Url),
+                    Timeout = TimeSpan.FromSeconds(30),
+                    DefaultRequestVersion = System.Net.HttpVersion.Version11,
+                    DefaultVersionPolicy = System.Net.Http.HttpVersionPolicy.RequestVersionOrLower
+                };
+
+                return new SupabaseAppDatabase(
+                    http,
+                    options,
+                    sp.GetRequiredService<SupabaseSessionState>());
+            });
+
+            builder.Services.AddSingleton<IAppDatabase>(sp =>
+                sp.GetRequiredService<SupabaseAppDatabase>());
+
+            // Existing shared services
             builder.Services.AddSingleton<ProductCatalogService>();
             builder.Services.AddSingleton<CartService>();
             builder.Services.AddSingleton<WishlistService>();
@@ -56,6 +70,7 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddSingleton<AdminReportService>();
             builder.Services.AddSingleton<AdminNotificationService>();
 
+            // ViewModels
             builder.Services.AddSingleton<HomeViewModel>();
             builder.Services.AddTransient<ShopViewModel>();
             builder.Services.AddTransient<WishlistViewModel>();
@@ -65,6 +80,8 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddTransient<RegisterViewModel>();
             builder.Services.AddTransient<CartViewModel>();
             builder.Services.AddTransient<CheckoutViewModel>();
+
+            // Pages
             builder.Services.AddTransient<MainPage>();
             builder.Services.AddTransient<ShopPage>();
             builder.Services.AddTransient<WishlistPage>();
@@ -80,37 +97,6 @@ namespace NUBulldogsExchange.Mobile
 #endif
 
             return builder.Build();
-        }
-
-        /// <summary>
-        /// Prefer the shared Web.Web App_Data database when running from the repo,
-        /// so Mobile Windows preview uses the same storefront data as the web API.
-        /// </summary>
-        private static string? ResolveWindowsDatabasePath()
-        {
-            try
-            {
-                var current = new DirectoryInfo(AppContext.BaseDirectory);
-                while (current is not null)
-                {
-                    var webDb = Path.Combine(current.FullName,
-                        "NUBulldogsExchange.Web", "NUBulldogsExchange.Web.Web", "App_Data", "NUBulldogsExchange.db");
-                    if (File.Exists(webDb))
-                        return webDb;
-
-                    var webDbAlt = Path.Combine(current.FullName,
-                        "NUBulldogsExchange.Web.Web", "App_Data", "NUBulldogsExchange.db");
-                    if (File.Exists(webDbAlt))
-                        return webDbAlt;
-
-                    current = current.Parent;
-                }
-            }
-            catch
-            {
-            }
-
-            return null; // DatabaseService default resolver
         }
     }
 }

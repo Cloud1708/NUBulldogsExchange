@@ -96,7 +96,7 @@ public class AdminStaffService
         var isAdmin = role.Equals("Admin", StringComparison.OrdinalIgnoreCase);
         var member = new AdminStaffMember
         {
-            Id = $"S-{_nextId++:D3}",
+            Id = string.Empty,
             FirstName = firstName,
             LastName = lastName,
             Email = email,
@@ -108,10 +108,17 @@ public class AdminStaffService
                 : (permissions ?? AdminStaffPermissions.DefaultStaff()).Clone()
         };
 
-        _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
-        _staff.Add(member);
-        OnChange?.Invoke();
-        return (true, "Staff member added successfully.");
+        try
+        {
+            var saved = _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
+            _staff.Add(saved);
+            OnChange?.Invoke();
+            return (true, "Staff member added successfully.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
     }
 
     public (bool Success, string Message) Update(
@@ -141,6 +148,9 @@ public class AdminStaffService
         if (duplicate is not null && !duplicate.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
             return (false, "A staff member with this email already exists.");
 
+        if (!member.Email.Equals(email, StringComparison.OrdinalIgnoreCase))
+            return (false, "The login email cannot be changed from this page.");
+
         if (member.IsPrimaryAdmin)
         {
             member.FirstName = firstName;
@@ -165,9 +175,16 @@ public class AdminStaffService
                 member.Permissions = AdminStaffPermissions.FullAccess();
         }
 
-        _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
-        OnChange?.Invoke();
-        return (true, "Staff information updated successfully.");
+        try
+        {
+            _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
+            OnChange?.Invoke();
+            return (true, "Staff information updated successfully.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
     }
 
     public (bool Success, string Message) UpdatePermissions(string id, AdminStaffPermissions permissions)
@@ -203,10 +220,20 @@ public class AdminStaffService
             member.Email.Equals(currentUserEmail.Trim(), StringComparison.OrdinalIgnoreCase))
             return (false, "You cannot delete your own account.");
 
-        _db.DeleteStaffAsync(id).GetAwaiter().GetResult();
-        _staff.Remove(member);
-        OnChange?.Invoke();
-        return (true, "Staff member removed successfully.");
+        try
+        {
+            var removed = _db.DeleteStaffAsync(id).GetAwaiter().GetResult();
+            if (!removed)
+                return (false, "Staff member could not be removed.");
+
+            _staff.Remove(member);
+            OnChange?.Invoke();
+            return (true, "Staff access removed successfully.");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message);
+        }
     }
 
     public static bool GetPermission(AdminStaffPermissions permissions, string key) =>
