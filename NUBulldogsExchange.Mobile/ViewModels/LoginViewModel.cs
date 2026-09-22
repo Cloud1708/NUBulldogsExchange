@@ -102,6 +102,9 @@ public sealed class LoginViewModel : INotifyPropertyChanged
 
     private async Task LoginAsync()
     {
+        if (IsBusy)
+            return;
+
         ErrorMessage = string.Empty;
 
         if (string.IsNullOrWhiteSpace(Email))
@@ -128,11 +131,22 @@ public sealed class LoginViewModel : INotifyPropertyChanged
             var result = await _auth.LoginAsync(Email.Trim(), Password, RememberMe);
             Password = string.Empty;
 
-            if (!result.Success || result.User is null)
+            if (!result.Success)
             {
                 ErrorMessage = result.Error ?? "Invalid email or password.";
                 return;
             }
+
+            var denied = await MobileAuthGuard.EnforceAsync(_auth, result.User);
+            if (denied is not null)
+            {
+                ErrorMessage = denied;
+                await ShowDeniedAsync(denied);
+                return;
+            }
+
+            if (result.User is not null)
+                await MobileAuthGuard.PersistAsync(result.User);
 
             await NavigateAfterAuthAsync();
         }
@@ -144,6 +158,27 @@ public sealed class LoginViewModel : INotifyPropertyChanged
         {
             IsBusy = false;
         }
+    }
+
+    private async Task ShowDeniedAsync(string message)
+    {
+        var page = HostPage ?? Shell.Current;
+        if (message == MobileAuthGuard.AccessDeniedMessage)
+        {
+            await page.DisplayAlertAsync(
+                MobileAuthGuard.AccessDeniedTitle,
+                MobileAuthGuard.AccessDeniedMessage,
+                "OK");
+            return;
+        }
+
+        if (message == MobileAuthGuard.InactiveMessage)
+        {
+            await page.DisplayAlertAsync("Account Inactive", message, "OK");
+            return;
+        }
+
+        await page.DisplayAlertAsync("Unable to sign in", message, "OK");
     }
 
     private async Task OnForgotPasswordAsync()

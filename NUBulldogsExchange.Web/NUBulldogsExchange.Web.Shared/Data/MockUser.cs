@@ -2,7 +2,9 @@ namespace NUBulldogsExchange.Web.Shared.Data;
 
 public class MockUser
 {
+    public Guid Id { get; set; }
     public int UserId { get; set; }
+    public int RoleId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;

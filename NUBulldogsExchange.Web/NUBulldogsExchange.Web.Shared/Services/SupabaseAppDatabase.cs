@@ -494,14 +494,14 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             var user = await BuildMockUserAsync(auth.User.Id, auth.AccessToken);
             if (user is null)
             {
-                _session.Clear();
-                return Fail("Your profile could not be loaded.");
+                await LogoutSessionAsync(auth.AccessToken);
+                return Fail("User account was not found.");
             }
 
             if (!user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
             {
                 await LogoutSessionAsync(auth.AccessToken);
-                return Fail("This account is not active. Please contact the administrator.");
+                return Fail("Your account is currently inactive. Please contact the administrator.");
             }
 
             user.RememberMe = request.RememberMe;
@@ -557,10 +557,16 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             _session.SetFromAccessToken(sessionToken, authUser.Id, authUser.Email);
 
             var user = await BuildMockUserAsync(authUser.Id, sessionToken);
-            if (user is null || !user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+            if (user is null)
             {
-                _session.Clear();
-                return Fail("Your account is not active.");
+                await LogoutSessionAsync(sessionToken);
+                return Fail("User account was not found.");
+            }
+
+            if (!user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+            {
+                await LogoutSessionAsync(sessionToken);
+                return Fail("Your account is currently inactive. Please contact the administrator.");
             }
 
             user.SessionToken = sessionToken;
@@ -1539,7 +1545,9 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
     private static MockUser UserRowToMockUser(UserWithRoleRow p) => new()
     {
+        Id = Guid.TryParse(p.Id, out var id) ? id : Guid.Empty,
         UserId = 0,
+        RoleId = p.RoleId,
         Name = $"{p.FirstName} {p.LastName}".Trim(),
         FirstName = p.FirstName ?? string.Empty,
         LastName = p.LastName ?? string.Empty,
@@ -1573,11 +1581,13 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         string lastName,
         string phone) => new()
         {
+            Id = Guid.TryParse(auth.Id, out var id) ? id : Guid.Empty,
             Name = $"{firstName} {lastName}".Trim(),
             FirstName = firstName,
             LastName = lastName,
             Email = auth.Email ?? string.Empty,
             Phone = phone,
+            RoleId = 3,
             Role = "Customer",
             Status = "Active",
             CreatedAt = DateTime.UtcNow
@@ -1983,7 +1993,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     private sealed class UserWithRoleRow
     {
         public string Id { get; set; } = string.Empty;
-        public int RoleId { get; set; } = 3;
+        public int RoleId { get; set; }
         public string? FirstName { get; set; }
         public string? MiddleName { get; set; }
         public string? LastName { get; set; }

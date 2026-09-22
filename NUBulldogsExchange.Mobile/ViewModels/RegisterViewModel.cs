@@ -148,6 +148,9 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
 
     private async Task RegisterAsync()
     {
+        if (IsBusy)
+            return;
+
         ErrorMessage = string.Empty;
 
         if (string.IsNullOrWhiteSpace(FirstName))
@@ -219,21 +222,13 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
                 return;
             }
 
-            // StudentId is not part of RegisterRequest; save via profile update after auto-login.
-            if (!string.IsNullOrWhiteSpace(StudentId) && _auth.IsLoggedIn)
-            {
-                await _auth.UpdateProfileAsync(new UpdateProfileRequest
-                {
-                    FirstName = FirstName.Trim(),
-                    LastName = LastName.Trim(),
-                    PhoneNumber = PhoneNumber.Trim(),
-                    StudentId = StudentId.Trim(),
-                    ProfileImage = _auth.CurrentUser?.ProfileImage ?? string.Empty,
-                    Address = _auth.CurrentUser?.Address ?? string.Empty
-                });
-            }
-
-            await MobileCheckoutIntent.NavigateAfterAuthAsync();
+            MobileCheckoutIntent.Clear();
+            var page = HostPage ?? Shell.Current;
+            await page.DisplayAlertAsync(
+                "Account created",
+                "Your account was created successfully. Please sign in with your new credentials.",
+                "OK");
+            await GoAsync("login");
         }
         catch (Exception)
         {

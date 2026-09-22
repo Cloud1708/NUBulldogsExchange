@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using NUBulldogsExchange.Mobile.Services;
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
 
@@ -46,7 +47,7 @@ public sealed class AccountViewModel : INotifyPropertyChanged
         CancelFormsCommand = new Command(HideAllForms);
         LoginCommand = new Command(async () => await LoginAsync());
         RegisterCommand = new Command(async () => await RegisterAsync());
-        LogoutCommand = new Command(Logout);
+        LogoutCommand = new Command(async () => await LogoutAsync());
         EditProfileCommand = new Command(OpenEditProfile);
         SaveProfileCommand = new Command(async () => await SaveProfileAsync());
         OpenChangePasswordCommand = new Command(() =>
@@ -311,7 +312,24 @@ public sealed class AccountViewModel : INotifyPropertyChanged
             var result = await _auth.LoginAsync(LoginEmail.Trim(), LoginPassword, rememberMe: true);
             if (result.Success)
             {
+                var denied = await MobileAuthGuard.EnforceAsync(_auth, result.User);
+                if (denied is not null)
+                {
+                    LoginPassword = string.Empty;
+                    StatusMessage = denied;
+                    if (denied == MobileAuthGuard.AccessDeniedMessage)
+                    {
+                        await InfoAsync(
+                            MobileAuthGuard.AccessDeniedTitle,
+                            MobileAuthGuard.AccessDeniedMessage);
+                    }
+                    RefreshFromAuth();
+                    return;
+                }
+
                 LoginPassword = string.Empty;
+                if (result.User is not null)
+                    await MobileAuthGuard.PersistAsync(result.User);
                 StatusMessage = $"Welcome, {_auth.FirstName}!";
                 RefreshFromAuth();
             }
@@ -345,7 +363,10 @@ public sealed class AccountViewModel : INotifyPropertyChanged
             {
                 RegPassword = string.Empty;
                 RegConfirm = string.Empty;
-                StatusMessage = "Account created successfully.";
+                StatusMessage = "Account created. Please sign in with your new credentials.";
+                ShowLoginForm = true;
+                ShowRegisterForm = false;
+                Email = RegEmail.Trim();
                 RefreshFromAuth();
             }
             else
@@ -360,9 +381,10 @@ public sealed class AccountViewModel : INotifyPropertyChanged
         }
     }
 
-    private void Logout()
+    private async Task LogoutAsync()
     {
-        _auth.Logout();
+        await _auth.LogoutAsync();
+        await MobileAuthGuard.ClearAsync();
         StatusMessage = "Signed out.";
         RefreshFromAuth();
     }

@@ -4,7 +4,6 @@
 @inject AuthService Auth
 @inject ToastService Toast
 @inject NavigationManager Navigation
-@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Create Account | NU Bulldogs Exchange</PageTitle>
@@ -297,9 +296,9 @@
                 return;
             }
 
-            await Auth.PersistAsync(JS);
-            Toast.Show("Account created successfully.");
-            Navigation.NavigateTo("/");
+            Toast.Show("Account created successfully. Please sign in.");
+            var loginUrl = $"/login?registered=1&email={Uri.EscapeDataString(email)}";
+            Navigation.NavigateTo(loginUrl);
         }
         catch
         {

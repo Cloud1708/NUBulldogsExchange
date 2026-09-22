@@ -94,6 +94,11 @@
                 <h1>Welcome Back</h1>
                 <p class="auth-subtitle">Sign in to your account to continue shopping.</p>
 
+                @if (_registeredNotice)
+                {
+                    <p class="auth-success-banner">Account created. Sign in with your new credentials.</p>
+                }
+
                 <form class="auth-form" @onsubmit="HandleLogin" @onsubmit:preventDefault="true">
                     <div class="auth-field">
                         <label for="login-email">Email Address</label>
@@ -179,12 +184,17 @@
     private bool _rememberMe;
     private bool _showPassword;
     private bool _isLoading;
+    private bool _registeredNotice;
     private string? _emailError;
     private string? _passwordError;
     private string? _formError;
     private StorefrontStats _stats = new();
 
-    protected override void OnInitialized() => Auth.OnChange += Refresh;
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += Refresh;
+        ApplyQueryDefaults();
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -195,6 +205,34 @@
         catch
         {
             _stats = new StorefrontStats();
+        }
+    }
+
+    private void ApplyQueryDefaults()
+    {
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        var query = uri.Query.TrimStart('?');
+        if (string.IsNullOrEmpty(query))
+            return;
+
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length == 0) continue;
+
+            var key = Uri.UnescapeDataString(pair[0]);
+            var value = pair.Length > 1 ? Uri.UnescapeDataString(pair[1]) : string.Empty;
+
+            if (string.Equals(key, "registered", StringComparison.OrdinalIgnoreCase) &&
+                (value is "1" or "true"))
+            {
+                _registeredNotice = true;
+            }
+            else if (string.Equals(key, "email", StringComparison.OrdinalIgnoreCase) &&
+                     !string.IsNullOrWhiteSpace(value))
+            {
+                _email = value.Trim();
+            }
         }
     }
 

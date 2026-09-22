@@ -460,8 +460,22 @@ public class AuthService
     public async Task<AuthResult> RegisterAsync(RegisterRequest request)
     {
         var result = await _db.RegisterCustomerAsync(request);
-        if (result.Success && result.User is not null)
-            SetUser(result.User, result.SessionToken, rememberMe: false);
+        // Do not auto-login — user must sign in after creating an account.
+        if (result.Success && !string.IsNullOrWhiteSpace(result.SessionToken))
+        {
+            try
+            {
+                await _db.LogoutSessionAsync(result.SessionToken);
+            }
+            catch
+            {
+            }
+
+            result.SessionToken = null;
+            if (result.User is not null)
+                result.User.SessionToken = null;
+        }
+
         return result;
     }
 
@@ -478,13 +492,23 @@ public class AuthService
         return result;
     }
 
-    public void Logout()
+    public void Logout() => _ = LogoutAsync();
+
+    public async Task LogoutAsync()
     {
         var token = CurrentUser?.SessionToken;
         CurrentUser = null;
         OnChange?.Invoke();
-        if (!string.IsNullOrWhiteSpace(token))
-            _ = _db.LogoutSessionAsync(token);
+        if (string.IsNullOrWhiteSpace(token))
+            return;
+
+        try
+        {
+            await _db.LogoutSessionAsync(token);
+        }
+        catch
+        {
+        }
     }
 
     public async Task<AuthResult> UpdateProfileAsync(UpdateProfileRequest request)
@@ -513,6 +537,27 @@ public class AuthService
             return new AuthResult { Success = false, Error = "Please sign in to change your password." };
 
         return await _db.ChangePasswordAsync(token, request);
+    }
+
+    public async Task<AuthResult> RestoreFromTokenAsync(string sessionToken, bool rememberMe = true)
+    {
+        if (string.IsNullOrWhiteSpace(sessionToken))
+            return new AuthResult { Success = false, Error = "Your session has expired. Please sign in again." };
+
+        var result = await _db.ValidateSessionAsync(sessionToken);
+        if (result.Success && result.User is not null)
+        {
+            SetUser(result.User, result.SessionToken ?? sessionToken, rememberMe);
+            return result;
+        }
+
+        if (CurrentUser is not null)
+        {
+            CurrentUser = null;
+            OnChange?.Invoke();
+        }
+
+        return result;
     }
 
     public async Task PersistAsync(IJSRuntime js)
@@ -604,20 +649,8 @@ public class AuthService
 
     public async Task LogoutAsync(IJSRuntime js)
     {
-        var token = CurrentUser?.SessionToken;
-        CurrentUser = null;
-        OnChange?.Invoke();
+        await LogoutAsync();
         await ClearStorageAsync(js);
-        if (!string.IsNullOrWhiteSpace(token))
-        {
-            try
-            {
-                await _db.LogoutSessionAsync(token);
-            }
-            catch
-            {
-            }
-        }
     }
 
     private void SetUser(MockUser user, string? sessionToken, bool rememberMe)

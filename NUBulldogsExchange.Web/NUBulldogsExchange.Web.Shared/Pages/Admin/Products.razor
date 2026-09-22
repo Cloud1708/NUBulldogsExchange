@@ -307,49 +307,59 @@
 
                 <div class="admin-field">
                     <span>Product Images</span>
-                    <div class="admin-product-upload @( _isDragOver ? "is-dragover" : "" )"
+                    <div class="admin-product-upload @(_isDragOver ? "is-dragover" : "") @(_previewImages.Count > 0 ? "has-previews" : "")"
                          @ondragenter="OnDragEnter"
                          @ondragenter:preventDefault
                          @ondragover="OnDragOver"
                          @ondragover:preventDefault
                          @ondragleave="OnDragLeave">
-                        <InputFile OnChange="OnImagesSelected"
-                                   accept="image/png,image/jpeg,.png,.jpg,.jpeg"
-                                   multiple
-                                   class="admin-product-upload-input" />
-                        <div class="admin-product-upload-content" aria-hidden="true">
-                            <Icon Name="upload" Size="28" CssClass="admin-product-upload-icon" />
-                            <p>Drag &amp; drop images here, or click to upload</p>
-                            <small>PNG, JPG up to 10MB each</small>
-                        </div>
+                        @if (_previewImages.Count == 0)
+                        {
+                            <InputFile OnChange="OnImagesSelected"
+                                       accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                       multiple
+                                       class="admin-product-upload-input" />
+                            <div class="admin-product-upload-content" aria-hidden="true">
+                                <Icon Name="upload" Size="28" CssClass="admin-product-upload-icon" />
+                                <p>Drag &amp; drop images here, or click to upload</p>
+                                <small>PNG, JPG up to 10MB each</small>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="admin-product-previews">
+                                @for (var i = 0; i < _previewImages.Count; i++)
+                                {
+                                    var index = i;
+                                    var preview = _previewImages[index];
+                                    <div class="admin-product-preview">
+                                        <img src="@preview.DataUrl" alt="@($"Product image {index + 1}")" />
+                                        @if (index == 0)
+                                        {
+                                            <span class="admin-product-preview-main">Main</span>
+                                        }
+                                        <button type="button"
+                                                class="admin-product-preview-remove"
+                                                aria-label="Remove image"
+                                                @onclick="() => RemoveImage(index)">
+                                            <Icon Name="x" Size="12" />
+                                        </button>
+                                    </div>
+                                }
+                                <div class="admin-product-preview admin-product-preview-add">
+                                    <InputFile OnChange="OnImagesSelected"
+                                               accept="image/png,image/jpeg,.png,.jpg,.jpeg"
+                                               multiple
+                                               class="admin-product-upload-input" />
+                                    <Icon Name="plus" Size="22" CssClass="admin-product-upload-icon" />
+                                    <span>Add</span>
+                                </div>
+                            </div>
+                        }
                     </div>
                     @if (_formErrors.ContainsKey("images"))
                     {
                         <em>@_formErrors["images"]</em>
-                    }
-
-                    @if (_previewImages.Count > 0)
-                    {
-                        <div class="admin-product-previews">
-                            @for (var i = 0; i < _previewImages.Count; i++)
-                            {
-                                var index = i;
-                                var preview = _previewImages[index];
-                                <div class="admin-product-preview">
-                                    <img src="@preview.DataUrl" alt="@($"Product image {index + 1}")" />
-                                    @if (index == 0)
-                                    {
-                                        <span class="admin-product-preview-main">Main</span>
-                                    }
-                                    <button type="button"
-                                            class="admin-product-preview-remove"
-                                            aria-label="Remove image"
-                                            @onclick="() => RemoveImage(index)">
-                                        <Icon Name="x" Size="12" />
-                                    </button>
-                                </div>
-                            }
-                        </div>
                     }
                 </div>
             </div>
