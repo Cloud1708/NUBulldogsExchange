@@ -3,9 +3,16 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
              xmlns:data="clr-namespace:NUBulldogsExchange.Web.Shared.Data;assembly=NUBulldogsExchange.Web.Shared"
+             xmlns:conv="clr-namespace:NUBulldogsExchange.Mobile.Converters"
              x:Class="NUBulldogsExchange.Mobile.Controls.OrderCardView"
              x:Name="Root"
              x:DataType="vm:OrderCardModel">
+
+    <ContentView.Resources>
+        <ResourceDictionary>
+            <conv:ProductImageConverter x:Key="ProductImageConverter" />
+        </ResourceDictionary>
+    </ContentView.Resources>
 
     <Border Stroke="#E8ECF1"
             StrokeThickness="1"
@@ -60,7 +67,7 @@
                                 <Border.StrokeShape>
                                     <RoundRectangle CornerRadius="9" />
                                 </Border.StrokeShape>
-                                <Image Source="{Binding ImageUrl}"
+                                <Image Source="{Binding ImageUrl, Converter={StaticResource ProductImageConverter}}"
                                        Aspect="AspectFill" />
                             </Border>
                             <VerticalStackLayout Grid.Column="1" VerticalOptions="Center" Spacing="2">

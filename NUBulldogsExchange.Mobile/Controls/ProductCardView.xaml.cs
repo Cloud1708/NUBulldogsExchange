@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using NUBulldogsExchange.Mobile.Services;
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
 
@@ -17,6 +18,9 @@ public partial class ProductCardView : ContentView
 
     public static readonly BindableProperty OpenProductCommandProperty =
         BindableProperty.Create(nameof(OpenProductCommand), typeof(ICommand), typeof(ProductCardView));
+
+    public static readonly BindableProperty DisplayImageProperty =
+        BindableProperty.Create(nameof(DisplayImage), typeof(ImageSource), typeof(ProductCardView));
 
     public ProductCardView()
     {
@@ -97,31 +101,10 @@ public partial class ProductCardView : ContentView
     public string OriginalPriceText =>
         HasOriginalPrice ? $"₱{Product!.OriginalPrice!.Value:N0}" : string.Empty;
 
-    /// <summary>Resolves a displayable image, falling back to the shared placeholder.</summary>
     public ImageSource DisplayImage
     {
-        get
-        {
-            var url = Product?.ImageUrl?.Trim();
-            if (string.IsNullOrWhiteSpace(url) ||
-                url.Equals("null", StringComparison.OrdinalIgnoreCase) ||
-                url.Equals("undefined", StringComparison.OrdinalIgnoreCase))
-            {
-                return ImageSource.FromUri(new Uri("https://placehold.co/400x400/F1F5F9/00205B?text=NU"));
-            }
-
-            if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-                return ImageSource.FromUri(new Uri("https://placehold.co/400x400/F1F5F9/00205B?text=NU"));
-
-            try
-            {
-                return ImageSource.FromUri(new Uri(url));
-            }
-            catch
-            {
-                return ImageSource.FromUri(new Uri("https://placehold.co/400x400/F1F5F9/00205B?text=NU"));
-            }
-        }
+        get => (ImageSource?)GetValue(DisplayImageProperty) ?? ProductImageHelper.FromProduct(Product);
+        private set => SetValue(DisplayImageProperty, value);
     }
 
     public bool IsWishlisted
@@ -154,7 +137,7 @@ public partial class ProductCardView : ContentView
         OnPropertyChanged(nameof(PriceText));
         OnPropertyChanged(nameof(HasOriginalPrice));
         OnPropertyChanged(nameof(OriginalPriceText));
-        OnPropertyChanged(nameof(DisplayImage));
+        DisplayImage = ProductImageHelper.FromProduct(Product);
         OnPropertyChanged(nameof(WishlistGlyph));
         OnPropertyChanged(nameof(WishlistColor));
         OnPropertyChanged(nameof(IsWishlisted));

@@ -18,6 +18,7 @@
         <ResourceDictionary>
             <conv:InvertedBoolConverter x:Key="InvertedBoolConverter" />
             <conv:IsStringNotNullOrEmptyConverter x:Key="IsStringNotNullOrEmptyConverter" />
+            <conv:ProductImageConverter x:Key="ProductImageConverter" />
         </ResourceDictionary>
     </ContentPage.Resources>
 
@@ -383,7 +384,7 @@
                                         <RoundRectangle CornerRadius="14" />
                                     </Border.StrokeShape>
                                     <VerticalStackLayout>
-                                        <Image Source="{Binding ImageUrl}"
+                                        <Image Source="{Binding ., Converter={StaticResource ProductImageConverter}}"
                                                HeightRequest="108"
                                                Aspect="AspectFill" />
                                         <VerticalStackLayout Padding="8" Spacing="2">

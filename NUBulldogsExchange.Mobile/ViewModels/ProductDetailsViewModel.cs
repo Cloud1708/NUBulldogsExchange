@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using NUBulldogsExchange.Mobile.Services;
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
 
@@ -75,6 +76,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(PriceLabel));
                 OnPropertyChanged(nameof(Name));
                 OnPropertyChanged(nameof(ImageUrl));
+                OnPropertyChanged(nameof(DisplayImage));
                 RefreshCommands();
             }
         }
@@ -82,6 +84,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
 
     public string Name => Product?.Name ?? string.Empty;
     public string ImageUrl => Product?.ImageUrl ?? string.Empty;
+    public ImageSource DisplayImage => ProductImageHelper.FromProduct(Product);
     public string PriceLabel => Product is null ? string.Empty : $"₱{Product.Price:N0}";
     public bool HasSizeVariants => Product?.HasSizeVariants == true;
     public IEnumerable<ProductVariant> SizeVariants =>

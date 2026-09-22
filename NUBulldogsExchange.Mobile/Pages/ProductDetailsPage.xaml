@@ -20,7 +20,7 @@
             <Border StrokeThickness="0"
                     StrokeShape="RoundRectangle 16"
                     BackgroundColor="White">
-                <Image Source="{Binding ImageUrl}"
+                <Image Source="{Binding DisplayImage}"
                        Aspect="AspectFill"
                        HeightRequest="280" />
             </Border>

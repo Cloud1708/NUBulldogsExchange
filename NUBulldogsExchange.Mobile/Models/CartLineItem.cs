@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using NUBulldogsExchange.Mobile.Services;
 using NUBulldogsExchange.Web.Shared.Data;
 
 namespace NUBulldogsExchange.Mobile.Models;
@@ -49,22 +50,9 @@ public sealed class CartLineItem : INotifyPropertyChanged
 
     public bool CanIncrease => Product.Stock <= 0 || Quantity < Product.Stock;
 
-    public string ImageUrl
-    {
-        get
-        {
-            var url = Product.ImageUrl?.Trim();
-            if (string.IsNullOrWhiteSpace(url) ||
-                url.Equals("null", StringComparison.OrdinalIgnoreCase) ||
-                url.Equals("undefined", StringComparison.OrdinalIgnoreCase) ||
-                url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-            {
-                return "https://placehold.co/400x400/F1F5F9/00205B?text=NU";
-            }
+    public ImageSource DisplayImage => ProductImageHelper.FromProduct(Product);
 
-            return url;
-        }
-    }
+    public string ImageUrl => Product.ImageUrl ?? string.Empty;
 
     public string VariantText
     {

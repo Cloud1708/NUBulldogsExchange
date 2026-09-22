@@ -2075,6 +2075,12 @@ public sealed partial class DatabaseService : IAppDatabase
         return list;
     }
 
+    public Task<List<UserAddress>> GetUserAddressesAsync(Guid userId) =>
+        Task.FromResult(new List<UserAddress>());
+
+    public Task<UserAddress> UpsertUserAddressAsync(UserAddress address) =>
+        Task.FromResult(address);
+
     public async Task RecordPromotionUsageAsync(
         string promotionId, string userEmail, string orderId, decimal discountAmount)
     {

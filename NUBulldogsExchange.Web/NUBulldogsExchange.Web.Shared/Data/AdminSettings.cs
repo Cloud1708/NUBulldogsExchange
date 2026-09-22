@@ -24,6 +24,8 @@ public class AdminOrderSettings
     public bool AllowCancellation { get; set; } = true;
     public int CancellationHours { get; set; } = 24;
     public decimal MinimumOrder { get; set; }
+    /// <summary>Delivery fee shown at checkout when Delivery is selected.</summary>
+    public decimal DeliveryFee { get; set; } = 150;
     public string ProcessingTime { get; set; } = "1–3 business days";
 }
 
@@ -89,6 +91,7 @@ public class AdminPortalSettings
             AllowCancellation = Orders.AllowCancellation,
             CancellationHours = Orders.CancellationHours,
             MinimumOrder = Orders.MinimumOrder,
+            DeliveryFee = Orders.DeliveryFee,
             ProcessingTime = Orders.ProcessingTime
         },
         Inventory = new AdminInventorySettings

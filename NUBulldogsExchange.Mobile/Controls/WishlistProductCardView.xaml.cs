@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using NUBulldogsExchange.Mobile.Services;
 using NUBulldogsExchange.Web.Shared.Data;
 
 namespace NUBulldogsExchange.Mobile.Controls;
@@ -17,6 +18,9 @@ public partial class WishlistProductCardView : ContentView
 
     public static readonly BindableProperty OpenProductCommandProperty =
         BindableProperty.Create(nameof(OpenProductCommand), typeof(ICommand), typeof(WishlistProductCardView));
+
+    public static readonly BindableProperty DisplayImageProperty =
+        BindableProperty.Create(nameof(DisplayImage), typeof(ImageSource), typeof(WishlistProductCardView));
 
     public WishlistProductCardView()
     {
@@ -63,26 +67,8 @@ public partial class WishlistProductCardView : ContentView
 
     public ImageSource DisplayImage
     {
-        get
-        {
-            var fallback = "https://placehold.co/400x400/F1F5F9/00205B?text=NU";
-            var url = Product?.ImageUrl?.Trim();
-            if (string.IsNullOrWhiteSpace(url) ||
-                url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ||
-                url.Equals("null", StringComparison.OrdinalIgnoreCase))
-            {
-                return ImageSource.FromUri(new Uri(fallback));
-            }
-
-            try
-            {
-                return ImageSource.FromUri(new Uri(url));
-            }
-            catch
-            {
-                return ImageSource.FromUri(new Uri(fallback));
-            }
-        }
+        get => (ImageSource?)GetValue(DisplayImageProperty) ?? ProductImageHelper.FromProduct(Product);
+        private set => SetValue(DisplayImageProperty, value);
     }
 
     private static void OnProductChanged(BindableObject bindable, object oldValue, object newValue)
@@ -96,7 +82,7 @@ public partial class WishlistProductCardView : ContentView
         OnPropertyChanged(nameof(HasRating));
         OnPropertyChanged(nameof(RatingText));
         OnPropertyChanged(nameof(PriceText));
-        OnPropertyChanged(nameof(DisplayImage));
+        DisplayImage = ProductImageHelper.FromProduct(Product);
     }
 
     private void OnHeartTapped(object? sender, TappedEventArgs e)

@@ -38,6 +38,10 @@ public interface IAppDatabase
     Task AppendOrderStatusHistoryAsync(string orderId, string? oldStatus, string newStatus, string? notes, string? changedBy);
     Task<List<OrderStatusHistoryEntry>> GetOrderStatusHistoryAsync(string orderId);
 
+    // Saved delivery addresses (public.user_addresses)
+    Task<List<UserAddress>> GetUserAddressesAsync(Guid userId);
+    Task<UserAddress> UpsertUserAddressAsync(UserAddress address);
+
     // Authentication
     Task<AuthResult> RegisterCustomerAsync(RegisterRequest request);
     Task<AuthResult> LoginAsync(LoginRequest request);

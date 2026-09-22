@@ -25,6 +25,7 @@
                     </Border.StrokeShape>
                     <Image Source="{Binding DisplayImage, Source={x:Reference Root}}"
                            Aspect="AspectFill"
+                           HeightRequest="140"
                            HorizontalOptions="Fill"
                            VerticalOptions="Fill" />
                 </Border>

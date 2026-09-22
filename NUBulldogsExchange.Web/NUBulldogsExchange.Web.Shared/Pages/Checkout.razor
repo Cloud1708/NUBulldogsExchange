@@ -5,7 +5,6 @@
 @inject AuthService Auth
 @inject CartService Cart
 @inject ToastService Toast
-@inject NavigationManager Navigation
 @inject OrderService Orders
 @inject AdminOrderService AdminOrders
 @inject AdminCustomerService Customers
@@ -13,6 +12,8 @@
 @inject AdminNotificationService AdminNotifications
 @inject ProductCatalogService Catalog
 @inject AdminPromotionService PromotionService
+@inject AdminSettingsService Settings
+@inject IAppDatabase Database
 @implements IDisposable
 
 <PageTitle>Checkout | NU Bulldogs Exchange</PageTitle>
@@ -35,6 +36,110 @@
         </div>
     </section>
 }
+else if (_checkoutPhase == CheckoutPhaseConfirmation && _confirmedOrder is not null)
+{
+    <section class="checkout-page">
+        <div class="container checkout-container">
+            <nav class="shop-breadcrumb" aria-label="Breadcrumb">
+                <a href="/">Home</a>
+                <Icon Name="chevron-right" Size="14" />
+                <a href="/cart">My Shopping Cart</a>
+                <Icon Name="chevron-right" Size="14" />
+                <span>Checkout</span>
+            </nav>
+
+            <header class="checkout-header">
+                <h1>Checkout</h1>
+                <p>Complete your order in a few easy steps.</p>
+            </header>
+
+            @RenderCheckoutSteps()
+
+            <div class="checkout-confirm">
+                <div class="checkout-confirm-icon" aria-hidden="true">
+                    <Icon Name="check-circle" Size="40" />
+                </div>
+                <h2>Order Placed Successfully</h2>
+                <p class="checkout-confirm-lead">Thank you! Your order has been received and is being processed.</p>
+
+                <dl class="checkout-confirm-details">
+                    <div>
+                        <dt>Order Number</dt>
+                        <dd>#@_confirmedOrder.Id</dd>
+                    </div>
+                    <div>
+                        <dt>Payment Method</dt>
+                        <dd>@_confirmedOrder.PaymentMethod</dd>
+                    </div>
+                    <div>
+                        <dt>Payment Status</dt>
+                        <dd>
+                            <span class="admin-payment-badge payment-@_confirmedOrder.PaymentKey">@_confirmedOrder.PaymentStatus</span>
+                        </dd>
+                    </div>
+                    <div>
+                        <dt>Total</dt>
+                        <dd>₱@_confirmedOrder.Total.ToString("N0")</dd>
+                    </div>
+                    <div>
+                        <dt>Fulfillment</dt>
+                        <dd>@_confirmedOrder.Fulfillment</dd>
+                    </div>
+                    @if (string.Equals(_confirmedOrder.Fulfillment, DeliveryMethod, StringComparison.OrdinalIgnoreCase)
+                         && !string.IsNullOrWhiteSpace(_confirmedOrder.ShippingAddressLine))
+                    {
+                        <div class="checkout-confirm-address">
+                            <dt>Delivery To</dt>
+                            <dd>
+                                <span>@_confirmedOrder.ShippingRecipientName</span>
+                                <span>@_confirmedOrder.ShippingAddressLine</span>
+                                <span>@_confirmedOrder.ShippingBarangay</span>
+                                <span>@_confirmedOrder.ShippingCity, @_confirmedOrder.ShippingProvince @_confirmedOrder.ShippingPostalCode</span>
+                                <span>@_confirmedOrder.ShippingPhone</span>
+                            </dd>
+                        </div>
+                    }
+                    else if (string.Equals(_confirmedOrder.Fulfillment, CampusPickup, StringComparison.OrdinalIgnoreCase))
+                    {
+                        <div>
+                            <dt>Pickup Location</dt>
+                            <dd>NU Lipa Campus</dd>
+                        </div>
+                    }
+                </dl>
+
+                @if (_confirmedOrder.Items.Count > 0)
+                {
+                    <ul class="checkout-summary-items checkout-confirm-items">
+                        @foreach (var item in _confirmedOrder.Items)
+                        {
+                            <li>
+                                <img src="@item.ImageUrl"
+                                     alt="@item.Name"
+                                     loading="lazy"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="checkout-summary-item-meta">
+                                    <strong>@item.Name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(item.Size))
+                                    {
+                                        <span>Size: @item.Size</span>
+                                    }
+                                    <span>Qty: @item.Quantity</span>
+                                </div>
+                                <strong class="checkout-summary-price">₱@((item.Price * item.Quantity).ToString("N0"))</strong>
+                            </li>
+                        }
+                    </ul>
+                }
+
+                <div class="checkout-confirm-actions">
+                    <a href="/orders" class="btn btn-navy">View My Orders</a>
+                    <a href="/shop" class="btn btn-outline-navy">Continue Shopping</a>
+                </div>
+            </div>
+        </div>
+    </section>
+}
 else if (!Cart.Items.Any())
 {
     <section class="empty-cart-section">
@@ -52,8 +157,8 @@ else if (!Cart.Items.Any())
 }
 else
 {
-    <section class="cart-page">
-        <div class="container">
+    <section class="checkout-page">
+        <div class="container checkout-container">
             <nav class="shop-breadcrumb" aria-label="Breadcrumb">
                 <a href="/">Home</a>
                 <Icon Name="chevron-right" Size="14" />
@@ -62,65 +167,536 @@ else
                 <span>Checkout</span>
             </nav>
 
-            <h1 class="cart-checkout-title">Checkout</h1>
-            <p class="account-overview-lead">Campus pickup orders are saved to your account.</p>
+            <header class="checkout-header">
+                <h1>Checkout</h1>
+                <p>Complete your order in a few easy steps.</p>
+            </header>
 
-            <div class="cart-layout">
-                <div class="wishlist-panel">
-                    <h2 class="checkout-panel-title">Pickup details</h2>
-                    <p>Campus pickup at the NU Manila Merchandise Center (Building A, Ground Floor).</p>
-                    <p>Pickup hours: Monday–Friday, 8:00 AM–5:00 PM.</p>
-                </div>
-                <aside class="cart-summary">
-                    <h3>Order Summary</h3>
-                    <div class="summary-row"><span>Items</span><span>@Cart.TotalCount</span></div>
-                    <div class="summary-row"><span>Subtotal</span><strong>₱@Cart.Subtotal.ToString("N0")</strong></div>
-                    <div class="summary-row"><span>Campus Pickup</span><span class="text-success">₱0</span></div>
-                    @if (Cart.AppliedDiscount > 0 && !string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
+            @RenderCheckoutSteps()
+
+            <div class="checkout-layout @(_checkoutPhase == CheckoutPhasePayment ? "checkout-layout--payment" : null)">
+                <div class="checkout-main">
+                    @if (_checkoutPhase == CheckoutPhasePayment)
                     {
-                        <div class="summary-row">
-                            <span>Discount (@Cart.AppliedPromoCode)</span>
-                            <span class="text-success">-₱@Cart.AppliedDiscount.ToString("N0")</span>
-                        </div>
-                    }
-                    <div class="summary-total"><span>Total</span><strong>₱@Cart.EstimatedTotal.ToString("N0")</strong></div>
+                        <section class="checkout-card">
+                            <header class="checkout-card-head">
+                                <div class="checkout-card-icon"><Icon Name="wallet" Size="18" /></div>
+                                <div>
+                                    <h2>Payment</h2>
+                                    <p>Complete your payment to continue.</p>
+                                </div>
+                            </header>
 
-                    <div class="cart-promo">
-                        <input type="text"
-                               placeholder="Enter promo code"
-                               value="@_promoCode"
-                               disabled="@(_submitting || _applyingPromo)"
-                               @oninput="OnPromoInput" />
-                        @if (!string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
-                        {
-                            <button type="button" class="btn btn-outline-navy cart-promo-btn" @onclick="RemovePromo" disabled="@(_submitting || _applyingPromo)">
-                                Remove
+                            <div class="checkout-pay-meta">
+                                <div class="checkout-pay-meta-row">
+                                    <span>Selected Payment Method</span>
+                                    <strong>@_paymentMethod</strong>
+                                </div>
+                                <div class="checkout-pay-meta-row checkout-pay-amount">
+                                    <span>Amount to Pay</span>
+                                    <strong>₱@GrandTotal.ToString("N0")</strong>
+                                </div>
+                            </div>
+
+                            @if (_paymentOutcome == PaymentOutcomeFailed)
+                            {
+                                <div class="checkout-payment-alert is-error" role="alert">
+                                    <strong>Payment Failed</strong>
+                                    <p>Your payment could not be completed. Please try again.</p>
+                                    <button type="button" class="btn btn-navy" @onclick="ResetPaymentAttempt" disabled="@(_submitting || _paymentProcessing)">
+                                        Try Again
+                                    </button>
+                                </div>
+                            }
+                            else if (_paymentOutcome == PaymentOutcomeCancelled)
+                            {
+                                <div class="checkout-payment-alert is-warn" role="alert">
+                                    <strong>Payment Cancelled</strong>
+                                    <p>No payment was completed.</p>
+                                    <div class="checkout-payment-alert-actions">
+                                        <button type="button" class="btn btn-navy" @onclick="ResetPaymentAttempt" disabled="@(_submitting || _paymentProcessing)">
+                                            Try Again
+                                        </button>
+                                        <button type="button" class="btn btn-outline-navy" @onclick="BackToInformation" disabled="@(_submitting || _paymentProcessing)">
+                                            ← Back to Information
+                                        </button>
+                                    </div>
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="checkout-online-panel checkout-pay-panel">
+                                    <strong>@OnlinePaymentPanelTitle</strong>
+                                    <p>@OnlinePaymentPanelBody</p>
+
+                                    <div class="checkout-pay-amount-block">
+                                        <span>Amount to Pay</span>
+                                        <strong>₱@GrandTotal.ToString("N0")</strong>
+                                    </div>
+
+                                    <p class="checkout-online-note">@OnlinePaymentSecureNote</p>
+
+                                    @if (_paymentUiState == PaymentUiReady)
+                                    {
+                                        <button type="button"
+                                                class="btn btn-navy btn-block"
+                                                disabled="@(_submitting || _paymentProcessing)"
+                                                @onclick="BeginOnlinePaymentAsync">
+                                            @(_paymentProcessing ? "Processing…" : OnlinePaymentContinueLabel)
+                                        </button>
+                                    }
+                                    else if (_paymentUiState == PaymentUiTestGateway)
+                                    {
+                                        <div class="checkout-test-gateway" role="region" aria-label="Development payment simulator">
+                                            <strong>Development / test payment</strong>
+                                            <p>No live payment gateway is connected. Use the options below to simulate a result. A real GCash / e-wallet / card provider still needs to be integrated.</p>
+                                            <div class="checkout-test-gateway-actions">
+                                                <button type="button"
+                                                        class="btn btn-navy"
+                                                        disabled="@(_submitting || _paymentProcessing)"
+                                                        @onclick="SimulatePaymentSuccessAsync">
+                                                    @(_paymentProcessing ? "Processing…" : "Simulate Successful Payment")
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-outline-navy"
+                                                        disabled="@(_submitting || _paymentProcessing)"
+                                                        @onclick="SimulatePaymentFailure">
+                                                    Simulate Failed Payment
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-outline-navy"
+                                                        disabled="@(_submitting || _paymentProcessing)"
+                                                        @onclick="SimulatePaymentCancelled">
+                                                    Cancel Payment
+                                                </button>
+                                            </div>
+                                        </div>
+                                    }
+                                </div>
+                            }
+
+                            @if (!string.IsNullOrWhiteSpace(_error))
+                            {
+                                <p class="text-danger">@_error</p>
+                            }
+
+                            <button type="button" class="btn btn-outline-navy" @onclick="BackToInformation" disabled="@(_submitting || _paymentProcessing)">
+                                ← Back to Information
                             </button>
+                        </section>
+                    }
+                    else
+                    {
+                    @* —— Customer Information —— *@
+                    <section class="checkout-card">
+                        <header class="checkout-card-head">
+                            <div class="checkout-card-icon"><Icon Name="user" Size="18" /></div>
+                            <div>
+                                <h2>Customer Information</h2>
+                                <p>We'll use this information to contact you about your order.</p>
+                            </div>
+                        </header>
+
+                        @if (_loadingCustomer)
+                        {
+                            <p class="checkout-loading">Loading your account details…</p>
                         }
                         else
                         {
-                            <button type="button" class="btn btn-navy cart-promo-btn" @onclick="ApplyPromoAsync" disabled="@(_submitting || _applyingPromo)">
-                                @(_applyingPromo ? "Applying…" : "Apply")
-                            </button>
+                            <div class="checkout-grid-2">
+                                <label class="admin-field">
+                                    <span>Full Name *</span>
+                                    <input type="text" value="@_fullName" readonly class="is-readonly" />
+                                </label>
+                                <label class="admin-field">
+                                    <span>Email Address *</span>
+                                    <input type="email" value="@_email" readonly class="is-readonly" />
+                                </label>
+                            </div>
+                            <div class="checkout-grid-2">
+                                <label class="admin-field">
+                                    <span>Contact Number *</span>
+                                    <input type="tel"
+                                           value="@_contactPhone"
+                                           placeholder="09XXXXXXXXX"
+                                           @oninput="OnContactPhoneInput" />
+                                    @if (_errors.ContainsKey("phone"))
+                                    {
+                                        <em>@_errors["phone"]</em>
+                                    }
+                                </label>
+                            </div>
                         }
-                    </div>
-                    @if (!string.IsNullOrWhiteSpace(_promoMessage))
+                    </section>
+
+                    @* —— Fulfillment —— *@
+                    <section class="checkout-card">
+                        <header class="checkout-card-head">
+                            <div class="checkout-card-icon"><Icon Name="truck" Size="18" /></div>
+                            <div>
+                                <h2>Fulfillment Method</h2>
+                                <p>Choose how you want to receive your order.</p>
+                            </div>
+                        </header>
+
+                        <div class="checkout-fulfillment-grid">
+                            <button type="button"
+                                    class="checkout-option-card @(_fulfillment == CampusPickup ? "is-selected" : null)"
+                                    @onclick='() => SetFulfillment(CampusPickup)'>
+                                <span class="checkout-option-check" aria-hidden="true"><Icon Name="check" Size="12" /></span>
+                                <span class="checkout-option-icon"><Icon Name="map-pin" Size="22" /></span>
+                                <strong>Campus Pickup</strong>
+                                <small>Free • Ready in 1–3 days</small>
+                            </button>
+                            <button type="button"
+                                    class="checkout-option-card @(_fulfillment == DeliveryMethod ? "is-selected" : null)"
+                                    @onclick='() => SetFulfillment(DeliveryMethod)'>
+                                <span class="checkout-option-check" aria-hidden="true"><Icon Name="check" Size="12" /></span>
+                                <span class="checkout-option-icon"><Icon Name="truck" Size="22" /></span>
+                                <strong>Delivery</strong>
+                                <small>₱@DeliveryFee.ToString("N0") • 3–7 business days</small>
+                            </button>
+                        </div>
+
+                        @if (_fulfillment == CampusPickup)
+                        {
+                            <div class="checkout-pickup-banner">
+                                <Icon Name="map-pin" Size="18" CssClass="checkout-pickup-banner-icon" />
+                                <div>
+                                    <strong>Campus Pickup Details</strong>
+                                    <p>Your order will be available for pickup at the NU Lipa Campus. You'll receive a notification when it's ready.</p>
+                                </div>
+                            </div>
+                        }
+                    </section>
+
+                    @* —— Shipping (Delivery only) —— *@
+                    @if (_fulfillment == DeliveryMethod)
                     {
-                        <p class="@(_promoOk ? "cart-promo-success" : "cart-promo-error")">@_promoMessage</p>
+                        <section class="checkout-card">
+                            <header class="checkout-card-head">
+                                <div class="checkout-card-icon"><Icon Name="map-pin" Size="18" /></div>
+                                <div>
+                                    <h2>Shipping Address</h2>
+                                    <p>Where should we deliver your order?</p>
+                                </div>
+                            </header>
+
+                            @if (_savedAddresses.Count > 0)
+                            {
+                                <div class="checkout-address-mode">
+                                    <label class="checkout-radio">
+                                        <input type="radio" name="addrMode" checked="@(!_useNewAddress)" @onchange="() => SetAddressMode(false)" />
+                                        <span>Use saved address</span>
+                                    </label>
+                                    <label class="checkout-radio">
+                                        <input type="radio" name="addrMode" checked="@_useNewAddress" @onchange="() => SetAddressMode(true)" />
+                                        <span>Add new address</span>
+                                    </label>
+                                </div>
+
+                                @if (!_useNewAddress)
+                                {
+                                    <label class="admin-field">
+                                        <span>Saved Address</span>
+                                        <select value="@_selectedAddressId" @onchange="OnSavedAddressChange">
+                                            @foreach (var addr in _savedAddresses)
+                                            {
+                                                <option value="@addr.Id">@addr.Label — @addr.SummaryLine</option>
+                                            }
+                                        </select>
+                                    </label>
+                                    @if (SelectedAddress is not null)
+                                    {
+                                        <div class="checkout-saved-preview">
+                                            <strong>@SelectedAddress.Label</strong>
+                                            <span>@SelectedAddress.RecipientName</span>
+                                            <span>@SelectedAddress.SummaryLine</span>
+                                            <span>@SelectedAddress.PhoneNumber</span>
+                                        </div>
+                                    }
+                                }
+                            }
+
+                            @if (_useNewAddress || _savedAddresses.Count == 0)
+                            {
+                                <div class="checkout-grid-2">
+                                    <label class="admin-field">
+                                        <span>Recipient Name *</span>
+                                        <input type="text" value="@_shipRecipient" @oninput="e => OnShipField(nameof(_shipRecipient), e)" />
+                                        @if (_errors.ContainsKey("shipRecipient"))
+                                        {
+                                            <em>@_errors["shipRecipient"]</em>
+                                        }
+                                    </label>
+                                    <label class="admin-field">
+                                        <span>Phone Number *</span>
+                                        <input type="tel" value="@_shipPhone" @oninput="e => OnShipField(nameof(_shipPhone), e)" />
+                                        @if (_errors.ContainsKey("shipPhone"))
+                                        {
+                                            <em>@_errors["shipPhone"]</em>
+                                        }
+                                    </label>
+                                </div>
+                                <label class="admin-field">
+                                    <span>Address Line *</span>
+                                    <input type="text" value="@_shipAddressLine" placeholder="House no., street, subdivision" @oninput="e => OnShipField(nameof(_shipAddressLine), e)" />
+                                    @if (_errors.ContainsKey("shipAddress"))
+                                    {
+                                        <em>@_errors["shipAddress"]</em>
+                                    }
+                                </label>
+                                <div class="checkout-grid-4">
+                                    <label class="admin-field">
+                                        <span>Barangay *</span>
+                                        <input type="text" value="@_shipBarangay" @oninput="e => OnShipField(nameof(_shipBarangay), e)" />
+                                        @if (_errors.ContainsKey("shipBarangay"))
+                                        {
+                                            <em>@_errors["shipBarangay"]</em>
+                                        }
+                                    </label>
+                                    <label class="admin-field">
+                                        <span>City *</span>
+                                        <input type="text" value="@_shipCity" @oninput="e => OnShipField(nameof(_shipCity), e)" />
+                                        @if (_errors.ContainsKey("shipCity"))
+                                        {
+                                            <em>@_errors["shipCity"]</em>
+                                        }
+                                    </label>
+                                    <label class="admin-field">
+                                        <span>Province *</span>
+                                        <select value="@_shipProvince" @onchange="e => OnShipSelect(nameof(_shipProvince), e)">
+                                            <option value="">Select</option>
+                                            @foreach (var p in Provinces)
+                                            {
+                                                <option value="@p">@p</option>
+                                            }
+                                        </select>
+                                        @if (_errors.ContainsKey("shipProvince"))
+                                        {
+                                            <em>@_errors["shipProvince"]</em>
+                                        }
+                                    </label>
+                                    <label class="admin-field">
+                                        <span>Postal Code *</span>
+                                        <input type="text" value="@_shipPostal" @oninput="e => OnShipField(nameof(_shipPostal), e)" />
+                                        @if (_errors.ContainsKey("shipPostal"))
+                                        {
+                                            <em>@_errors["shipPostal"]</em>
+                                        }
+                                    </label>
+                                </div>
+                                <label class="checkout-check">
+                                    <input type="checkbox" checked="@_saveAddress" @onchange="e => _saveAddress = e.Value is bool b && b" />
+                                    <span>Save this address for future orders</span>
+                                </label>
+                            }
+                        </section>
                     }
 
-                    <button type="button" class="btn btn-navy btn-block cart-checkout-btn" disabled="@_submitting" @onclick="PlaceOrderAsync">
-                        @(_submitting ? "Placing order…" : "Place Order")
-                    </button>
-                    <a href="/cart" class="btn btn-outline-navy btn-block">Back to Cart</a>
-                    @if (!string.IsNullOrWhiteSpace(_message))
-                    {
-                        <p class="cart-promo-success">@_message</p>
-                    }
-                    @if (!string.IsNullOrWhiteSpace(_error))
-                    {
-                        <p class="text-danger">@_error</p>
-                    }
+                    @* —— Payment —— *@
+                    <section class="checkout-card">
+                        <header class="checkout-card-head">
+                            <div class="checkout-card-icon"><Icon Name="wallet" Size="18" /></div>
+                            <div>
+                                <h2>Payment Method</h2>
+                                <p>Choose your preferred payment method.</p>
+                            </div>
+                        </header>
+                        <div class="checkout-payment-grid">
+                            @foreach (var method in AvailablePaymentMethods)
+                            {
+                                <button type="button"
+                                        class="checkout-option-card checkout-payment-card @(_paymentMethod == method ? "is-selected" : null)"
+                                        @onclick="() => SelectPaymentMethod(method)">
+                                    <span class="checkout-option-check" aria-hidden="true"><Icon Name="check" Size="12" /></span>
+                                    <strong>@method</strong>
+                                </button>
+                            }
+                        </div>
+                        @if (_errors.ContainsKey("payment"))
+                        {
+                            <em class="checkout-inline-error">@_errors["payment"]</em>
+                        }
+
+                        @if (IsOnlinePaymentMethod)
+                        {
+                            <div class="checkout-online-panel">
+                                <strong>@OnlinePaymentPanelTitle</strong>
+                                <p>@OnlinePaymentPanelBody</p>
+                            </div>
+                        }
+                    </section>
+
+                    @* —— Notes —— *@
+                    <section class="checkout-card">
+                        <header class="checkout-card-head">
+                            <div class="checkout-card-icon"><Icon Name="pencil" Size="18" /></div>
+                            <div>
+                                <h2>Order Notes <span class="checkout-optional">(Optional)</span></h2>
+                                <p>Any special instructions or requests?</p>
+                            </div>
+                        </header>
+                        <label class="admin-field">
+                            <textarea rows="3"
+                                      value="@_orderNotes"
+                                      @oninput="e => _orderNotes = e.Value?.ToString() ?? string.Empty"
+                                      placeholder="@NotesPlaceholder"></textarea>
+                        </label>
+                    </section>
+                    } @* end information phase *@
+                </div>
+
+                <aside class="checkout-summary">
+                    <div class="checkout-summary-card">
+                        <header class="checkout-summary-head">
+                            <h3>Order Summary (@Cart.TotalCount item@(Cart.TotalCount == 1 ? "" : "s"))</h3>
+                            @if (_checkoutPhase == CheckoutPhaseInformation)
+                            {
+                                <a href="/cart">Edit Cart</a>
+                            }
+                        </header>
+
+                        <ul class="checkout-summary-items">
+                            @foreach (var item in Cart.Items)
+                            {
+                                <li>
+                                    <img src="@item.Product.ImageUrl"
+                                         alt="@item.Product.Name"
+                                         loading="lazy"
+                                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                    <div class="checkout-summary-item-meta">
+                                        <strong>@item.Product.Name</strong>
+                                        @if (!string.IsNullOrWhiteSpace(item.SelectedSize))
+                                        {
+                                            <span>Size: @item.SelectedSize</span>
+                                        }
+                                        <span>Qty: @item.Quantity</span>
+                                    </div>
+                                    <strong class="checkout-summary-price">₱@((item.Product.Price * item.Quantity).ToString("N0"))</strong>
+                                </li>
+                            }
+                        </ul>
+
+                        <div class="checkout-summary-rows">
+                            <div class="summary-row"><span>Subtotal</span><span>₱@Cart.Subtotal.ToString("N0")</span></div>
+                            <div class="summary-row">
+                                <span>@(_fulfillment == DeliveryMethod ? "Delivery Fee" : "Fulfillment Fee")</span>
+                                @if (_fulfillment == DeliveryMethod)
+                                {
+                                    <span>₱@DeliveryFee.ToString("N0")</span>
+                                }
+                                else
+                                {
+                                    <span class="text-success">Free</span>
+                                }
+                            </div>
+                            @if (Cart.AppliedDiscount > 0 && !string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
+                            {
+                                <div class="summary-row">
+                                    <span>Promo @Cart.AppliedPromoCode</span>
+                                    <span class="text-success">-₱@Cart.AppliedDiscount.ToString("N0")</span>
+                                </div>
+                            }
+                            <div class="summary-total"><span>Total</span><strong>₱@GrandTotal.ToString("N0")</strong></div>
+                        </div>
+
+                        @if (_checkoutPhase == CheckoutPhasePayment)
+                        {
+                            <div class="checkout-summary-fulfillment">
+                                <div class="summary-row">
+                                    <span>Fulfillment</span>
+                                    <strong>@_fulfillment</strong>
+                                </div>
+                                @if (_fulfillment == CampusPickup)
+                                {
+                                    <div class="checkout-summary-address">
+                                        <strong>Pickup Location</strong>
+                                        <span>NU Lipa Campus</span>
+                                    </div>
+                                }
+                                else
+                                {
+                                    <div class="checkout-summary-address">
+                                        <strong>Delivery To</strong>
+                                        <span>@_shipRecipient</span>
+                                        <span>@_shipAddressLine</span>
+                                        <span>@_shipBarangay</span>
+                                        <span>@_shipCity, @_shipProvince @_shipPostal</span>
+                                        <span>@_shipPhone</span>
+                                    </div>
+                                }
+                                <div class="summary-row">
+                                    <span>Payment</span>
+                                    <strong>@_paymentMethod</strong>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            @if (_fulfillment == CampusPickup)
+                            {
+                                <div class="checkout-summary-note is-success">
+                                    You're saving on delivery fees! Free campus pickup at NU Lipa Campus.
+                                </div>
+                            }
+                            else
+                            {
+                                <div class="checkout-summary-note is-info">
+                                    <Icon Name="truck" Size="14" /> Estimated Delivery: 3–7 business days. We'll keep you updated via email and SMS.
+                                </div>
+                            }
+
+                            <div class="cart-promo">
+                                <input type="text"
+                                       placeholder="Enter promo code"
+                                       value="@_promoCode"
+                                       disabled="@(_submitting || _applyingPromo)"
+                                       @oninput="OnPromoInput" />
+                                @if (!string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
+                                {
+                                    <button type="button" class="btn btn-outline-navy cart-promo-btn" @onclick="RemovePromo" disabled="@(_submitting || _applyingPromo)">
+                                        Remove
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-navy cart-promo-btn" @onclick="ApplyPromoAsync" disabled="@(_submitting || _applyingPromo)">
+                                        @(_applyingPromo ? "Applying…" : "Apply")
+                                    </button>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_promoMessage))
+                            {
+                                <p class="@(_promoOk ? "cart-promo-success" : "cart-promo-error")">@_promoMessage</p>
+                            }
+
+                            <label class="checkout-check checkout-terms">
+                                <input type="checkbox" checked="@_agreeTerms" @onchange="OnAgreeTermsChanged" />
+                                <span>I agree to the store policies and <a href="#">Terms of Service</a>.</span>
+                            </label>
+                            @if (_errors.ContainsKey("terms"))
+                            {
+                                <em class="checkout-inline-error">@_errors["terms"]</em>
+                            }
+
+                            <button type="button"
+                                    class="btn btn-navy btn-block cart-checkout-btn"
+                                    disabled="@(_submitting || _loadingCustomer)"
+                                    @onclick="OnCheckoutActionAsync">
+                                @(_submitting ? "Placing order…" : CheckoutActionButtonText)
+                            </button>
+
+                            <p class="checkout-secure">
+                                <Icon Name="shield" Size="14" /> Secure and encrypted checkout
+                            </p>
+
+                            @if (!string.IsNullOrWhiteSpace(_error))
+                            {
+                                <p class="text-danger">@_error</p>
+                            }
+                        }
+                    </div>
                 </aside>
             </div>
         </div>
@@ -128,27 +704,426 @@ else
 }
 
 @code {
-    private string? _message;
+    private const string CampusPickup = "Campus Pickup";
+    private const string DeliveryMethod = "Delivery";
+    private const string CashOnPickup = "Cash on Pickup";
+    private const string CashOnDelivery = "Cash on Delivery";
+    private const string CheckoutPhaseInformation = "information";
+    private const string CheckoutPhasePayment = "payment";
+    private const string CheckoutPhaseConfirmation = "confirmation";
+    private const string PaymentUiReady = "ready";
+    private const string PaymentUiTestGateway = "test-gateway";
+    private const string PaymentOutcomeFailed = "failed";
+    private const string PaymentOutcomeCancelled = "cancelled";
+    private const decimal DefaultDeliveryFee = 150m;
+
+    private static readonly string[] Provinces =
+    [
+        "Batangas", "Cavite", "Laguna", "Metro Manila", "Quezon", "Rizal",
+        "Bulacan", "Pampanga", "Other"
+    ];
+
+    private static readonly HashSet<string> OnlinePaymentMethods = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "E-Wallet", "GCash", "Online Payment"
+    };
+
+    private bool _loadingCustomer = true;
+    private string _checkoutPhase = CheckoutPhaseInformation;
+    private string _fullName = string.Empty;
+    private string _email = string.Empty;
+    private string _contactPhone = string.Empty;
+    private string _fulfillment = CampusPickup;
+    private string _paymentMethod = CashOnPickup;
+    private string _orderNotes = string.Empty;
+    private bool _agreeTerms;
+    private bool _saveAddress;
+    private bool _useNewAddress = true;
+
+    private string _shipRecipient = string.Empty;
+    private string _shipPhone = string.Empty;
+    private string _shipAddressLine = string.Empty;
+    private string _shipBarangay = string.Empty;
+    private string _shipCity = string.Empty;
+    private string _shipProvince = string.Empty;
+    private string _shipPostal = string.Empty;
+
+    private List<UserAddress> _savedAddresses = [];
+    private string _selectedAddressId = string.Empty;
+
     private string? _error;
     private bool _submitting;
     private bool _applyingPromo;
     private string _promoCode = string.Empty;
     private string? _promoMessage;
     private bool _promoOk;
+    private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
 
-    protected override void OnInitialized()
+    private string _paymentUiState = PaymentUiReady;
+    private string? _paymentOutcome;
+    private bool _paymentProcessing;
+    private AdminOrder? _confirmedOrder;
+
+    private decimal DeliveryFee =>
+        Settings.Saved.Orders.DeliveryFee > 0
+            ? Settings.Saved.Orders.DeliveryFee
+            : DefaultDeliveryFee;
+
+    private decimal FulfillmentFee => _fulfillment == DeliveryMethod ? DeliveryFee : 0;
+    private decimal GrandTotal => Math.Max(0, Cart.EstimatedTotal + FulfillmentFee);
+
+    private UserAddress? SelectedAddress =>
+        _savedAddresses.FirstOrDefault(a => a.Id.ToString().Equals(_selectedAddressId, StringComparison.OrdinalIgnoreCase));
+
+    private IReadOnlyList<string> AvailablePaymentMethods =>
+        _fulfillment == DeliveryMethod
+            ? [CashOnDelivery, "E-Wallet", "Online Payment", "GCash"]
+            : [CashOnPickup, "E-Wallet", "Online Payment", "GCash"];
+
+    private string DefaultCashMethod =>
+        _fulfillment == DeliveryMethod ? CashOnDelivery : CashOnPickup;
+
+    private bool IsCashPaymentMethod =>
+        string.Equals(_paymentMethod, CashOnPickup, StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(_paymentMethod, CashOnDelivery, StringComparison.OrdinalIgnoreCase);
+
+    private bool IsOnlinePaymentMethod => OnlinePaymentMethods.Contains(_paymentMethod);
+
+    private string NotesPlaceholder =>
+        _fulfillment == DeliveryMethod
+            ? "e.g. Leave delivery instructions, landmark, or any special requests..."
+            : "e.g. Preferred pickup date, special instructions...";
+
+    private string CheckoutActionButtonText =>
+        IsCashPaymentMethod ? "Place Order" : "Proceed to Payment";
+
+    private string OnlinePaymentPanelTitle => _paymentMethod switch
+    {
+        "GCash" => "GCash Payment",
+        "E-Wallet" => "E-Wallet Payment",
+        "Online Payment" => "Online Payment",
+        _ => "Payment Details"
+    };
+
+    private string OnlinePaymentPanelBody => _paymentMethod switch
+    {
+        "GCash" => "Pay securely using GCash. You will continue to the secure payment process to complete your transaction.",
+        "E-Wallet" => "Pay securely using your preferred e-wallet. You will continue to the secure payment process to complete your transaction.",
+        "Online Payment" => "Secure payment processing. You will continue to a provider-hosted payment flow. Card details are never stored by NU Bulldogs Exchange.",
+        _ => "Follow the payment instructions to complete your order."
+    };
+
+    private string OnlinePaymentSecureNote =>
+        "No live payment gateway is connected yet. Continuing opens a development/test payment step only.";
+
+    private string OnlinePaymentContinueLabel => _paymentMethod switch
+    {
+        "GCash" => "Continue with GCash",
+        "E-Wallet" => "Continue with E-Wallet",
+        "Online Payment" => "Continue to Secure Payment",
+        _ => "Continue to Payment"
+    };
+
+    private RenderFragment RenderCheckoutSteps() => __builder =>
+    {
+        var onPayment = _checkoutPhase == CheckoutPhasePayment;
+        var onConfirm = _checkoutPhase == CheckoutPhaseConfirmation;
+        var infoDone = onPayment || onConfirm;
+        var paymentDone = onConfirm;
+
+        <ol class="checkout-steps" aria-label="Checkout progress">
+            <li class="checkout-step is-done">
+                <span class="checkout-step-badge" aria-hidden="true"><Icon Name="check" Size="14" /></span>
+                <span>Cart</span>
+            </li>
+            <li class="checkout-step-line is-done" aria-hidden="true"></li>
+            <li class="checkout-step @(infoDone ? "is-done" : "is-active")">
+                <span class="checkout-step-badge">
+                    @if (infoDone)
+                    {
+                        <Icon Name="check" Size="14" />
+                    }
+                    else
+                    {
+                        <text>2</text>
+                    }
+                </span>
+                <span>Information</span>
+            </li>
+            <li class="checkout-step-line @(infoDone ? "is-done" : null)" aria-hidden="true"></li>
+            <li class="checkout-step @(onPayment ? "is-active" : paymentDone ? "is-done" : null)">
+                <span class="checkout-step-badge">
+                    @if (paymentDone)
+                    {
+                        <Icon Name="check" Size="14" />
+                    }
+                    else
+                    {
+                        <text>3</text>
+                    }
+                </span>
+                <span>Payment</span>
+            </li>
+            <li class="checkout-step-line @(paymentDone ? "is-done" : null)" aria-hidden="true"></li>
+            <li class="checkout-step @(onConfirm ? "is-active is-done" : null)">
+                <span class="checkout-step-badge">
+                    @if (onConfirm)
+                    {
+                        <Icon Name="check" Size="14" />
+                    }
+                    else
+                    {
+                        <text>4</text>
+                    }
+                </span>
+                <span>Confirmation</span>
+            </li>
+        </ol>
+    };
+
+    protected override async Task OnInitializedAsync()
     {
         Auth.OnChange += Refresh;
         Cart.OnChange += Refresh;
+
         if (!string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
         {
             _promoCode = Cart.AppliedPromoCode;
             _promoOk = true;
             _promoMessage = $"Promo Code: {Cart.AppliedPromoCode}";
         }
+
+        await LoadAuthenticatedCustomerAsync();
+    }
+
+    private async Task LoadAuthenticatedCustomerAsync()
+    {
+        _loadingCustomer = true;
+        try
+        {
+            var user = Auth.CurrentUser;
+            if (user is null)
+                return;
+
+            // Prefer first + last from public.users; fall back to Name.
+            var fullName = $"{user.FirstName} {user.LastName}".Trim();
+            if (string.IsNullOrWhiteSpace(fullName))
+                fullName = user.Name?.Trim() ?? string.Empty;
+
+            _fullName = fullName;
+            _email = user.Email?.Trim() ?? string.Empty;
+            _contactPhone = user.Phone?.Trim() ?? string.Empty;
+            _shipRecipient = _fullName;
+            _shipPhone = _contactPhone;
+
+            if (user.Id != Guid.Empty)
+            {
+                _savedAddresses = await Database.GetUserAddressesAsync(user.Id);
+                if (_savedAddresses.Count > 0)
+                {
+                    _useNewAddress = false;
+                    var preferred = _savedAddresses.FirstOrDefault(a => a.IsDefault) ?? _savedAddresses[0];
+                    _selectedAddressId = preferred.Id.ToString();
+                    ApplySavedAddress(preferred);
+                }
+            }
+        }
+        finally
+        {
+            _loadingCustomer = false;
+        }
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void SetFulfillment(string method)
+    {
+        _fulfillment = method;
+        _errors.Clear();
+        _checkoutPhase = CheckoutPhaseInformation;
+        ResetPaymentAttempt();
+
+        // Reset invalid cash method when fulfillment changes.
+        if (!AvailablePaymentMethods.Contains(_paymentMethod, StringComparer.OrdinalIgnoreCase))
+            _paymentMethod = DefaultCashMethod;
+
+        if (method == DeliveryMethod)
+        {
+            if (string.IsNullOrWhiteSpace(_shipRecipient))
+                _shipRecipient = _fullName;
+            if (string.IsNullOrWhiteSpace(_shipPhone))
+                _shipPhone = _contactPhone;
+        }
+    }
+
+    private void SelectPaymentMethod(string method)
+    {
+        _paymentMethod = method;
+        _errors.Remove("payment");
+        if (_checkoutPhase == CheckoutPhasePayment && IsCashPaymentMethod)
+            _checkoutPhase = CheckoutPhaseInformation;
+        ResetPaymentAttempt();
+    }
+
+    private void BackToInformation()
+    {
+        _checkoutPhase = CheckoutPhaseInformation;
+        _error = null;
+        ResetPaymentAttempt();
+    }
+
+    private void ResetPaymentAttempt()
+    {
+        _paymentUiState = PaymentUiReady;
+        _paymentOutcome = null;
+        _paymentProcessing = false;
+    }
+
+    private async Task OnCheckoutActionAsync()
+    {
+        if (!ValidateCheckout())
+        {
+            _error = "Please complete the required fields before continuing.";
+            return;
+        }
+
+        if (IsCashPaymentMethod)
+        {
+            await PlaceOrderAsync(markOnlinePaid: false);
+            return;
+        }
+
+        // Online methods: advance to payment step without placing the order yet.
+        _error = null;
+        ResetPaymentAttempt();
+        _checkoutPhase = CheckoutPhasePayment;
+    }
+
+    private async Task BeginOnlinePaymentAsync()
+    {
+        if (_paymentProcessing || _submitting || _checkoutPhase != CheckoutPhasePayment)
+            return;
+
+        _paymentProcessing = true;
+        _paymentOutcome = null;
+        _error = null;
+        try
+        {
+            // Brief UX delay; there is no live gateway to redirect to.
+            await Task.Delay(450);
+            _paymentUiState = PaymentUiTestGateway;
+        }
+        finally
+        {
+            _paymentProcessing = false;
+        }
+    }
+
+    private async Task SimulatePaymentSuccessAsync()
+    {
+        if (_paymentProcessing || _submitting)
+            return;
+
+        _paymentProcessing = true;
+        _paymentOutcome = null;
+        _error = null;
+        try
+        {
+            await Task.Delay(350);
+            await PlaceOrderAsync(markOnlinePaid: true);
+        }
+        finally
+        {
+            _paymentProcessing = false;
+        }
+    }
+
+    private void SimulatePaymentFailure()
+    {
+        if (_paymentProcessing || _submitting)
+            return;
+
+        _paymentOutcome = PaymentOutcomeFailed;
+        _paymentUiState = PaymentUiReady;
+        _error = null;
+    }
+
+    private void SimulatePaymentCancelled()
+    {
+        if (_paymentProcessing || _submitting)
+            return;
+
+        _paymentOutcome = PaymentOutcomeCancelled;
+        _paymentUiState = PaymentUiReady;
+        _error = null;
+    }
+
+    private void SetAddressMode(bool useNew)
+    {
+        _useNewAddress = useNew;
+        if (!useNew && SelectedAddress is not null)
+            ApplySavedAddress(SelectedAddress);
+        else if (useNew)
+        {
+            _shipRecipient = _fullName;
+            _shipPhone = _contactPhone;
+        }
+    }
+
+    private void OnSavedAddressChange(ChangeEventArgs e)
+    {
+        _selectedAddressId = e.Value?.ToString() ?? string.Empty;
+        if (SelectedAddress is not null)
+            ApplySavedAddress(SelectedAddress);
+    }
+
+    private void ApplySavedAddress(UserAddress addr)
+    {
+        _shipRecipient = addr.RecipientName;
+        _shipPhone = addr.PhoneNumber;
+        _shipAddressLine = addr.AddressLine;
+        _shipBarangay = addr.Barangay;
+        _shipCity = addr.City;
+        _shipProvince = addr.Province;
+        _shipPostal = addr.PostalCode ?? string.Empty;
+    }
+
+    private void OnContactPhoneInput(ChangeEventArgs e)
+    {
+        _contactPhone = e.Value?.ToString() ?? string.Empty;
+        _errors.Remove("phone");
+        if (_fulfillment == DeliveryMethod && string.IsNullOrWhiteSpace(_shipPhone))
+            _shipPhone = _contactPhone;
+    }
+
+    private void OnAgreeTermsChanged(ChangeEventArgs e)
+    {
+        _agreeTerms = e.Value is bool b && b;
+        _errors.Remove("terms");
+    }
+
+    private void OnShipField(string field, ChangeEventArgs e)
+    {
+        var value = e.Value?.ToString() ?? string.Empty;
+        switch (field)
+        {
+            case nameof(_shipRecipient): _shipRecipient = value; _errors.Remove("shipRecipient"); break;
+            case nameof(_shipPhone): _shipPhone = value; _errors.Remove("shipPhone"); break;
+            case nameof(_shipAddressLine): _shipAddressLine = value; _errors.Remove("shipAddress"); break;
+            case nameof(_shipBarangay): _shipBarangay = value; _errors.Remove("shipBarangay"); break;
+            case nameof(_shipCity): _shipCity = value; _errors.Remove("shipCity"); break;
+            case nameof(_shipPostal): _shipPostal = value; _errors.Remove("shipPostal"); break;
+        }
+    }
+
+    private void OnShipSelect(string field, ChangeEventArgs e)
+    {
+        if (field == nameof(_shipProvince))
+        {
+            _shipProvince = e.Value?.ToString() ?? string.Empty;
+            _errors.Remove("shipProvince");
+        }
+    }
 
     private void OnPromoInput(ChangeEventArgs e)
     {
@@ -217,10 +1192,59 @@ else
         _promoMessage = null;
     }
 
-    private async Task PlaceOrderAsync()
+    private bool ValidateCheckout()
+    {
+        _errors.Clear();
+
+        if (string.IsNullOrWhiteSpace(_fullName))
+            _errors["name"] = "Full name is required.";
+        if (string.IsNullOrWhiteSpace(_email))
+            _errors["email"] = "Email is required.";
+        if (string.IsNullOrWhiteSpace(_contactPhone))
+            _errors["phone"] = "Contact number is required.";
+
+        if (string.IsNullOrWhiteSpace(_paymentMethod))
+            _errors["payment"] = "Please select a payment method.";
+        else if (!AvailablePaymentMethods.Contains(_paymentMethod, StringComparer.OrdinalIgnoreCase))
+            _errors["payment"] = "Please select a valid payment method.";
+
+        if (!_agreeTerms)
+            _errors["terms"] = "Please agree to the Terms of Service.";
+
+        if (_fulfillment == DeliveryMethod)
+        {
+            if (string.IsNullOrWhiteSpace(_shipRecipient))
+                _errors["shipRecipient"] = "Recipient name is required.";
+            if (string.IsNullOrWhiteSpace(_shipPhone))
+                _errors["shipPhone"] = "Recipient phone is required.";
+            if (string.IsNullOrWhiteSpace(_shipAddressLine))
+                _errors["shipAddress"] = "Address line is required.";
+            if (string.IsNullOrWhiteSpace(_shipBarangay))
+                _errors["shipBarangay"] = "Barangay is required.";
+            if (string.IsNullOrWhiteSpace(_shipCity))
+                _errors["shipCity"] = "City is required.";
+            if (string.IsNullOrWhiteSpace(_shipProvince))
+                _errors["shipProvince"] = "Province is required.";
+            if (string.IsNullOrWhiteSpace(_shipPostal))
+                _errors["shipPostal"] = "Postal code is required.";
+        }
+
+        return _errors.Count == 0;
+    }
+
+    private async Task PlaceOrderAsync(bool markOnlinePaid)
     {
         if (_submitting || Auth.CurrentUser is null || !Cart.Items.Any())
             return;
+
+        // Re-validate (cash places immediately; online places after simulated payment success).
+        if (!ValidateCheckout())
+        {
+            _checkoutPhase = CheckoutPhaseInformation;
+            ResetPaymentAttempt();
+            _error = "Please complete the required fields before placing your order.";
+            return;
+        }
 
         _submitting = true;
         _error = null;
@@ -232,17 +1256,34 @@ else
             var user = Auth.CurrentUser;
             var customer = Customers.EnsureCustomer(user.Name, user.Email, user.Phone, user.UserId);
             var promoCode = Cart.AppliedPromoCode;
+            var isDelivery = _fulfillment == DeliveryMethod;
+            var expectedTotal = GrandTotal;
+            var paymentStatus = markOnlinePaid && IsOnlinePaymentMethod ? "Paid" : "Pending";
+
             var order = new AdminOrder
             {
                 Id = string.Empty,
                 CustomerId = user.UserId > 0 ? user.UserId.ToString() : customer.Id,
-                CustomerName = user.Name,
-                CustomerEmail = user.Email,
+                CustomerName = _fullName.Trim(),
+                CustomerEmail = _email.Trim(),
+                CustomerPhone = _contactPhone.Trim(),
                 Date = DateTime.Now,
-                Total = Cart.EstimatedTotal,
-                PaymentStatus = "Pending",
-                Fulfillment = "Campus Pickup",
+                Subtotal = Cart.Subtotal,
+                DiscountAmount = Cart.AppliedDiscount,
+                ShippingFee = isDelivery ? DeliveryFee : 0,
+                Total = expectedTotal,
+                PaymentStatus = paymentStatus,
+                PaymentMethod = _paymentMethod,
+                Fulfillment = _fulfillment,
                 Status = "Pending",
+                OrderNotes = string.IsNullOrWhiteSpace(_orderNotes) ? null : _orderNotes.Trim(),
+                ShippingRecipientName = isDelivery ? _shipRecipient.Trim() : null,
+                ShippingPhone = isDelivery ? _shipPhone.Trim() : null,
+                ShippingAddressLine = isDelivery ? _shipAddressLine.Trim() : null,
+                ShippingBarangay = isDelivery ? _shipBarangay.Trim() : null,
+                ShippingCity = isDelivery ? _shipCity.Trim() : null,
+                ShippingProvince = isDelivery ? _shipProvince.Trim() : null,
+                ShippingPostalCode = isDelivery ? _shipPostal.Trim() : null,
                 Items = Cart.Items.Select(i => new AdminOrderItem
                 {
                     ProductId = i.Product.Id,
@@ -258,10 +1299,42 @@ else
                 }).ToList()
             };
 
-            // Server recalculates discount from PromoCode; client DiscountAmount is ignored.
+            // Does NOT overwrite public.users.phone_number — order contact only.
             order = await AdminOrders.AddAsync(order, promoCode, 0);
+
+            if (order.Total != expectedTotal)
+            {
+                // Prefer server-authoritative total when present; otherwise keep local checkout total.
+                if (order.Total <= 0)
+                    order.Total = expectedTotal;
+            }
+
             Orders.PlaceOrder(order);
             Catalog.ApplyPurchase(order.Items);
+
+            if (isDelivery && _saveAddress && (_useNewAddress || _savedAddresses.Count == 0) && user.Id != Guid.Empty)
+            {
+                try
+                {
+                    await Database.UpsertUserAddressAsync(new UserAddress
+                    {
+                        UserId = user.Id,
+                        Label = "Home",
+                        RecipientName = _shipRecipient.Trim(),
+                        PhoneNumber = _shipPhone.Trim(),
+                        AddressLine = _shipAddressLine.Trim(),
+                        Barangay = _shipBarangay.Trim(),
+                        City = _shipCity.Trim(),
+                        Province = _shipProvince.Trim(),
+                        PostalCode = _shipPostal.Trim(),
+                        IsDefault = _savedAddresses.Count == 0
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine(ex);
+                }
+            }
 
             await Notifications.AddAsync(new MockNotification
             {
@@ -285,20 +1358,25 @@ else
                 Read = false
             });
 
-            _message = $"Order {order.Id} placed successfully.";
             Toast.Show($"Order {order.Id} placed.");
+            _confirmedOrder = order;
             Cart.Clear();
             await Cart.PersistAsync(user.Email);
-            Navigation.NavigateTo("/orders");
+            ResetPaymentAttempt();
+            _checkoutPhase = CheckoutPhaseConfirmation;
         }
         catch (InvalidOperationException ex)
         {
             _error = ex.Message;
+            if (_checkoutPhase == CheckoutPhasePayment)
+                _paymentOutcome = PaymentOutcomeFailed;
         }
         catch (Exception ex)
         {
             _error = "Unable to place order. Please try again.";
             Console.Error.WriteLine(ex);
+            if (_checkoutPhase == CheckoutPhasePayment)
+                _paymentOutcome = PaymentOutcomeFailed;
         }
         finally
         {

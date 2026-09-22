@@ -49,7 +49,7 @@ public class MockOrder
             ImageUrl = i.ImageUrl,
             Quantity = i.Quantity,
             Price = i.Price,
-            Size = "M"
+            Size = string.IsNullOrWhiteSpace(i.Size) ? "Free Size" : i.Size
         }).ToList()
     };
 }

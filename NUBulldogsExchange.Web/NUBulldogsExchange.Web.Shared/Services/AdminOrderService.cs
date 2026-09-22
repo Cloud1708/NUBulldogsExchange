@@ -145,10 +145,13 @@ public class AdminOrderService
         if (string.IsNullOrWhiteSpace(order.Id))
             order.Id = string.Empty;
 
+        var requestedPaymentStatus = order.PaymentStatus;
         await _db.PlaceCheckoutOrderAsync(order, promoCode, discountAmount, order.CustomerEmail);
 
         _orders.RemoveAll(o => o.Id.Equals(order.Id, StringComparison.OrdinalIgnoreCase));
         var saved = await _db.GetOrderByIdAsync(order.Id) ?? order;
+        if (string.Equals(requestedPaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase))
+            saved.PaymentStatus = "Paid";
         _orders.Add(saved);
         OnChange?.Invoke();
         return saved;

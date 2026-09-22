@@ -131,6 +131,12 @@ public sealed class HttpAppDatabase : IAppDatabase
             order.Id = saved.Id;
     }
 
+    public Task<List<UserAddress>> GetUserAddressesAsync(Guid userId) =>
+        Task.FromResult(new List<UserAddress>());
+
+    public Task<UserAddress> UpsertUserAddressAsync(UserAddress address) =>
+        Task.FromResult(address);
+
     public async Task AppendOrderStatusHistoryAsync(
         string orderId, string? oldStatus, string newStatus, string? notes, string? changedBy)
     {

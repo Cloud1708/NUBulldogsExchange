@@ -18,15 +18,26 @@ public class AdminOrder
     public string CustomerId { get; set; } = string.Empty;
     public string CustomerName { get; set; } = string.Empty;
     public string CustomerEmail { get; set; } = string.Empty;
+    public string CustomerPhone { get; set; } = string.Empty;
     public DateTime Date { get; set; }
     public decimal Total { get; set; }
     public decimal Subtotal { get; set; }
     public decimal DiscountAmount { get; set; }
+    public decimal ShippingFee { get; set; }
     public string? PromotionId { get; set; }
     public string? PromotionCode { get; set; }
     public string PaymentStatus { get; set; } = "Paid";
+    public string PaymentMethod { get; set; } = string.Empty;
     public string Fulfillment { get; set; } = "Campus Pickup";
     public string Status { get; set; } = "Pending";
+    public string? OrderNotes { get; set; }
+    public string? ShippingRecipientName { get; set; }
+    public string? ShippingPhone { get; set; }
+    public string? ShippingAddressLine { get; set; }
+    public string? ShippingBarangay { get; set; }
+    public string? ShippingCity { get; set; }
+    public string? ShippingProvince { get; set; }
+    public string? ShippingPostalCode { get; set; }
     public List<AdminOrderItem> Items { get; set; } = [];
 
     public string DateLabel => Date.ToString("yyyy-MM-dd");

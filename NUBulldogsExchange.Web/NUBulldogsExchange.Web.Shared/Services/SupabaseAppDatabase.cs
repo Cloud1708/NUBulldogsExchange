@@ -371,6 +371,11 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         _ = discountAmount;
         _ = userEmail;
 
+        // RPC currently defaults payment_status to Pending; preserve Paid for confirmed online checkout.
+        var requestedPaymentStatus = string.IsNullOrWhiteSpace(order.PaymentStatus)
+            ? "Pending"
+            : order.PaymentStatus.Trim();
+
         var rpcBody = new Dictionary<string, object?>
         {
             ["p_order"] = new Dictionary<string, object?>
@@ -378,7 +383,18 @@ public sealed class SupabaseAppDatabase : IAppDatabase
                 ["id"] = string.IsNullOrWhiteSpace(order.Id) ? null : order.Id,
                 ["fulfillment"] = string.IsNullOrWhiteSpace(order.Fulfillment)
                     ? "Campus Pickup"
-                    : order.Fulfillment
+                    : order.Fulfillment,
+                ["customer_phone"] = string.IsNullOrWhiteSpace(order.CustomerPhone) ? null : order.CustomerPhone.Trim(),
+                ["payment_method"] = string.IsNullOrWhiteSpace(order.PaymentMethod) ? null : order.PaymentMethod.Trim(),
+                ["order_notes"] = string.IsNullOrWhiteSpace(order.OrderNotes) ? null : order.OrderNotes.Trim(),
+                ["shipping_fee"] = order.ShippingFee,
+                ["shipping_recipient_name"] = order.ShippingRecipientName,
+                ["shipping_phone"] = order.ShippingPhone,
+                ["shipping_address_line"] = order.ShippingAddressLine,
+                ["shipping_barangay"] = order.ShippingBarangay,
+                ["shipping_city"] = order.ShippingCity,
+                ["shipping_province"] = order.ShippingProvince,
+                ["shipping_postal_code"] = order.ShippingPostalCode
             },
             ["p_items"] = order.Items.Select(i => new Dictionary<string, object?>
             {
@@ -407,9 +423,111 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         order.PromotionCode = result.PromotionCode;
         order.Status = result.Status ?? "Pending";
         order.PaymentStatus = result.PaymentStatus ?? "Pending";
+        if (string.Equals(requestedPaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase))
+            order.PaymentStatus = "Paid";
         order.Date = result.Date ?? DateTime.UtcNow;
         order.CustomerEmail = _session.Email ?? order.CustomerEmail;
         order.CustomerId = _session.AuthUserId ?? order.CustomerId;
+
+        // Best-effort snapshot write if RPC does not yet persist these columns.
+        await TryPatchOrderCheckoutSnapshotAsync(order);
+    }
+
+    private async Task TryPatchOrderCheckoutSnapshotAsync(AdminOrder order)
+    {
+        if (string.IsNullOrWhiteSpace(order.Id))
+            return;
+
+        try
+        {
+            var body = new Dictionary<string, object?>
+            {
+                ["customer_name"] = order.CustomerName,
+                ["customer_email"] = order.CustomerEmail,
+                ["customer_phone"] = string.IsNullOrWhiteSpace(order.CustomerPhone) ? null : order.CustomerPhone.Trim(),
+                ["payment_method"] = string.IsNullOrWhiteSpace(order.PaymentMethod) ? null : order.PaymentMethod.Trim(),
+                ["payment_status"] = string.IsNullOrWhiteSpace(order.PaymentStatus) ? "Pending" : order.PaymentStatus.Trim(),
+                ["order_notes"] = string.IsNullOrWhiteSpace(order.OrderNotes) ? null : order.OrderNotes.Trim(),
+                ["shipping_fee"] = order.ShippingFee,
+                ["shipping_recipient_name"] = order.ShippingRecipientName,
+                ["shipping_phone"] = order.ShippingPhone,
+                ["shipping_address_line"] = order.ShippingAddressLine,
+                ["shipping_barangay"] = order.ShippingBarangay,
+                ["shipping_city"] = order.ShippingCity,
+                ["shipping_province"] = order.ShippingProvince,
+                ["shipping_postal_code"] = order.ShippingPostalCode,
+                ["fulfillment"] = order.Fulfillment
+            };
+
+            using var response = await SendAsync(
+                HttpMethod.Patch,
+                $"rest/v1/orders?id=eq.{Esc(order.Id)}",
+                body);
+            // Ignore failures when columns are not migrated yet.
+            _ = response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            // Snapshot columns may not exist until 003_checkout_customer_shipping.sql is applied.
+        }
+    }
+
+    public async Task<List<UserAddress>> GetUserAddressesAsync(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            return [];
+
+        try
+        {
+            return await GetListAsync<UserAddress>(
+                $"rest/v1/user_addresses?select=*&user_id=eq.{userId}&order=is_default.desc,created_at.desc");
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    public async Task<UserAddress> UpsertUserAddressAsync(UserAddress address)
+    {
+        RequireAuth();
+
+        address.UpdatedAt = DateTime.UtcNow;
+        if (address.CreatedAt == default)
+            address.CreatedAt = DateTime.UtcNow;
+
+        var body = new Dictionary<string, object?>
+        {
+            ["user_id"] = address.UserId,
+            ["label"] = string.IsNullOrWhiteSpace(address.Label) ? "Home" : address.Label.Trim(),
+            ["recipient_name"] = address.RecipientName.Trim(),
+            ["phone_number"] = address.PhoneNumber.Trim(),
+            ["address_line"] = address.AddressLine.Trim(),
+            ["barangay"] = address.Barangay.Trim(),
+            ["city"] = address.City.Trim(),
+            ["province"] = address.Province.Trim(),
+            ["postal_code"] = string.IsNullOrWhiteSpace(address.PostalCode) ? null : address.PostalCode.Trim(),
+            ["is_default"] = address.IsDefault,
+            ["updated_at"] = address.UpdatedAt
+        };
+
+        if (address.Id != Guid.Empty)
+        {
+            var updated = await SendForListAsync<UserAddress>(
+                HttpMethod.Patch,
+                $"rest/v1/user_addresses?id=eq.{address.Id}",
+                body,
+                "return=representation");
+            return updated.FirstOrDefault() ?? address;
+        }
+
+        body["created_at"] = address.CreatedAt;
+        var inserted = await SendForListAsync<UserAddress>(
+            HttpMethod.Post,
+            "rest/v1/user_addresses",
+            body,
+            "return=representation");
+        return inserted.FirstOrDefault() ?? address;
     }
 
     public async Task AppendOrderStatusHistoryAsync(
@@ -1913,15 +2031,26 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         ["customer_email"] = string.IsNullOrWhiteSpace(o.CustomerEmail)
             ? (_session.Email ?? "")
             : o.CustomerEmail,
+        ["customer_phone"] = string.IsNullOrWhiteSpace(o.CustomerPhone) ? null : o.CustomerPhone,
         ["date"] = o.Date,
         ["subtotal"] = o.Subtotal,
         ["discount_amount"] = o.DiscountAmount,
+        ["shipping_fee"] = o.ShippingFee,
         ["total"] = o.Total,
         ["promotion_id"] = o.PromotionId,
         ["promotion_code"] = o.PromotionCode,
         ["payment_status"] = o.PaymentStatus,
+        ["payment_method"] = string.IsNullOrWhiteSpace(o.PaymentMethod) ? null : o.PaymentMethod,
         ["fulfillment"] = o.Fulfillment,
-        ["status"] = o.Status
+        ["status"] = o.Status,
+        ["order_notes"] = string.IsNullOrWhiteSpace(o.OrderNotes) ? null : o.OrderNotes,
+        ["shipping_recipient_name"] = o.ShippingRecipientName,
+        ["shipping_phone"] = o.ShippingPhone,
+        ["shipping_address_line"] = o.ShippingAddressLine,
+        ["shipping_barangay"] = o.ShippingBarangay,
+        ["shipping_city"] = o.ShippingCity,
+        ["shipping_province"] = o.ShippingProvince,
+        ["shipping_postal_code"] = o.ShippingPostalCode
     };
 
     private static Dictionary<string, object?> PromotionPayload(AdminPromotion p) => new()
