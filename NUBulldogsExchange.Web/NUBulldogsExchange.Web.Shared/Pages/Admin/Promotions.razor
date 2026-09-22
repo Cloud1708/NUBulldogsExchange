@@ -291,7 +291,7 @@
         _formError = null;
     }
 
-    private void SaveForm()
+    private async Task SaveForm()
     {
         _formError = null;
         var model = new AdminPromotion
@@ -311,8 +311,8 @@
         };
 
         var (success, message) = _editingId is null
-            ? PromotionService.Create(model)
-            : PromotionService.Update(_editingId, model);
+            ? await PromotionService.CreateAsync(model)
+            : await PromotionService.UpdateAsync(_editingId, model);
 
         if (!success)
         {
@@ -327,10 +327,10 @@
     private void OpenDelete(AdminPromotion promo) => _deletePromo = promo;
     private void CloseDelete() => _deletePromo = null;
 
-    private void ConfirmDelete()
+    private async Task ConfirmDelete()
     {
         if (_deletePromo is null) return;
-        var (success, message) = PromotionService.Delete(_deletePromo.Id);
+        var (success, message) = await PromotionService.DeleteAsync(_deletePromo.Id);
         Toast.Show(message);
         if (success) CloseDelete();
     }

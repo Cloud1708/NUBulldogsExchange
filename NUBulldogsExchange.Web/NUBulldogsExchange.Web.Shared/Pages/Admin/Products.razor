@@ -35,7 +35,7 @@
         </div>
         <select class="admin-products-select" value="@_category" @onchange="OnCategoryChange">
             <option value="All">All</option>
-            @foreach (var category in AdminProductService.Categories)
+            @foreach (var category in FilterCategoryNames)
             {
                 <option value="@category">@category</option>
             }
@@ -60,7 +60,7 @@
         </div>
     }
 
-    <section class="admin-products-table-card">
+    <section class="admin-products-table-card @(_openMenuId is not null ? "is-menu-open" : null)">
         @if (!Filtered.Any())
         {
             <div class="admin-products-empty">
@@ -239,7 +239,7 @@
                         <span>Category</span>
                         <select value="@_formCategory" @onchange="OnCategorySelect">
                             <option value="">Select category</option>
-                            @foreach (var category in AdminProductService.Categories)
+                            @foreach (var category in FormCategoryNames)
                             {
                                 <option value="@category">@category</option>
                             }
@@ -247,6 +247,10 @@
                         @if (_formErrors.ContainsKey("category"))
                         {
                             <em>@_formErrors["category"]</em>
+                        }
+                        else if (!FormCategoryNames.Any())
+                        {
+                            <em>No categories yet. Add one in Categories first.</em>
                         }
                     </label>
 
@@ -483,9 +487,25 @@
     protected override void OnInitialized()
     {
         ProductService.OnChange += Refresh;
+        CategoryService.OnChange += Refresh;
         Navigation.LocationChanged += OnLocationChanged;
         SyncCategoryFromQuery();
     }
+
+    private IEnumerable<string> FilterCategoryNames =>
+        CategoryService.All
+            .Select(c => c.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
+
+    private IEnumerable<string> FormCategoryNames =>
+        CategoryService.All
+            .Where(c => c.IsActive)
+            .Select(c => c.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
@@ -601,22 +621,22 @@
         Navigation.NavigateTo($"/admin/products/{id}/edit");
     }
 
-    private void DuplicateProduct(int id)
+    private async Task DuplicateProduct(int id)
     {
         CloseMenu();
-        var copy = ProductService.Duplicate(id);
+        var copy = await ProductService.DuplicateAsync(id);
         if (copy is not null)
         {
-            CategoryService.AdjustProductCount(copy.Category, 1);
+            await CategoryService.AdjustProductCountAsync(copy.Category, 1);
             Toast.Show("Product duplicated.");
         }
     }
 
-    private void ToggleStatus(AdminProduct product)
+    private async Task ToggleStatus(AdminProduct product)
     {
         CloseMenu();
         var next = product.IsActive ? "Inactive" : "Active";
-        ProductService.SetStatus(product.Id, next);
+        await ProductService.SetStatusAsync(product.Id, next);
         Toast.Show($"Product set to {next}.");
     }
 
@@ -639,15 +659,15 @@
         _bulkDelete = false;
     }
 
-    private void ConfirmDeleteAction()
+    private async Task ConfirmDeleteAction()
     {
         if (_bulkDelete)
         {
             var toDelete = ProductService.All.Where(p => _selectedIds.Contains(p.Id)).ToList();
             foreach (var group in toDelete.GroupBy(p => p.Category))
-                CategoryService.AdjustProductCount(group.Key, -group.Count());
+                await CategoryService.AdjustProductCountAsync(group.Key, -group.Count());
 
-            var count = ProductService.DeleteMany(_selectedIds);
+            var count = await ProductService.DeleteManyAsync(_selectedIds);
             _selectedIds.Clear();
             Toast.Show($"{count} product{(count == 1 ? "" : "s")} deleted.");
         }
@@ -655,8 +675,8 @@
         {
             var name = _deleteTarget.Name;
             var category = _deleteTarget.Category;
-            ProductService.Delete(_deleteTarget.Id);
-            CategoryService.AdjustProductCount(category, -1);
+            await ProductService.DeleteAsync(_deleteTarget.Id);
+            await CategoryService.AdjustProductCountAsync(category, -1);
             _selectedIds.Remove(_deleteTarget.Id);
             Toast.Show($"Deleted \"{name}\".");
         }
@@ -666,9 +686,9 @@
             _currentPage = PageButtonCount;
     }
 
-    private void BulkSetStatus(string status)
+    private async Task BulkSetStatus(string status)
     {
-        ProductService.SetStatusMany(_selectedIds, status);
+        await ProductService.SetStatusManyAsync(_selectedIds, status);
         Toast.Show($"Selected products set to {status}.");
     }
 
@@ -845,6 +865,8 @@
 
         if (string.IsNullOrWhiteSpace(_formCategory))
             _formErrors["category"] = "Please select a category.";
+        else if (!FormCategoryNames.Any(c => c.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
+            _formErrors["category"] = "Please select a valid category.";
 
         if (string.IsNullOrWhiteSpace(_formStatus))
             _formErrors["status"] = "Status is required.";
@@ -875,9 +897,15 @@
         if (!ValidateForm(requireImages: true))
             return;
 
-        PersistProduct(_formStatus);
-        Toast.Show("Product added successfully.");
-        await CloseAddModalAsync();
+        try
+        {
+            await PersistProductAsync(_formStatus);
+            Toast.Show("Product added successfully.");
+        }
+        finally
+        {
+            await CloseAddModalAsync();
+        }
     }
 
     private async Task SaveDraft()
@@ -895,6 +923,13 @@
         {
             _formErrors.Clear();
             _formErrors["category"] = "Please select a category.";
+            return;
+        }
+
+        if (!FormCategoryNames.Any(c => c.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
+        {
+            _formErrors.Clear();
+            _formErrors["category"] = "Please select a valid category.";
             return;
         }
 
@@ -916,7 +951,7 @@
         if (string.IsNullOrWhiteSpace(_formStockText))
             _formStockText = "0";
 
-                if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
+        if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
         {
             _formErrors.Clear();
             _formErrors["price"] = "Price cannot be negative.";
@@ -930,12 +965,18 @@
             return;
         }
 
-        PersistProduct("Draft");
-        Toast.Show("Product saved as draft.");
-        await CloseAddModalAsync();
+        try
+        {
+            await PersistProductAsync("Draft");
+            Toast.Show("Product saved as draft.");
+        }
+        finally
+        {
+            await CloseAddModalAsync();
+        }
     }
 
-    private void PersistProduct(string status)
+    private async Task PersistProductAsync(string status)
     {
         decimal.TryParse(_formPriceText, out var price);
         int.TryParse(_formStockText, out var stock);
@@ -960,8 +1001,8 @@
             CreatedAt = DateTime.Now
         };
 
-        ProductService.Add(model);
-        CategoryService.AdjustProductCount(model.Category, 1);
+        await ProductService.AddAsync(model);
+        await CategoryService.AdjustProductCountAsync(model.Category, 1);
         _currentPage = 1;
     }
 
@@ -980,6 +1021,7 @@
     public void Dispose()
     {
         ProductService.OnChange -= Refresh;
+        CategoryService.OnChange -= Refresh;
         Navigation.LocationChanged -= OnLocationChanged;
         _ = SetBodyScrollLock(false);
     }

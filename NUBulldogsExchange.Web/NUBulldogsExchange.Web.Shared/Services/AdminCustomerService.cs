@@ -98,7 +98,7 @@ public class AdminCustomerService
         OrdersForCustomer(customerId).Count(o =>
             o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase));
 
-    public bool SetStatus(string id, string status, int? actorUserId = null)
+    public async Task<bool> SetStatusAsync(string id, string status, int? actorUserId = null)
     {
         var customer = GetById(id);
         if (customer is null) return false;
@@ -115,7 +115,7 @@ public class AdminCustomerService
             _ => "Inactive"
         };
 
-        var updated = _db.SetCustomerStatusAsync(id, normalized, actorUserId).GetAwaiter().GetResult();
+        var updated = await _db.SetCustomerStatusAsync(id, normalized, actorUserId);
         if (!updated)
             return false;
 
@@ -145,14 +145,14 @@ public class AdminCustomerService
         };
     }
 
-    public void RecordPurchase(string email, decimal amount)
+    public async Task RecordPurchaseAsync(string email, decimal amount)
     {
         var customer = _customers.FirstOrDefault(c =>
             c.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
         if (customer is null) return;
         customer.TotalOrders += 1;
         customer.TotalSpent += amount;
-        _db.UpsertCustomerAsync(customer).GetAwaiter().GetResult();
+        await _db.UpsertCustomerAsync(customer);
         OnChange?.Invoke();
     }
 }

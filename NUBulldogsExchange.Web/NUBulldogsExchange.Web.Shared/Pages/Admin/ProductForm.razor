@@ -5,8 +5,10 @@
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminProductService ProductService
+@inject AdminCategoryService CategoryService
 @inject ToastService Toast
 @inject NavigationManager Navigation
+@implements IDisposable
 
 <PageTitle>@(IsEdit ? "Edit Product" : "Add Product") | Admin | NU Bulldogs Exchange</PageTitle>
 
@@ -53,7 +55,7 @@
                     <span>Category *</span>
                     <select @bind="_category">
                         <option value="">Select category</option>
-                        @foreach (var category in AdminProductService.Categories)
+                        @foreach (var category in FormCategoryNames)
                         {
                             <option value="@category">@category</option>
                         }
@@ -61,6 +63,10 @@
                     @if (_errors.ContainsKey(nameof(_category)))
                     {
                         <em>@_errors[nameof(_category)]</em>
+                    }
+                    else if (!FormCategoryNames.Any())
+                    {
+                        <em>No categories yet. Add one in Categories first.</em>
                     }
                 </label>
 
@@ -149,6 +155,18 @@
     private int _sold;
     private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
 
+    private IEnumerable<string> FormCategoryNames =>
+        CategoryService.All
+            .Where(c => c.IsActive)
+            .Select(c => c.Name)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase);
+
+    protected override void OnInitialized() => CategoryService.OnChange += Refresh;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
     protected override void OnParametersSet()
     {
         _errors.Clear();
@@ -202,6 +220,9 @@
             _errors[nameof(_sku)] = "SKU is required.";
         if (string.IsNullOrWhiteSpace(_category))
             _errors[nameof(_category)] = "Category is required.";
+        else if (!FormCategoryNames.Any(c => c.Equals(_category, StringComparison.OrdinalIgnoreCase)) &&
+                 !CategoryService.All.Any(c => c.Name.Equals(_category, StringComparison.OrdinalIgnoreCase)))
+            _errors[nameof(_category)] = "Please select a valid category.";
         if (_price <= 0)
             _errors[nameof(_price)] = "Price must be greater than 0.";
         if (_stock < 0)
@@ -210,7 +231,7 @@
         return _errors.Count == 0;
     }
 
-    private void Save()
+    private async Task Save()
     {
         if (!Validate()) return;
 
@@ -232,7 +253,7 @@
 
         if (IsEdit)
         {
-            if (!ProductService.Update(model))
+            if (!await ProductService.UpdateAsync(model))
             {
                 _notFound = true;
                 return;
@@ -242,7 +263,7 @@
         }
         else
         {
-            ProductService.Add(model);
+            await ProductService.AddAsync(model);
             Toast.Show("Product added successfully.");
         }
 
@@ -253,4 +274,6 @@
         string.IsNullOrWhiteSpace(value)
             ? []
             : value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    public void Dispose() => CategoryService.OnChange -= Refresh;
 }

@@ -62,11 +62,11 @@ public class AdminNotificationService
         var item = _items.FirstOrDefault(n => n.Id == id);
         if (item is null || item.Read) return;
         item.Read = true;
-        Persist();
+        _ = PersistAsync();
         OnChange?.Invoke();
     }
 
-    public void MarkAllRead()
+    public async Task MarkAllReadAsync()
     {
         var changed = false;
         foreach (var item in _items.Where(n => !n.Read))
@@ -77,17 +77,17 @@ public class AdminNotificationService
 
         if (changed)
         {
-            Persist();
+            await PersistAsync();
             OnChange?.Invoke();
         }
     }
 
-    public int ClearRead()
+    public async Task<int> ClearReadAsync()
     {
         var removed = _items.RemoveAll(n => n.Read);
         if (removed > 0)
         {
-            Persist();
+            await PersistAsync();
             OnChange?.Invoke();
         }
 
@@ -99,7 +99,7 @@ public class AdminNotificationService
         if (string.IsNullOrWhiteSpace(item.Id))
             item.Id = $"NOTIF-{Guid.NewGuid():N}"[..12].ToUpperInvariant();
         _items.Insert(0, item);
-        Persist();
+        _ = PersistAsync();
         OnChange?.Invoke();
     }
 
@@ -108,10 +108,9 @@ public class AdminNotificationService
         if (string.IsNullOrWhiteSpace(item.Id))
             item.Id = $"NOTIF-{Guid.NewGuid():N}"[..12].ToUpperInvariant();
         _items.Insert(0, item);
-        await _db.SaveAdminNotificationsAsync(_items);
+        await PersistAsync();
         OnChange?.Invoke();
     }
 
-    private void Persist() =>
-        _db.SaveAdminNotificationsAsync(_items).GetAwaiter().GetResult();
+    private Task PersistAsync() => _db.SaveAdminNotificationsAsync(_items);
 }

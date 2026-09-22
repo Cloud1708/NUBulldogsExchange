@@ -55,7 +55,7 @@ public class AdminSettingsService
         OnChange?.Invoke();
     }
 
-    public (bool Success, string Message) Save()
+    public async Task<(bool Success, string Message)> SaveAsync()
     {
         if (string.IsNullOrWhiteSpace(_draft.Store.Name))
             return (false, "Store name is required.");
@@ -70,7 +70,7 @@ public class AdminSettingsService
         _draft = _saved.Clone();
         try
         {
-            _db.SetSettingAsync(DatabaseKey, ToStorageJson()).GetAwaiter().GetResult();
+            await _db.SetSettingAsync(DatabaseKey, ToStorageJson());
         }
         catch
         {

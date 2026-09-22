@@ -77,7 +77,7 @@ public class AdminPromotionService
         return (true, result.Message, promo, result.DiscountAmount);
     }
 
-    public (bool Success, string Message) Create(AdminPromotion input)
+    public async Task<(bool Success, string Message)> CreateAsync(AdminPromotion input)
     {
         var error = ValidateInput(input, excludeId: null);
         if (error is not null)
@@ -88,13 +88,13 @@ public class AdminPromotionService
         input.Name = input.Name.Trim();
         input.UsedCount = 0;
         input.UsagePerCustomer = input.UsagePerCustomer <= 0 ? 1 : input.UsagePerCustomer;
-        _db.UpsertPromotionAsync(input).GetAwaiter().GetResult();
+        await _db.UpsertPromotionAsync(input);
         _promotions.Insert(0, input);
         OnChange?.Invoke();
         return (true, "Promotion created successfully.");
     }
 
-    public (bool Success, string Message) Update(string id, AdminPromotion input)
+    public async Task<(bool Success, string Message)> UpdateAsync(string id, AdminPromotion input)
     {
         var existing = GetById(id);
         if (existing is null)
@@ -119,18 +119,18 @@ public class AdminPromotionService
         existing.ProductIds = [.. input.ProductIds];
         existing.CategoryIds = [.. input.CategoryIds];
 
-        _db.UpsertPromotionAsync(existing).GetAwaiter().GetResult();
+        await _db.UpsertPromotionAsync(existing);
         OnChange?.Invoke();
         return (true, "Promotion updated successfully.");
     }
 
-    public (bool Success, string Message) Delete(string id)
+    public async Task<(bool Success, string Message)> DeleteAsync(string id)
     {
         var existing = GetById(id);
         if (existing is null)
             return (false, "Promotion not found.");
 
-        _db.DeletePromotionAsync(id).GetAwaiter().GetResult();
+        await _db.DeletePromotionAsync(id);
         if (existing.UsedCount > 0)
         {
             existing.Enabled = false;

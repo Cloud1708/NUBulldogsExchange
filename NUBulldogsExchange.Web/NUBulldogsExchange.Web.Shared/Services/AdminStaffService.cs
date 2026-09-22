@@ -68,7 +68,7 @@ public class AdminStaffService
         return GetPermission(member.Permissions, permissionKey);
     }
 
-    public (bool Success, string Message) Add(
+    public async Task<(bool Success, string Message)> AddAsync(
         string firstName,
         string lastName,
         string email,
@@ -110,7 +110,7 @@ public class AdminStaffService
 
         try
         {
-            var saved = _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
+            var saved = await _db.UpsertStaffAsync(member);
             _staff.Add(saved);
             OnChange?.Invoke();
             return (true, "Staff member added successfully.");
@@ -121,7 +121,7 @@ public class AdminStaffService
         }
     }
 
-    public (bool Success, string Message) Update(
+    public async Task<(bool Success, string Message)> UpdateAsync(
         string id,
         string firstName,
         string lastName,
@@ -177,7 +177,7 @@ public class AdminStaffService
 
         try
         {
-            _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
+            await _db.UpsertStaffAsync(member);
             OnChange?.Invoke();
             return (true, "Staff information updated successfully.");
         }
@@ -187,7 +187,7 @@ public class AdminStaffService
         }
     }
 
-    public (bool Success, string Message) UpdatePermissions(string id, AdminStaffPermissions permissions)
+    public async Task<(bool Success, string Message)> UpdatePermissionsAsync(string id, AdminStaffPermissions permissions)
     {
         var member = GetById(id);
         if (member is null)
@@ -196,18 +196,18 @@ public class AdminStaffService
         if (member.IsPrimaryAdmin || member.IsAdmin)
         {
             member.Permissions = AdminStaffPermissions.FullAccess();
-            _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
+            await _db.UpsertStaffAsync(member);
             OnChange?.Invoke();
             return (true, "Admin accounts always have full access.");
         }
 
         member.Permissions = permissions.Clone();
-        _db.UpsertStaffAsync(member).GetAwaiter().GetResult();
+        await _db.UpsertStaffAsync(member);
         OnChange?.Invoke();
         return (true, "Permissions updated successfully.");
     }
 
-    public (bool Success, string Message) Delete(string id, string? currentUserEmail)
+    public async Task<(bool Success, string Message)> DeleteAsync(string id, string? currentUserEmail)
     {
         var member = GetById(id);
         if (member is null)
@@ -222,7 +222,7 @@ public class AdminStaffService
 
         try
         {
-            var removed = _db.DeleteStaffAsync(id).GetAwaiter().GetResult();
+            var removed = await _db.DeleteStaffAsync(id);
             if (!removed)
                 return (false, "Staff member could not be removed.");
 

@@ -236,7 +236,7 @@
         _nameError = null;
     }
 
-    private void SaveCategory()
+    private async Task SaveCategory()
     {
         _nameError = null;
         if (string.IsNullOrWhiteSpace(_name))
@@ -257,7 +257,7 @@
                 Status = _status
             };
 
-            if (!CategoryService.Update(updated))
+            if (!await CategoryService.UpdateAsync(updated))
             {
                 Toast.Show("Category not found.");
                 return;
@@ -267,7 +267,7 @@
         }
         else
         {
-            CategoryService.Add(new AdminCategory
+            await CategoryService.AddAsync(new AdminCategory
             {
                 Name = _name,
                 Slug = _slug,
@@ -286,11 +286,11 @@
 
     private void CloseDelete() => _deleteTarget = null;
 
-    private void ConfirmDelete()
+    private async Task ConfirmDelete()
     {
         if (_deleteTarget is null) return;
 
-        var (success, message) = CategoryService.TryDelete(_deleteTarget.Id);
+        var (success, message) = await CategoryService.TryDeleteAsync(_deleteTarget.Id);
         Toast.Show(message);
         CloseDelete();
         if (!success) return;

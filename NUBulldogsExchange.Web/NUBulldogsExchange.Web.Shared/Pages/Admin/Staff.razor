@@ -280,13 +280,13 @@
         _formError = null;
     }
 
-    private void SaveForm()
+    private async Task SaveForm()
     {
         _formError = null;
 
         if (_editMember is null)
         {
-            var (success, message) = StaffService.Add(_firstName, _lastName, _email, _role, _status);
+            var (success, message) = await StaffService.AddAsync(_firstName, _lastName, _email, _role, _status);
             if (!success)
             {
                 _formError = message;
@@ -298,7 +298,7 @@
             return;
         }
 
-        var (ok, msg) = StaffService.Update(_editMember.Id, _firstName, _lastName, _email, _role, _status);
+        var (ok, msg) = await StaffService.UpdateAsync(_editMember.Id, _firstName, _lastName, _email, _role, _status);
         if (!ok)
         {
             _formError = msg;
@@ -328,10 +328,10 @@
         AdminStaffService.SetPermission(_permDraft, key, value);
     }
 
-    private void SavePermissions()
+    private async Task SavePermissions()
     {
         if (_permissionsMember is null || _permDraft is null) return;
-        var (success, message) = StaffService.UpdatePermissions(_permissionsMember.Id, _permDraft);
+        var (success, message) = await StaffService.UpdatePermissionsAsync(_permissionsMember.Id, _permDraft);
         Toast.Show(message);
         if (success) ClosePermissions();
     }
@@ -339,10 +339,10 @@
     private void OpenDelete(AdminStaffMember member) => _deleteMember = member;
     private void CloseDelete() => _deleteMember = null;
 
-    private void ConfirmDelete()
+    private async Task ConfirmDelete()
     {
         if (_deleteMember is null) return;
-        var (success, message) = StaffService.Delete(_deleteMember.Id, Auth.CurrentUser?.Email);
+        var (success, message) = await StaffService.DeleteAsync(_deleteMember.Id, Auth.CurrentUser?.Email);
         Toast.Show(message);
         if (success) CloseDelete();
     }

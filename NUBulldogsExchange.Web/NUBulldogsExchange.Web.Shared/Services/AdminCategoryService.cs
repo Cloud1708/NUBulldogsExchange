@@ -39,7 +39,7 @@ public class AdminCategoryService
     public AdminCategory? GetById(string id) =>
         _categories.FirstOrDefault(c => c.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
-    public AdminCategory Add(AdminCategory category)
+    public async Task<AdminCategory> AddAsync(AdminCategory category)
     {
         category.Id = $"cat-{_nextId:000}";
         _nextId++;
@@ -54,13 +54,13 @@ public class AdminCategoryService
         category.Description ??= string.Empty;
         category.ProductCount = Math.Max(0, category.ProductCount);
 
-        _db.UpsertCategoryAsync(category).GetAwaiter().GetResult();
+        await _db.UpsertCategoryAsync(category);
         _categories.Add(category);
         OnChange?.Invoke();
         return category;
     }
 
-    public bool Update(AdminCategory category)
+    public async Task<bool> UpdateAsync(AdminCategory category)
     {
         var existing = GetById(category.Id);
         if (existing is null) return false;
@@ -74,22 +74,22 @@ public class AdminCategoryService
             : category.ImageUrl.Trim();
         existing.Description = category.Description?.Trim() ?? string.Empty;
         existing.Status = string.IsNullOrWhiteSpace(category.Status) ? "Active" : category.Status.Trim();
-        _db.UpsertCategoryAsync(existing).GetAwaiter().GetResult();
+        await _db.UpsertCategoryAsync(existing);
         OnChange?.Invoke();
         return true;
     }
 
-    public bool SetStatus(string id, string status)
+    public async Task<bool> SetStatusAsync(string id, string status)
     {
         var category = GetById(id);
         if (category is null) return false;
         category.Status = status;
-        _db.UpsertCategoryAsync(category).GetAwaiter().GetResult();
+        await _db.UpsertCategoryAsync(category);
         OnChange?.Invoke();
         return true;
     }
 
-    public (bool Success, string Message) TryDelete(string id)
+    public async Task<(bool Success, string Message)> TryDeleteAsync(string id)
     {
         var category = GetById(id);
         if (category is null)
@@ -98,19 +98,19 @@ public class AdminCategoryService
         if (category.ProductCount > 0)
             return (false, "Move or remove the products in this category first.");
 
-        _db.DeleteCategoryAsync(id).GetAwaiter().GetResult();
+        await _db.DeleteCategoryAsync(id);
         _categories.Remove(category);
         OnChange?.Invoke();
         return (true, "Category deleted.");
     }
 
-    public void AdjustProductCount(string categoryName, int delta)
+    public async Task AdjustProductCountAsync(string categoryName, int delta)
     {
         var category = _categories.FirstOrDefault(c =>
             c.Name.Equals(categoryName, StringComparison.OrdinalIgnoreCase));
         if (category is null) return;
         category.ProductCount = Math.Max(0, category.ProductCount + delta);
-        _db.UpsertCategoryAsync(category).GetAwaiter().GetResult();
+        await _db.UpsertCategoryAsync(category);
         OnChange?.Invoke();
     }
 }

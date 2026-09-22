@@ -138,7 +138,7 @@ public class AdminProductService
         return query.OrderBy(p => p.Id);
     }
 
-    public AdminProduct Add(AdminProduct product)
+    public async Task<AdminProduct> AddAsync(AdminProduct product)
     {
         product.Id = 0;
         product.Name = product.Name.Trim();
@@ -161,7 +161,7 @@ public class AdminProductService
         else if (string.IsNullOrWhiteSpace(product.ImageUrl))
             product.ImageUrl = CatalogHelpers.PlaceholderImage;
 
-        var stored = Persist(product);
+        var stored = await PersistAsync(product);
         product.Id = stored.Id;
         _products.Add(product);
         SyncStorefront(product);
@@ -169,7 +169,7 @@ public class AdminProductService
         return product;
     }
 
-    public bool Update(AdminProduct product)
+    public async Task<bool> UpdateAsync(AdminProduct product)
     {
         var existing = GetById(product.Id);
         if (existing is null) return false;
@@ -194,13 +194,13 @@ public class AdminProductService
         existing.Description = product.Description?.Trim() ?? string.Empty;
         existing.Colors = [.. product.Colors];
         existing.Sizes = [.. product.Sizes];
-        Persist(existing);
+        await PersistAsync(existing);
         SyncStorefront(existing);
         OnChange?.Invoke();
         return true;
     }
 
-    public AdminProduct? Duplicate(int id)
+    public async Task<AdminProduct?> DuplicateAsync(int id)
     {
         var source = GetById(id);
         if (source is null) return null;
@@ -211,26 +211,26 @@ public class AdminProductService
         copy.Sku = $"{source.Sku}-COPY";
         copy.Sold = 0;
         copy.CreatedAt = DateTime.Now;
-        return Add(copy);
+        return await AddAsync(copy);
     }
 
-    public bool SetStatus(int id, string status)
+    public async Task<bool> SetStatusAsync(int id, string status)
     {
         var product = GetById(id);
         if (product is null) return false;
         product.Status = status;
-        Persist(product);
+        await PersistAsync(product);
         SyncStorefront(product);
         OnChange?.Invoke();
         return true;
     }
 
-    public bool Delete(int id)
+    public async Task<bool> DeleteAsync(int id)
     {
         var removed = _products.RemoveAll(p => p.Id == id) > 0;
         if (removed)
         {
-            _db.DeleteProductAsync(id).GetAwaiter().GetResult();
+            await _db.DeleteProductAsync(id);
             RemoveFromStorefront(id);
             OnChange?.Invoke();
         }
@@ -238,7 +238,7 @@ public class AdminProductService
         return removed;
     }
 
-    public int DeleteMany(IEnumerable<int> ids)
+    public async Task<int> DeleteManyAsync(IEnumerable<int> ids)
     {
         var set = ids.ToHashSet();
         var removedIds = _products.Where(p => set.Contains(p.Id)).Select(p => p.Id).ToList();
@@ -247,7 +247,7 @@ public class AdminProductService
         {
             foreach (var id in removedIds)
             {
-                _db.DeleteProductAsync(id).GetAwaiter().GetResult();
+                await _db.DeleteProductAsync(id);
                 RemoveFromStorefront(id);
             }
             OnChange?.Invoke();
@@ -256,14 +256,14 @@ public class AdminProductService
         return removed;
     }
 
-    public void SetStatusMany(IEnumerable<int> ids, string status)
+    public async Task SetStatusManyAsync(IEnumerable<int> ids, string status)
     {
         var set = ids.ToHashSet();
         var changed = false;
         foreach (var product in _products.Where(p => set.Contains(p.Id)))
         {
             product.Status = status;
-            Persist(product);
+            await PersistAsync(product);
             SyncStorefront(product);
             changed = true;
         }
@@ -271,12 +271,12 @@ public class AdminProductService
         if (changed) OnChange?.Invoke();
     }
 
-    public bool SetStock(int id, int stock)
+    public async Task<bool> SetStockAsync(int id, int stock)
     {
         var product = GetById(id);
         if (product is null) return false;
         product.Stock = Math.Max(0, stock);
-        Persist(product);
+        await PersistAsync(product);
 
         var storeProduct = _catalog.GetById(id);
         if (storeProduct is not null)
@@ -292,13 +292,13 @@ public class AdminProductService
 
     public void NotifyChanged() => OnChange?.Invoke();
 
-    private Product Persist(AdminProduct product)
+    private async Task<Product> PersistAsync(AdminProduct product)
     {
         var store = ToStoreProduct(product);
         if (!product.IsActive)
             store.InStock = false;
 
-        var saved = _db.UpsertProductAsync(store).GetAwaiter().GetResult();
+        var saved = await _db.UpsertProductAsync(store);
         product.Id = saved.Id;
         return saved;
     }

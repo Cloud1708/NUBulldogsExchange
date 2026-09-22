@@ -151,13 +151,13 @@
 
     protected override async Task OnInitializedAsync() => await CustomerService.EnsureLoadedAsync();
 
-    private void OnStatusChange(ChangeEventArgs e)
+    private async Task OnStatusChange(ChangeEventArgs e)
     {
         var status = e.Value?.ToString();
         if (string.IsNullOrWhiteSpace(status) || Customer is null)
             return;
 
-        if (CustomerService.SetStatus(Customer.Id, status, Auth.UserId > 0 ? Auth.UserId : null))
+        if (await CustomerService.SetStatusAsync(Customer.Id, status, Auth.UserId > 0 ? Auth.UserId : null))
             Toast.Show($"Customer status updated to {status}.");
     }
 

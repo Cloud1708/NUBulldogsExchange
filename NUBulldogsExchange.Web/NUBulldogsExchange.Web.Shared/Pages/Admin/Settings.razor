@@ -403,7 +403,7 @@
 
     private async Task Save()
     {
-        var (success, message) = SettingsService.Save();
+        var (success, message) = await SettingsService.SaveAsync();
         if (!success)
         {
             Toast.Show(message);

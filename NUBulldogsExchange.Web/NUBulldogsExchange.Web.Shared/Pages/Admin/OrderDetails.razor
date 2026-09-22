@@ -86,13 +86,13 @@
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
-    private void OnStatusChange(ChangeEventArgs e)
+    private async Task OnStatusChange(ChangeEventArgs e)
     {
         var status = e.Value?.ToString();
         if (string.IsNullOrWhiteSpace(status) || Order is null)
             return;
 
-        if (OrderService.UpdateStatus(Order.Id, status))
+        if (await OrderService.UpdateStatusAsync(Order.Id, status))
             Toast.Show($"Order status updated to {status}.");
     }
 

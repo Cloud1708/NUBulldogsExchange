@@ -151,18 +151,18 @@
             Navigation.NavigateTo(item.RelatedHref);
     }
 
-    private void MarkAllRead()
+    private async Task MarkAllRead()
     {
-        NotificationHub.MarkAllRead();
+        await NotificationHub.MarkAllReadAsync();
         Toast.Show("All notifications marked as read.");
     }
 
     private void OpenClear() => _showClear = true;
     private void CloseClear() => _showClear = false;
 
-    private void ConfirmClear()
+    private async Task ConfirmClear()
     {
-        var removed = NotificationHub.ClearRead();
+        var removed = await NotificationHub.ClearReadAsync();
         _showClear = false;
         Toast.Show(removed > 0
             ? "Read notifications cleared."

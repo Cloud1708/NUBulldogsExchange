@@ -130,12 +130,12 @@ public class AdminOrderService
         return query;
     }
 
-    public bool UpdateStatus(string id, string status)
+    public async Task<bool> UpdateStatusAsync(string id, string status)
     {
         var order = GetById(id);
         if (order is null) return false;
         order.Status = status;
-        _db.UpsertOrderAsync(order).GetAwaiter().GetResult();
+        await _db.UpsertOrderAsync(order);
         OnChange?.Invoke();
         return true;
     }

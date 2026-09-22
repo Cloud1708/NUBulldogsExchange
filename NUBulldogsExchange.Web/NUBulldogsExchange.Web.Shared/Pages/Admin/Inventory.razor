@@ -231,12 +231,12 @@
         _quantityError = null;
     }
 
-    private void SaveAdjust()
+    private async Task SaveAdjust()
     {
         if (_adjustRow is null) return;
         _quantityError = null;
 
-        var (success, message) = InventoryService.Adjust(
+        var (success, message) = await InventoryService.AdjustAsync(
             _adjustRow.ProductId,
             _adjustType,
             _quantity,

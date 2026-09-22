@@ -72,7 +72,7 @@ public class AdminInventoryService
     public IEnumerable<InventoryHistoryEntry> HistoryForProduct(int productId) =>
         _history.Where(h => h.ProductId == productId).OrderByDescending(h => h.Date);
 
-    public (bool Success, string Message) Adjust(
+    public async Task<(bool Success, string Message)> AdjustAsync(
         int productId,
         string type,
         int quantity,
@@ -111,7 +111,7 @@ public class AdminInventoryService
         if (next < 0)
             return (false, "Stock cannot be lower than 0.");
 
-        _products.SetStock(productId, next);
+        await _products.SetStockAsync(productId, next);
 
         var entry = new InventoryHistoryEntry
         {
@@ -127,7 +127,7 @@ public class AdminInventoryService
             AdminName = string.IsNullOrWhiteSpace(adminName) ? "Admin" : adminName
         };
 
-        _db.AddInventoryHistoryAsync(entry).GetAwaiter().GetResult();
+        await _db.AddInventoryHistoryAsync(entry);
         _history.Insert(0, entry);
 
         OnChange?.Invoke();

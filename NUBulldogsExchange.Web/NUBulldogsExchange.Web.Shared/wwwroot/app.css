@@ -6142,8 +6142,18 @@ img {
     overflow: hidden;
 }
 
+.admin-products-table-card.is-menu-open {
+    overflow: visible;
+    position: relative;
+    z-index: 50;
+}
+
 .admin-products-table-wrap {
     overflow-x: auto;
+}
+
+.admin-products-table-card.is-menu-open .admin-products-table-wrap {
+    overflow: visible;
 }
 
 .admin-products-table {
@@ -6216,6 +6226,8 @@ img {
 .admin-products-table .col-actions {
     width: 80px;
     text-align: right;
+    position: relative;
+    overflow: visible;
 }
 
 .admin-products-table .col-image img {
@@ -6250,6 +6262,31 @@ img {
 .admin-products-table .col-price strong {
     color: #123A63;
     font-weight: 800;
+}
+
+.admin-row-menu-wrap {
+    position: relative;
+    display: inline-flex;
+    justify-content: flex-end;
+    z-index: 1;
+}
+
+.admin-products-table-card.is-menu-open .admin-row-menu-wrap:has(.admin-row-menu) {
+    z-index: 50;
+}
+
+.admin-row-menu {
+    position: absolute;
+    right: 0;
+    top: auto;
+    bottom: calc(100% + 6px);
+    width: 200px;
+    background: white;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    box-shadow: 0 12px 30px rgba(15, 23, 42, .14);
+    padding: 6px;
+    z-index: 50;
 }
 
 .admin-stock-cell {
@@ -6311,25 +6348,6 @@ img {
 .admin-product-status.is-draft {
     background: #FEF3C7;
     color: #B45309;
-}
-
-.admin-row-menu-wrap {
-    position: relative;
-    display: inline-flex;
-    justify-content: flex-end;
-}
-
-.admin-row-menu {
-    position: absolute;
-    right: 0;
-    top: calc(100% + 6px);
-    width: 200px;
-    background: white;
-    border: 1px solid #E2E8F0;
-    border-radius: 12px;
-    box-shadow: 0 12px 30px rgba(15, 23, 42, .14);
-    padding: 6px;
-    z-index: 20;
 }
 
 .admin-row-menu-item {
