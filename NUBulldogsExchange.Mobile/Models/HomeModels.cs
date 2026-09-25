@@ -4,9 +4,12 @@ namespace NUBulldogsExchange.Mobile.Models;
 
 public sealed class CategoryChip
 {
+    public string Id { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
     public string Icon { get; init; } = "🏷️";
-    public Color Background { get; init; } = Colors.LightGray;
+    public string ImageUrl { get; init; } = string.Empty;
+    public bool HasImageUrl => !string.IsNullOrWhiteSpace(ImageUrl) && !ImageUrl.StartsWith("data:image", StringComparison.OrdinalIgnoreCase);
+    public Color Background { get; init; } = Color.FromArgb("#F1F5F9");
     public string? Slug { get; init; }
 }
 

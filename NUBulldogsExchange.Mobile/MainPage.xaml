@@ -282,10 +282,18 @@
                                             <Border.StrokeShape>
                                                 <RoundRectangle CornerRadius="14" />
                                             </Border.StrokeShape>
-                                            <Label Text="{Binding Icon}"
-                                                   FontSize="20"
-                                                   HorizontalOptions="Center"
-                                                   VerticalOptions="Center" />
+                                            <Grid>
+                                                <Image Source="{Binding ImageUrl}"
+                                                       Aspect="AspectFill"
+                                                       IsVisible="{Binding HasImageUrl}"
+                                                       WidthRequest="48"
+                                                       HeightRequest="48" />
+                                                <Label Text="{Binding Icon}"
+                                                       IsVisible="{Binding HasImageUrl, Converter={StaticResource InvertedBoolConverter}}"
+                                                       FontSize="20"
+                                                       HorizontalOptions="Center"
+                                                       VerticalOptions="Center" />
+                                            </Grid>
                                         </Border>
                                         <Label Text="{Binding Name}"
                                                FontSize="9"
@@ -317,11 +325,6 @@
                             </Label.GestureRecognizers>
                         </Label>
                     </Grid>
-
-                    <ActivityIndicator IsRunning="{Binding IsBusy}"
-                                       IsVisible="{Binding IsBusy}"
-                                       Color="{StaticResource NuNavy}"
-                                       HeightRequest="28" />
 
                     <VerticalStackLayout BindableLayout.ItemsSource="{Binding FeaturedRows}"
                                          Spacing="10"
@@ -365,52 +368,28 @@
                         </Label>
                     </Grid>
 
-                    <CollectionView ItemsSource="{Binding FreshDrops}"
-                                    IsVisible="{Binding HasFresh}"
-                                    HeightRequest="200"
-                                    ItemsLayout="HorizontalList"
-                                    HorizontalScrollBarVisibility="Never"
-                                    SelectionMode="None">
-                        <CollectionView.ItemTemplate>
-                            <DataTemplate x:DataType="data:Product">
-                                <Border WidthRequest="132"
-                                        Margin="0,0,10,0"
-                                        Stroke="{StaticResource SoftBorder}"
-                                        StrokeThickness="1"
-                                        BackgroundColor="White"
-                                        Padding="0"
-                                        VerticalOptions="Start">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="14" />
-                                    </Border.StrokeShape>
-                                    <VerticalStackLayout>
-                                        <Image Source="{Binding ., Converter={StaticResource ProductImageConverter}}"
-                                               HeightRequest="108"
-                                               Aspect="AspectFill" />
-                                        <VerticalStackLayout Padding="8" Spacing="2">
-                                            <Label Text="{Binding Name}"
-                                                   FontSize="11"
-                                                   FontAttributes="Bold"
-                                                   TextColor="{StaticResource NuNavy}"
-                                                   LineBreakMode="TailTruncation"
-                                                   MaxLines="2"
-                                                   HeightRequest="30" />
-                                            <Label FontSize="13"
-                                                   FontAttributes="Bold"
-                                                   TextColor="{StaticResource NuNavy}">
-                                                <Label.FormattedText>
-                                                    <FormattedString>
-                                                        <Span Text="₱" />
-                                                        <Span Text="{Binding Price, StringFormat='{0:N0}'}" />
-                                                    </FormattedString>
-                                                </Label.FormattedText>
-                                            </Label>
-                                        </VerticalStackLayout>
-                                    </VerticalStackLayout>
-                                </Border>
+                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding FreshRows}"
+                                         Spacing="10"
+                                         IsVisible="{Binding HasFresh}">
+                        <BindableLayout.ItemTemplate>
+                            <DataTemplate x:DataType="models:ProductPair">
+                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                    <controls:ProductCardView
+                                        Product="{Binding Left}"
+                                        ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
+                                        AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
+                                        OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
+                                    <controls:ProductCardView
+                                        Grid.Column="1"
+                                        IsVisible="{Binding HasRight}"
+                                        Product="{Binding Right}"
+                                        ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
+                                        AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
+                                        OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
+                                </Grid>
                             </DataTemplate>
-                        </CollectionView.ItemTemplate>
-                    </CollectionView>
+                        </BindableLayout.ItemTemplate>
+                    </VerticalStackLayout>
                 </VerticalStackLayout>
 
                 <!-- Campus promo -->

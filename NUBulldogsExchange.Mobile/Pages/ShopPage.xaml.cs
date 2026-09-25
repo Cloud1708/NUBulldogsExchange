@@ -2,7 +2,7 @@ using NUBulldogsExchange.Mobile.ViewModels;
 
 namespace NUBulldogsExchange.Mobile.Pages;
 
-public partial class ShopPage : ContentPage
+public partial class ShopPage : ContentPage, IQueryAttributable
 {
     private readonly ShopViewModel _vm;
 
@@ -12,6 +12,11 @@ public partial class ShopPage : ContentPage
         _vm = vm;
         _vm.HostPage = this;
         BindingContext = _vm;
+    }
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        _vm.ApplyQueryAttributes(query);
     }
 
     protected override async void OnAppearing()

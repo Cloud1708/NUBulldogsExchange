@@ -7,6 +7,7 @@ public partial class ProductDetailsPage : ContentPage
     public ProductDetailsPage(ProductDetailsViewModel vm)
     {
         InitializeComponent();
+        vm.HostPage = this;
         BindingContext = vm;
     }
 }

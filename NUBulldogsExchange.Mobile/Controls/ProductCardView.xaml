@@ -63,6 +63,7 @@
                            FontSize="13"
                            HorizontalOptions="Center"
                            VerticalOptions="Center"
+                           InputTransparent="True"
                            TextColor="{Binding WishlistColor, Source={x:Reference Root}}" />
                 </Border>
             </Grid>
@@ -117,6 +118,7 @@
                                TextColor="White"
                                FontSize="16"
                                FontAttributes="Bold"
+                               InputTransparent="True"
                                HorizontalOptions="Center"
                                VerticalOptions="Center" />
                     </Border>

@@ -13,10 +13,10 @@ public partial class MainPage : ContentPage
         BindingContext = _vm;
     }
 
-    protected override async void OnAppearing()
+    protected override void OnAppearing()
     {
         base.OnAppearing();
-        await _vm.LoadAsync();
+        _ = _vm.LoadAsync();
     }
 
     protected override void OnDisappearing()

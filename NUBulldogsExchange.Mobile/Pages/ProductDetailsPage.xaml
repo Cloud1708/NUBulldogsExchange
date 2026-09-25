@@ -2,96 +2,846 @@
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
-             xmlns:data="clr-namespace:NUBulldogsExchange.Web.Shared.Data;assembly=NUBulldogsExchange.Web.Shared"
+             xmlns:conv="clr-namespace:NUBulldogsExchange.Mobile.Converters"
              x:Class="NUBulldogsExchange.Mobile.Pages.ProductDetailsPage"
+             x:Name="ProductPageRoot"
              x:DataType="vm:ProductDetailsViewModel"
-             Title="Product"
-             BackgroundColor="#F8FAFC">
+             Title="Product Details"
+             BackgroundColor="White"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False">
 
-    <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="16">
-            <Button Text="← Back"
-                    Command="{Binding BackCommand}"
-                    BackgroundColor="Transparent"
-                    TextColor="#123A63"
-                    HorizontalOptions="Start"
-                    Padding="0" />
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <conv:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+            <conv:IsStringNotNullOrEmptyConverter x:Key="IsStringNotNullOrEmptyConverter" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
 
-            <Border StrokeThickness="0"
-                    StrokeShape="RoundRectangle 16"
-                    BackgroundColor="White">
-                <Image Source="{Binding DisplayImage}"
-                       Aspect="AspectFill"
-                       HeightRequest="280" />
-            </Border>
+    <Grid RowDefinitions="*,Auto"
+          HorizontalOptions="Fill"
+          VerticalOptions="Fill">
 
-            <Label Text="{Binding Name}"
-                   FontSize="24"
-                   FontAttributes="Bold"
-                   TextColor="#123A63" />
+        <!-- Scrollable Product Content -->
+        <ScrollView Grid.Row="0"
+                    HorizontalOptions="Fill"
+                    VerticalOptions="Fill">
+            <VerticalStackLayout Spacing="0"
+                                 HorizontalOptions="Fill">
 
-            <Label Text="{Binding PriceLabel}"
-                   FontSize="20"
-                   FontAttributes="Bold"
-                   TextColor="#0F766E" />
+                <!-- 1. Hero Image Container with Floating Overlays -->
+                <Grid HeightRequest="380"
+                      HorizontalOptions="Fill"
+                      BackgroundColor="#F1F5F9">
 
-            <VerticalStackLayout IsVisible="{Binding HasSizeVariants}" Spacing="10">
-                <Label Text="Select Size"
-                       FontAttributes="Bold"
-                       TextColor="#334155" />
+                    <!-- Hero Image -->
+                    <Image Source="{Binding DisplayImage}"
+                           Aspect="AspectFill"
+                           HorizontalOptions="Fill"
+                           VerticalOptions="Fill">
+                        <Image.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding NextImageCommand}" />
+                        </Image.GestureRecognizers>
+                    </Image>
 
-                <FlexLayout BindableLayout.ItemsSource="{Binding SizeVariants}"
-                            Wrap="Wrap"
-                            AlignItems="Start"
-                            JustifyContent="Start">
-                    <BindableLayout.ItemTemplate>
-                        <DataTemplate x:DataType="data:ProductVariant">
-                            <Button Text="{Binding Size}"
-                                    Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.SelectSizeCommand}"
-                                    CommandParameter="{Binding .}"
-                                    Margin="0,0,8,8"
-                                    MinimumWidthRequest="52"
+                    <!-- Top Floating Action Bar -->
+                    <Grid Margin="16,36,16,0"
+                          VerticalOptions="Start"
+                          HorizontalOptions="Fill">
+
+                        <!-- Back Button -->
+                        <Border BackgroundColor="White"
+                                WidthRequest="40"
+                                HeightRequest="40"
+                                StrokeThickness="0"
+                                HorizontalOptions="Start">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="20" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding BackCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="←"
+                                   FontSize="20"
+                                   TextColor="{StaticResource NuNavy}"
+                                   FontAttributes="Bold"
+                                   InputTransparent="True"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+
+                        <!-- Right Actions (Share, Wishlist, Cart) -->
+                        <HorizontalStackLayout HorizontalOptions="End" Spacing="8">
+
+                            <!-- Share Button -->
+                            <Border BackgroundColor="White"
+                                    WidthRequest="40"
                                     HeightRequest="40"
-                                    CornerRadius="10"
-                                    BackgroundColor="#FFFFFF"
-                                    TextColor="#123A63"
-                                    BorderColor="#CBD5E1"
-                                    BorderWidth="1"
-                                    IsEnabled="{Binding IsInStock}" />
-                        </DataTemplate>
-                    </BindableLayout.ItemTemplate>
-                </FlexLayout>
+                                    StrokeThickness="0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="20" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ShareCommand}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="↑"
+                                       FontSize="18"
+                                       TextColor="#1E293B"
+                                       FontAttributes="Bold"
+                                       InputTransparent="True"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Border>
 
-                <Label Text="{Binding SelectedSize, StringFormat='Selected: {0}'}"
-                       TextColor="#64748B"
-                       FontSize="13" />
+                            <!-- Wishlist Button -->
+                            <Border BackgroundColor="White"
+                                    WidthRequest="40"
+                                    HeightRequest="40"
+                                    StrokeThickness="0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="20" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ToggleWishlistCommand}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="{Binding WishlistGlyph}"
+                                       FontSize="18"
+                                       TextColor="{Binding WishlistColor}"
+                                       FontAttributes="Bold"
+                                       InputTransparent="True"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Border>
+
+                            <!-- Cart Button with Badge -->
+                            <Grid WidthRequest="40" HeightRequest="40">
+                                <Border BackgroundColor="White"
+                                        WidthRequest="40"
+                                        HeightRequest="40"
+                                        StrokeThickness="0">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="20" />
+                                    </Border.StrokeShape>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding OpenCartCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="🛒"
+                                           FontSize="16"
+                                           TextColor="#1E293B"
+                                           InputTransparent="True"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                                </Border>
+                                <Border IsVisible="{Binding HasCartItems}"
+                                        BackgroundColor="#EF4444"
+                                        WidthRequest="18"
+                                        HeightRequest="18"
+                                        StrokeThickness="0"
+                                        HorizontalOptions="End"
+                                        VerticalOptions="Start"
+                                        Margin="0,-2,-2,0">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="9" />
+                                    </Border.StrokeShape>
+                                    <Label Text="{Binding CartCount}"
+                                           TextColor="White"
+                                           FontSize="9"
+                                           FontAttributes="Bold"
+                                           InputTransparent="True"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                                </Border>
+                            </Grid>
+                        </HorizontalStackLayout>
+                    </Grid>
+
+                    <!-- Bottom-Left Counter Pill (1 / 4) -->
+                    <Border BackgroundColor="#99000000"
+                            Padding="12,5"
+                            StrokeThickness="0"
+                            HorizontalOptions="Start"
+                            VerticalOptions="End"
+                            Margin="16,0,0,20">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12" />
+                        </Border.StrokeShape>
+                        <Label Text="{Binding ImageCounterText}"
+                               TextColor="White"
+                               FontSize="11"
+                               FontAttributes="Bold" />
+                    </Border>
+
+                    <!-- Bottom-Right Pagination Dots -->
+                    <HorizontalStackLayout Spacing="6"
+                                           HorizontalOptions="End"
+                                           VerticalOptions="End"
+                                           Margin="0,0,16,24">
+                        <Border BackgroundColor="{StaticResource NuNavy}"
+                                WidthRequest="16"
+                                HeightRequest="6"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="3" />
+                            </Border.StrokeShape>
+                        </Border>
+                        <Border BackgroundColor="#CBD5E1"
+                                WidthRequest="6"
+                                HeightRequest="6"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="3" />
+                            </Border.StrokeShape>
+                        </Border>
+                        <Border BackgroundColor="#CBD5E1"
+                                WidthRequest="6"
+                                HeightRequest="6"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="3" />
+                            </Border.StrokeShape>
+                        </Border>
+                        <Border BackgroundColor="#CBD5E1"
+                                WidthRequest="6"
+                                HeightRequest="6"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="3" />
+                            </Border.StrokeShape>
+                        </Border>
+                    </HorizontalStackLayout>
+                </Grid>
+
+                <!-- 2. Main Product Information Body -->
+                <VerticalStackLayout Padding="20,18,20,24"
+                                     Spacing="14"
+                                     HorizontalOptions="Fill">
+
+                    <!-- Best Seller / New Badge -->
+                    <Border IsVisible="{Binding HasBadge}"
+                            BackgroundColor="#FEF3C7"
+                            Padding="10,4"
+                            StrokeThickness="0"
+                            HorizontalOptions="Start">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="8" />
+                        </Border.StrokeShape>
+                        <Label Text="{Binding Badge}"
+                               TextColor="#B45309"
+                               FontSize="11"
+                               FontAttributes="Bold" />
+                    </Border>
+
+                    <!-- Product Name -->
+                    <Label Text="{Binding Name}"
+                           FontSize="21"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}"
+                           LineBreakMode="WordWrap" />
+
+                    <!-- Rating & Reviews & Sold Row -->
+                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                        <Label Text="⭐" FontSize="14" TextColor="#F59E0B" VerticalOptions="Center" />
+                        <Label Text="{Binding RatingText}"
+                               FontSize="13"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}"
+                               VerticalOptions="Center" />
+                        <Label Text="|" TextColor="#CBD5E1" FontSize="13" VerticalOptions="Center" />
+                        <Label Text="{Binding ReviewsText}"
+                               TextColor="#64748B"
+                               FontSize="13"
+                               VerticalOptions="Center" />
+                        <Label Text="|" TextColor="#CBD5E1" FontSize="13" VerticalOptions="Center" />
+                        <Label Text="{Binding SoldText}"
+                               TextColor="#64748B"
+                               FontSize="13"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+
+                    <!-- Price -->
+                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                        <Label Text="{Binding PriceFormatted}"
+                               FontSize="24"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}"
+                               VerticalOptions="Center" />
+                        <Label Text="{Binding OriginalPriceFormatted}"
+                               FontSize="16"
+                               TextColor="#94A3B8"
+                               TextDecorations="Strikethrough"
+                               IsVisible="{Binding HasOriginalPrice}"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+
+                    <!-- Stock Status Row -->
+                    <HorizontalStackLayout Spacing="6" VerticalOptions="Center">
+                        <Label Text="●" FontSize="10" TextColor="{Binding StockStatusColor}" VerticalOptions="Center" />
+                        <Label Text="{Binding StockStatusText}"
+                               FontSize="13"
+                               FontAttributes="Bold"
+                               TextColor="{Binding StockStatusColor}"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
+
+                    <!-- Color Selection Section -->
+                    <VerticalStackLayout IsVisible="{Binding HasColors}" Spacing="8" Margin="0,4,0,0">
+                        <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                            <Label Text="Color"
+                                   FontSize="13"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}" />
+                            <Label Text="{Binding SelectedColor}"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   TextColor="#64748B" />
+                        </HorizontalStackLayout>
+                        <FlexLayout BindableLayout.ItemsSource="{Binding ColorList}"
+                                    Wrap="Wrap"
+                                    AlignItems="Start">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProductColorItem">
+                                    <Border StrokeThickness="{Binding RingThickness}"
+                                            Stroke="{Binding RingStrokeColor}"
+                                            BackgroundColor="Transparent"
+                                            WidthRequest="38"
+                                            HeightRequest="38"
+                                            Padding="3"
+                                            Margin="0,0,8,4">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="19" />
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding BindingContext.SelectColorCommand, Source={x:Reference ProductPageRoot}}"
+                                                CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <Border BackgroundColor="{Binding ColorValue}"
+                                                InputTransparent="True"
+                                                StrokeThickness="0">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="15" />
+                                            </Border.StrokeShape>
+                                        </Border>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </FlexLayout>
+                    </VerticalStackLayout>
+
+                    <!-- Size Selection Section -->
+                    <VerticalStackLayout IsVisible="{Binding HasSizes}" Spacing="10" Margin="0,4,0,0">
+                        <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
+                            <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                                <Label Text="Size"
+                                       FontSize="13"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}"
+                                       VerticalOptions="Center" />
+                                <Border IsVisible="{Binding HasSelectedSize}"
+                                        BackgroundColor="#EEF2FF"
+                                        Stroke="#C7D2FE"
+                                        StrokeThickness="1"
+                                        Padding="8,2"
+                                        VerticalOptions="Center">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="6" />
+                                    </Border.StrokeShape>
+                                    <Label Text="{Binding SelectedSizeTitle}"
+                                           TextColor="{StaticResource NuNavy}"
+                                           FontSize="11"
+                                           FontAttributes="Bold" />
+                                </Border>
+                            </HorizontalStackLayout>
+
+                            <Label Grid.Column="1"
+                                   Text="Size Guide"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   VerticalOptions="Center">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding OpenSizeGuideCommand}" />
+                                </Label.GestureRecognizers>
+                            </Label>
+                        </Grid>
+
+                        <!-- Size Pills List -->
+                        <FlexLayout BindableLayout.ItemsSource="{Binding SizeList}"
+                                    Wrap="Wrap"
+                                    AlignItems="Start">
+                            <BindableLayout.ItemTemplate>
+                                <DataTemplate x:DataType="vm:ProductSizeItem">
+                                    <Border BackgroundColor="{Binding BackgroundColor}"
+                                            Stroke="{Binding BorderColor}"
+                                            StrokeThickness="{Binding StrokeThickness}"
+                                            HeightRequest="40"
+                                            MinimumWidthRequest="50"
+                                            Padding="14,0"
+                                            Margin="0,0,8,8"
+                                            Opacity="{Binding Opacity}"
+                                            IsEnabled="{Binding IsAvailable}">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="10" />
+                                        </Border.StrokeShape>
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer
+                                                Command="{Binding BindingContext.SelectSizeCommand, Source={x:Reference ProductPageRoot}}"
+                                                CommandParameter="{Binding .}" />
+                                        </Border.GestureRecognizers>
+                                        <HorizontalStackLayout Spacing="4"
+                                                               InputTransparent="True"
+                                                               HorizontalOptions="Center"
+                                                               VerticalOptions="Center">
+                                            <Label Text="{Binding IndicatorGlyph}"
+                                                   TextColor="{Binding TextColor}"
+                                                   FontAttributes="Bold"
+                                                   FontSize="12"
+                                                   IsVisible="{Binding IsSelected}"
+                                                   VerticalOptions="Center" />
+                                            <Label Text="{Binding Size}"
+                                                   TextColor="{Binding TextColor}"
+                                                   FontAttributes="Bold"
+                                                   FontSize="13"
+                                                   VerticalOptions="Center" />
+                                        </HorizontalStackLayout>
+                                    </Border>
+                                </DataTemplate>
+                            </BindableLayout.ItemTemplate>
+                        </FlexLayout>
+
+                        <!-- Selected Size & Stock Feedback Banner -->
+                        <Border IsVisible="{Binding HasSelectedSize}"
+                                BackgroundColor="#F0FDF4"
+                                Stroke="#BBF7D0"
+                                StrokeThickness="1"
+                                Padding="12,8"
+                                HorizontalOptions="Fill">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8" />
+                            </Border.StrokeShape>
+                            <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                                <Label Text="✓"
+                                       TextColor="#16A34A"
+                                       FontAttributes="Bold"
+                                       FontSize="13"
+                                       VerticalOptions="Center" />
+                                <Label Text="{Binding SelectedSizeHint}"
+                                       TextColor="#166534"
+                                       FontSize="12"
+                                       FontAttributes="Bold"
+                                       VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <!-- Quantity Section -->
+                    <VerticalStackLayout Spacing="8" Margin="0,4,0,0">
+                        <Label Text="Quantity"
+                               FontSize="13"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}" />
+                        <Grid ColumnDefinitions="Auto,*" ColumnSpacing="16" VerticalOptions="Center">
+
+                            <!-- Stepper Box -->
+                            <Border BackgroundColor="White"
+                                    Stroke="#CBD5E1"
+                                    StrokeThickness="1"
+                                    HeightRequest="40"
+                                    Padding="2,0"
+                                    VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <Grid ColumnDefinitions="36,40,36">
+                                    <Border BackgroundColor="Transparent" StrokeThickness="0">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding DecreaseCommand}" />
+                                        </Border.GestureRecognizers>
+                                        <Label Text="−"
+                                               FontSize="18"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}"
+                                               InputTransparent="True"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                                    </Border>
+                                    <Label Grid.Column="1"
+                                           Text="{Binding Quantity}"
+                                           FontSize="15"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource NuNavy}"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                                    <Border Grid.Column="2" BackgroundColor="Transparent" StrokeThickness="0">
+                                        <Border.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding IncreaseCommand}" />
+                                        </Border.GestureRecognizers>
+                                        <Label Text="+"
+                                               FontSize="18"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}"
+                                               InputTransparent="True"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+
+                            <!-- Stock Remaining Text -->
+                            <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                <Label Text="{Binding StockRemainingText}"
+                                       TextColor="#64748B"
+                                       FontSize="13"
+                                       FontAttributes="Bold"
+                                       VerticalOptions="Center" />
+                            </VerticalStackLayout>
+                        </Grid>
+                    </VerticalStackLayout>
+
+                    <!-- Error Alert -->
+                    <Label Text="{Binding ErrorMessage}"
+                           TextColor="#EF4444"
+                           FontSize="12"
+                           FontAttributes="Bold"
+                           IsVisible="{Binding ErrorMessage, Converter={StaticResource IsStringNotNullOrEmptyConverter}}" />
+
+                    <!-- 3. Expandable Accordion Sections -->
+                    <VerticalStackLayout Spacing="0" Margin="0,10,0,0">
+
+                        <!-- Description Accordion -->
+                        <BoxView Color="#F1F5F9" HeightRequest="1" />
+                        <Grid ColumnDefinitions="*,Auto" Padding="0,12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleDescriptionCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Label Text="Description"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding DescriptionGlyph}"
+                                   TextColor="#94A3B8"
+                                   FontSize="11"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        <Label Text="{Binding DescriptionText}"
+                               IsVisible="{Binding IsDescriptionExpanded}"
+                               FontSize="13"
+                               TextColor="#64748B"
+                               LineHeight="1.35"
+                               Margin="0,0,0,12" />
+
+                        <!-- Product Details Accordion -->
+                        <BoxView Color="#F1F5F9" HeightRequest="1" />
+                        <Grid ColumnDefinitions="*,Auto" Padding="0,12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleDetailsCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Label Text="Product Details"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding DetailsGlyph}"
+                                   TextColor="#94A3B8"
+                                   FontSize="11"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        <Label Text="{Binding DetailsText}"
+                               IsVisible="{Binding IsDetailsExpanded}"
+                               FontSize="13"
+                               TextColor="#64748B"
+                               LineHeight="1.35"
+                               Margin="0,0,0,12" />
+
+                        <!-- Materials Accordion -->
+                        <BoxView Color="#F1F5F9" HeightRequest="1" />
+                        <Grid ColumnDefinitions="*,Auto" Padding="0,12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleMaterialsCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Label Text="Materials"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding MaterialsGlyph}"
+                                   TextColor="#94A3B8"
+                                   FontSize="11"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        <Label Text="{Binding MaterialsText}"
+                               IsVisible="{Binding IsMaterialsExpanded}"
+                               FontSize="13"
+                               TextColor="#64748B"
+                               LineHeight="1.35"
+                               Margin="0,0,0,12" />
+
+                        <!-- Size Guide Accordion -->
+                        <BoxView Color="#F1F5F9" HeightRequest="1" />
+                        <Grid ColumnDefinitions="*,Auto" Padding="0,12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleSizeGuideCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Label Text="Size Guide"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding SizeGuideGlyph}"
+                                   TextColor="#94A3B8"
+                                   FontSize="11"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        <Label Text="{Binding SizeGuideText}"
+                               IsVisible="{Binding IsSizeGuideExpanded}"
+                               FontSize="13"
+                               TextColor="#64748B"
+                               LineHeight="1.35"
+                               Margin="0,0,0,12" />
+
+                        <!-- Shipping & Pickup Accordion -->
+                        <BoxView Color="#F1F5F9" HeightRequest="1" />
+                        <Grid ColumnDefinitions="*,Auto" Padding="0,12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleShippingCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Label Text="Shipping &amp; Pickup"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding ShippingGlyph}"
+                                   TextColor="#94A3B8"
+                                   FontSize="11"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        <Label Text="{Binding ShippingText}"
+                               IsVisible="{Binding IsShippingExpanded}"
+                               FontSize="13"
+                               TextColor="#64748B"
+                               LineHeight="1.35"
+                               Margin="0,0,0,12" />
+
+                        <!-- Return Information Accordion -->
+                        <BoxView Color="#F1F5F9" HeightRequest="1" />
+                        <Grid ColumnDefinitions="*,Auto" Padding="0,12">
+                            <Grid.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ToggleReturnsCommand}" />
+                            </Grid.GestureRecognizers>
+                            <Label Text="Return Information"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="{Binding ReturnsGlyph}"
+                                   TextColor="#94A3B8"
+                                   FontSize="11"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center" />
+                        </Grid>
+                        <Label Text="{Binding ReturnsText}"
+                               IsVisible="{Binding IsReturnsExpanded}"
+                               FontSize="13"
+                               TextColor="#64748B"
+                               LineHeight="1.35"
+                               Margin="0,0,0,12" />
+                    </VerticalStackLayout>
+
+                    <!-- 4. Ratings & Reviews Card -->
+                    <VerticalStackLayout Spacing="8" Margin="0,12,0,16">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <Label Text="Ratings &amp; Reviews"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   VerticalOptions="Center" />
+                            <Label Grid.Column="1"
+                                   Text="View All"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   TextColor="#2563EB"
+                                   VerticalOptions="Center">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ViewAllReviewsCommand}" />
+                                </Label.GestureRecognizers>
+                            </Label>
+                        </Grid>
+
+                        <Border BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0"
+                                StrokeThickness="1"
+                                Padding="16,14">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="16" />
+                            </Border.StrokeShape>
+                            <Grid ColumnDefinitions="90,*" ColumnSpacing="16" VerticalOptions="Center">
+
+                                <!-- Overall Score -->
+                                <VerticalStackLayout Spacing="2"
+                                                     HorizontalOptions="Center"
+                                                     VerticalOptions="Center">
+                                    <Label Text="{Binding RatingText}"
+                                           FontSize="32"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource NuNavy}"
+                                           HorizontalOptions="Center" />
+                                    <Label Text="out of 5"
+                                           FontSize="11"
+                                           TextColor="#94A3B8"
+                                           HorizontalOptions="Center"
+                                           Margin="0,-4,0,4" />
+                                    <Label Text="⭐⭐⭐⭐⭐"
+                                           FontSize="10"
+                                           HorizontalOptions="Center" />
+                                </VerticalStackLayout>
+
+                                <!-- Star Distribution Bars -->
+                                <VerticalStackLayout Grid.Column="1"
+                                                     Spacing="4"
+                                                     VerticalOptions="Center">
+                                    <!-- 5 Star -->
+                                    <Grid ColumnDefinitions="14,*" ColumnSpacing="8">
+                                        <Label Text="5" FontSize="10" TextColor="#94A3B8" VerticalOptions="Center" />
+                                        <ProgressBar Grid.Column="1"
+                                                     Progress="{Binding Star5Percent}"
+                                                     ProgressColor="#F59E0B"
+                                                     HeightRequest="5"
+                                                     VerticalOptions="Center" />
+                                    </Grid>
+                                    <!-- 4 Star -->
+                                    <Grid ColumnDefinitions="14,*" ColumnSpacing="8">
+                                        <Label Text="4" FontSize="10" TextColor="#94A3B8" VerticalOptions="Center" />
+                                        <ProgressBar Grid.Column="1"
+                                                     Progress="{Binding Star4Percent}"
+                                                     ProgressColor="#F59E0B"
+                                                     HeightRequest="5"
+                                                     VerticalOptions="Center" />
+                                    </Grid>
+                                    <!-- 3 Star -->
+                                    <Grid ColumnDefinitions="14,*" ColumnSpacing="8">
+                                        <Label Text="3" FontSize="10" TextColor="#94A3B8" VerticalOptions="Center" />
+                                        <ProgressBar Grid.Column="1"
+                                                     Progress="{Binding Star3Percent}"
+                                                     ProgressColor="#F59E0B"
+                                                     HeightRequest="5"
+                                                     VerticalOptions="Center" />
+                                    </Grid>
+                                    <!-- 2 Star -->
+                                    <Grid ColumnDefinitions="14,*" ColumnSpacing="8">
+                                        <Label Text="2" FontSize="10" TextColor="#94A3B8" VerticalOptions="Center" />
+                                        <ProgressBar Grid.Column="1"
+                                                     Progress="{Binding Star2Percent}"
+                                                     ProgressColor="#F59E0B"
+                                                     HeightRequest="5"
+                                                     VerticalOptions="Center" />
+                                    </Grid>
+                                    <!-- 1 Star -->
+                                    <Grid ColumnDefinitions="14,*" ColumnSpacing="8">
+                                        <Label Text="1" FontSize="10" TextColor="#94A3B8" VerticalOptions="Center" />
+                                        <ProgressBar Grid.Column="1"
+                                                     Progress="{Binding Star1Percent}"
+                                                     ProgressColor="#F59E0B"
+                                                     HeightRequest="5"
+                                                     VerticalOptions="Center" />
+                                    </Grid>
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+                </VerticalStackLayout>
             </VerticalStackLayout>
+        </ScrollView>
 
-            <HorizontalStackLayout Spacing="12">
-                <Label Text="Quantity"
-                       FontAttributes="Bold"
-                       VerticalOptions="Center"
-                       TextColor="#334155" />
-                <Button Text="−" Command="{Binding DecreaseCommand}" WidthRequest="44" HeightRequest="40" />
-                <Label Text="{Binding Quantity}"
-                       VerticalOptions="Center"
-                       FontAttributes="Bold"
-                       FontSize="18"
-                       WidthRequest="28"
-                       HorizontalTextAlignment="Center" />
-                <Button Text="+" Command="{Binding IncreaseCommand}" WidthRequest="44" HeightRequest="40" />
-            </HorizontalStackLayout>
+        <!-- 5. Sticky Bottom Action Bar -->
+        <Border Grid.Row="1"
+                BackgroundColor="White"
+                Stroke="#E2E8F0"
+                StrokeThickness="1"
+                Padding="16,10,16,14">
+            <Grid ColumnDefinitions="Auto,*,*" ColumnSpacing="10">
 
-            <Label Text="{Binding StockHint}" TextColor="#64748B" FontSize="13" />
-            <Label Text="{Binding ErrorMessage}" TextColor="#DC2626" FontAttributes="Bold" />
+                <!-- Floating Cart Icon Button -->
+                <Border WidthRequest="46"
+                        HeightRequest="46"
+                        Stroke="{StaticResource NuNavy}"
+                        StrokeThickness="1.5"
+                        BackgroundColor="White"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding OpenCartCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="🛒"
+                           FontSize="18"
+                           TextColor="{StaticResource NuNavy}"
+                           InputTransparent="True"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
 
-            <Button Text="Add to Cart"
-                    Command="{Binding AddToCartCommand}"
-                    BackgroundColor="#123A63"
-                    TextColor="White"
-                    HeightRequest="48"
-                    CornerRadius="12"
-                    FontAttributes="Bold" />
-        </VerticalStackLayout>
-    </ScrollView>
+                <!-- Add to Cart Button -->
+                <Border Grid.Column="1"
+                        HeightRequest="46"
+                        Stroke="{StaticResource NuNavy}"
+                        StrokeThickness="1.5"
+                        BackgroundColor="White"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding AddToCartCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="Add to Cart"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}"
+                           InputTransparent="True"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Buy Now Button -->
+                <Border Grid.Column="2"
+                        HeightRequest="46"
+                        StrokeThickness="0"
+                        BackgroundColor="{StaticResource NuNavy}"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="12" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding BuyNowCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="Buy Now"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           TextColor="White"
+                           InputTransparent="True"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
 </ContentPage>
