@@ -21,13 +21,13 @@ public static class MobileCheckoutIntent
 
     /// <summary>
     /// After successful Login/Register, resume Checkout if that was the intent;
-    /// otherwise go to Account.
+    /// otherwise go to Home.
     /// </summary>
     public static async Task NavigateAfterAuthAsync()
     {
         if (!Consume())
         {
-            await Shell.Current.GoToAsync("//account");
+            await Shell.Current.GoToAsync("//home");
             return;
         }
 
@@ -51,7 +51,7 @@ public static class MobileCheckoutIntent
         {
             System.Diagnostics.Debug.WriteLine(ex);
             try { await Shell.Current.GoToAsync("checkout"); }
-            catch { await Shell.Current.GoToAsync("//account"); }
+            catch { await Shell.Current.GoToAsync("//home"); }
         }
     }
 }

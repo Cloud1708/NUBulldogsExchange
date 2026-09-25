@@ -42,7 +42,10 @@ public sealed class ShopCategoryItem : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
-public sealed class ShopViewModel : INotifyPropertyChanged
+[QueryProperty(nameof(CategoryId), "categoryId")]
+[QueryProperty(nameof(CategoryId), "category")]
+[QueryProperty(nameof(CategoryId), "id")]
+public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
 {
     private readonly ProductCatalogService _catalog;
     private readonly CartService _cart;
@@ -51,6 +54,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged
     private readonly ToastService _toast;
     private readonly IAppDatabase _db;
     private readonly AdminProductService _adminProducts;
+    private readonly AdminCategoryService _adminCategories;
 
     private string _searchQuery = string.Empty;
     private string _selectedCategoryKey = "All";
@@ -68,7 +72,8 @@ public sealed class ShopViewModel : INotifyPropertyChanged
         AuthService auth,
         ToastService toast,
         IAppDatabase db,
-        AdminProductService adminProducts)
+        AdminProductService adminProducts,
+        AdminCategoryService adminCategories)
     {
         _catalog = catalog;
         _cart = cart;
@@ -77,6 +82,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged
         _toast = toast;
         _db = db;
         _adminProducts = adminProducts;
+        _adminCategories = adminCategories;
 
         SelectCategoryCommand = new Command<ShopCategoryItem>(OnSelectCategory);
         OpenCartCommand = new Command(async () => await GoAsync("cart"));
@@ -88,6 +94,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged
         OpenProductCommand = new Command<Product>(async p => await OnOpenProductAsync(p));
 
         _catalog.OnChange += OnCatalogChanged;
+        _adminCategories.OnChange += OnCategoriesChanged;
         _cart.OnChange += OnCartChanged;
         _wishlist.OnChange += () => MainThread.BeginInvokeOnMainThread(ApplyFilters);
     }
@@ -99,6 +106,42 @@ public sealed class ShopViewModel : INotifyPropertyChanged
 
     public ObservableCollection<Product> Products { get; } = [];
     public ObservableCollection<ShopCategoryItem> Categories { get; } = [];
+
+    public string CategoryId
+    {
+        get => _selectedCategoryKey;
+        set => SetSelectedCategory(value);
+    }
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        string? categoryId = null;
+        if (query.TryGetValue("categoryId", out var idObj) && idObj is string idStr)
+            categoryId = idStr;
+        else if (query.TryGetValue("category", out var catObj) && catObj is string catStr)
+            categoryId = catStr;
+        else if (query.TryGetValue("id", out var rawIdObj) && rawIdObj is string rawIdStr)
+            categoryId = rawIdStr;
+
+        if (!string.IsNullOrWhiteSpace(categoryId))
+        {
+            SetSelectedCategory(categoryId);
+        }
+    }
+
+    public void SetSelectedCategory(string? categoryKeyOrId)
+    {
+        if (string.IsNullOrWhiteSpace(categoryKeyOrId))
+            categoryKeyOrId = "All";
+
+        _selectedCategoryKey = categoryKeyOrId;
+        foreach (var cat in Categories)
+        {
+            cat.IsSelected = string.Equals(cat.Key, categoryKeyOrId, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(cat.Label, categoryKeyOrId, StringComparison.OrdinalIgnoreCase);
+        }
+        ApplyFilters();
+    }
 
     public string SearchQuery
     {
@@ -157,6 +200,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged
         IsBusy = true;
         try
         {
+            await _adminCategories.EnsureLoadedAsync();
             await _adminProducts.EnsureLoadedAsync();
             await MobileCatalogSeeder.EnsureSampleProductsAsync(_db, _catalog);
             await _cart.RestoreAsync(_auth.Email);
@@ -178,10 +222,18 @@ public sealed class ShopViewModel : INotifyPropertyChanged
     public void Detach()
     {
         _catalog.OnChange -= OnCatalogChanged;
+        _adminCategories.OnChange -= OnCategoriesChanged;
         _cart.OnChange -= OnCartChanged;
     }
 
     private void OnCatalogChanged() =>
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            BuildCategories();
+            ApplyFilters();
+        });
+
+    private void OnCategoriesChanged() =>
         MainThread.BeginInvokeOnMainThread(() =>
         {
             BuildCategories();
@@ -193,37 +245,25 @@ public sealed class ShopViewModel : INotifyPropertyChanged
 
     private void BuildCategories()
     {
-        var icons = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            ["T-Shirts"] = "👕",
-            ["Polo Shirts"] = "👔",
-            ["Hoodies"] = "🧥",
-            ["Jackets"] = "🧣",
-            ["Caps"] = "🧢",
-            ["Bags"] = "🎒",
-            ["Tumblers"] = "🥤",
-            ["Accessories"] = "🏷️",
-            ["School Supplies"] = "📚"
-        };
-
         Categories.Clear();
         Categories.Add(new ShopCategoryItem
         {
             Key = "All",
             Label = "All",
             Icon = string.Empty,
-            IsSelected = _selectedCategoryKey == "All"
+            IsSelected = string.Equals(_selectedCategoryKey, "All", StringComparison.OrdinalIgnoreCase)
         });
 
-        foreach (var name in AdminProductService.Categories)
+        foreach (var cat in _adminCategories.All.Where(c => c.IsActive))
         {
-            icons.TryGetValue(name, out var icon);
+            var isSelected = string.Equals(_selectedCategoryKey, cat.Id, StringComparison.OrdinalIgnoreCase) ||
+                             string.Equals(_selectedCategoryKey, cat.Name, StringComparison.OrdinalIgnoreCase);
             Categories.Add(new ShopCategoryItem
             {
-                Key = name,
-                Label = name.Equals("T-Shirts", StringComparison.OrdinalIgnoreCase) ? "Shirts" : name,
-                Icon = icon ?? "🏷️",
-                IsSelected = string.Equals(_selectedCategoryKey, name, StringComparison.OrdinalIgnoreCase)
+                Key = cat.Id,
+                Label = cat.Name,
+                Icon = HomeViewModel.DeriveCategoryIcon(cat.Name),
+                IsSelected = isSelected
             });
         }
     }
@@ -231,10 +271,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged
     private void OnSelectCategory(ShopCategoryItem? item)
     {
         if (item is null) return;
-        _selectedCategoryKey = item.Key;
-        foreach (var cat in Categories)
-            cat.IsSelected = string.Equals(cat.Key, item.Key, StringComparison.OrdinalIgnoreCase);
-        ApplyFilters();
+        SetSelectedCategory(item.Key);
     }
 
     private void ApplyFilters()
@@ -246,11 +283,19 @@ public sealed class ShopViewModel : INotifyPropertyChanged
 
         if (!string.Equals(_selectedCategoryKey, "All", StringComparison.OrdinalIgnoreCase))
         {
+            var matchedCategory = _adminCategories.All.FirstOrDefault(c =>
+                c.Id.Equals(_selectedCategoryKey, StringComparison.OrdinalIgnoreCase) ||
+                c.Name.Equals(_selectedCategoryKey, StringComparison.OrdinalIgnoreCase) ||
+                c.Slug.Equals(_selectedCategoryKey, StringComparison.OrdinalIgnoreCase));
+
+            var targetName = matchedCategory?.Name ?? _selectedCategoryKey;
+            var targetId = matchedCategory?.Id ?? _selectedCategoryKey;
+            var targetSlug = matchedCategory?.Slug ?? _selectedCategoryKey;
+
             query = query.Where(p =>
-                p.Category.Equals(_selectedCategoryKey, StringComparison.OrdinalIgnoreCase) ||
-                (_selectedCategoryKey.Equals("T-Shirts", StringComparison.OrdinalIgnoreCase) &&
-                 p.Category.Contains("Shirt", StringComparison.OrdinalIgnoreCase) &&
-                 !p.Category.Contains("Polo", StringComparison.OrdinalIgnoreCase)));
+                p.Category.Equals(targetName, StringComparison.OrdinalIgnoreCase) ||
+                p.Category.Equals(targetId, StringComparison.OrdinalIgnoreCase) ||
+                p.Category.Equals(targetSlug, StringComparison.OrdinalIgnoreCase));
         }
 
         query = _filterMode switch
