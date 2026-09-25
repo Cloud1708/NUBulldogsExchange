@@ -17,6 +17,7 @@ public class MockOrder
     public string Status { get; set; } = "Pending";
     public decimal Total { get; set; }
     public decimal Subtotal { get; set; }
+    public decimal DiscountAmount { get; set; }
     public decimal ShippingFee { get; set; }
     public string PaymentStatus { get; set; } = "Pending";
     public string PaymentMethod { get; set; } = string.Empty;
@@ -60,7 +61,8 @@ public class MockOrder
         Date = order.Date,
         Status = order.Status,
         Total = order.Total,
-        Subtotal = order.Subtotal > 0 ? order.Subtotal : order.Total,
+        Subtotal = order.Subtotal > 0 ? order.Subtotal : Math.Max(0, order.Total - order.ShippingFee + order.DiscountAmount),
+        DiscountAmount = order.DiscountAmount,
         ShippingFee = order.ShippingFee,
         PaymentStatus = string.IsNullOrWhiteSpace(order.PaymentStatus) ? "Pending" : order.PaymentStatus,
         PaymentMethod = order.PaymentMethod ?? string.Empty,

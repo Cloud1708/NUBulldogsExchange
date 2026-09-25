@@ -9,6 +9,8 @@ public static class OrderFlow
     public const string CampusPickup = "Campus Pickup";
     public const string Delivery = "Delivery";
     public const string PickupLocation = "NU Lipa Campus";
+    public const string PickupHoursDays = "Mon–Sat";
+    public const string PickupHoursTime = "8AM–5PM";
 
     public const string ToPay = "To Pay";
     public const string ToProcess = "To Process";
@@ -192,11 +194,18 @@ public static class OrderFlow
     };
 
     public static string[] TimelineSteps(string? fulfillment) =>
-        IsDelivery(fulfillment)
-            ? ["Order Placed", "Processing", "Out for Delivery", "Delivered"]
-            : ["Order Placed", "Processing", "Ready for Pickup", "Completed"];
+        DetailTimelineSteps(fulfillment);
 
-    /// <summary>0 = placed only, 1 = processing, 2 = ready/out, 3 = done, -1 = cancelled.</summary>
+    public static string[] DetailTimelineSteps(string? fulfillment) =>
+        IsDelivery(fulfillment)
+            ? ["Pending", "Confirmed", "Processing", "Out for Delivery", "Delivered"]
+            : ["Pending", "Confirmed", "Processing", "Ready for Pickup", "Completed"];
+
+    /// <summary>
+    /// 0 = Pending, 1 = Confirmed (visual), 2 = Processing,
+    /// 3 = Ready/Out, 4 = Completed/Delivered, -1 = cancelled.
+    /// Confirmed is a UI step only when the stored status is still Pending/Confirmed.
+    /// </summary>
     public static int TimelineProgress(string? fulfillment, string? status)
     {
         if (EqualsStatus(status, Cancelled))
@@ -205,25 +214,82 @@ public static class OrderFlow
         if (IsDelivery(fulfillment))
         {
             if (EqualsStatus(status, "Delivered") || EqualsStatus(status, Completed))
-                return 3;
+                return 4;
             if (EqualsStatus(status, "Out for Delivery") || EqualsStatus(status, "Shipped"))
+                return 3;
+            if (EqualsStatus(status, "Processing") || EqualsStatus(status, "Preparing"))
                 return 2;
-            if (EqualsStatus(status, "Processing")
-                || EqualsStatus(status, "Confirmed")
-                || EqualsStatus(status, "Preparing"))
+            if (EqualsStatus(status, "Confirmed"))
                 return 1;
             return 0;
         }
 
         if (EqualsStatus(status, Completed))
-            return 3;
+            return 4;
         if (EqualsStatus(status, ReadyForPickup))
+            return 3;
+        if (EqualsStatus(status, "Processing") || EqualsStatus(status, "Preparing"))
             return 2;
-        if (EqualsStatus(status, "Processing")
-            || EqualsStatus(status, "Confirmed")
-            || EqualsStatus(status, "Preparing"))
+        if (EqualsStatus(status, "Confirmed"))
             return 1;
         return 0;
+    }
+
+    public static string PaymentHeadline(string? paymentStatus) =>
+        string.Equals(paymentStatus, "Paid", StringComparison.OrdinalIgnoreCase) ? "Paid" : "Pending";
+
+    public static string PaymentDetail(string? paymentMethod, string? paymentStatus)
+    {
+        if (string.Equals(paymentStatus, "Paid", StringComparison.OrdinalIgnoreCase))
+            return "Payment received";
+
+        if (paymentMethod?.Equals("Cash on Pickup", StringComparison.OrdinalIgnoreCase) == true)
+            return "Pay upon pickup";
+
+        if (paymentMethod?.Equals("Cash on Delivery", StringComparison.OrdinalIgnoreCase) == true)
+            return "Pay upon delivery";
+
+        if (IsOnlinePaymentMethod(paymentMethod))
+            return "Complete your payment";
+
+        return string.IsNullOrWhiteSpace(paymentMethod) ? "Payment pending" : paymentMethod;
+    }
+
+    public static (string Title, string Message) StatusPanel(MockOrder order)
+    {
+        if (EqualsStatus(order.Status, Cancelled))
+            return ("Order Cancelled", $"Order {order.Id} has been cancelled.");
+
+        if (IsDelivery(order.Fulfillment))
+        {
+            if (EqualsStatus(order.Status, "Out for Delivery") || EqualsStatus(order.Status, "Shipped"))
+                return ("Out for Delivery", "Your order is already on the way and will be delivered soon.");
+
+            if (EqualsStatus(order.Status, "Delivered") || EqualsStatus(order.Status, Completed))
+                return ("Delivered", "Your order has been successfully delivered.");
+
+            if (EqualsStatus(order.Status, "Processing")
+                || EqualsStatus(order.Status, "Confirmed")
+                || EqualsStatus(order.Status, "Preparing"))
+                return ("Order is being prepared", "Your order is currently being prepared for delivery.");
+
+            return ("Order Placed", "We've received your order and will begin preparing it for delivery.");
+        }
+
+        if (EqualsStatus(order.Status, ReadyForPickup))
+            return (
+                "Ready for Pickup!",
+                $"Bring your order ID {order.Id} and a valid school ID to the NU Lipa pickup location to claim your order.");
+
+        if (EqualsStatus(order.Status, Completed))
+            return ("Order Completed", "This pickup order has already been claimed.");
+
+        if (EqualsStatus(order.Status, "Processing")
+            || EqualsStatus(order.Status, "Confirmed")
+            || EqualsStatus(order.Status, "Preparing"))
+            return ("Order is being prepared", "Your order is currently being prepared for pickup.");
+
+        return ("Order Placed", "We've received your order and will notify you when it's ready for pickup.");
     }
 
     public static string? CustomerNotificationTitle(string? fulfillment, string newStatus)

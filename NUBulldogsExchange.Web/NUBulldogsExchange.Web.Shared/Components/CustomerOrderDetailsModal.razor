@@ -1,0 +1,152 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+@if (Order is not null)
+{
+    var steps = OrderFlow.DetailTimelineSteps(Order.Fulfillment);
+    var progress = OrderFlow.TimelineProgress(Order.Fulfillment, Order.Status);
+    var panel = OrderFlow.StatusPanel(Order);
+    var itemSubtotal = Order.Items.Count > 0
+        ? Order.Items.Sum(i => i.Price * i.Quantity)
+        : Order.Subtotal;
+    var feeLabel = Order.IsDelivery ? "Delivery Fee" : "Fulfillment Fee";
+
+    <div class="od-backdrop" @onclick="Close">
+        <div class="od-modal" role="dialog" aria-modal="true" aria-labelledby="od-title" @onclick:stopPropagation="true">
+            <header class="od-header">
+                <div class="od-header-copy">
+                    <h2 id="od-title">@Order.Id</h2>
+                    <p>@Order.DateLabel • @Order.ItemCountLabel</p>
+                </div>
+                <div class="od-header-actions">
+                    <span class="order-status status-@Order.StatusKey">@Order.Status</span>
+                    <button type="button" class="od-close" @onclick="Close" aria-label="Close">
+                        <Icon Name="x" Size="16" />
+                    </button>
+                </div>
+            </header>
+
+            <div class="od-body">
+                <section class="od-section">
+                    <h3>Order Progress</h3>
+                    <ol class="od-progress @(progress < 0 ? "is-cancelled" : "")">
+                        @for (var i = 0; i < steps.Length; i++)
+                        {
+                            var state = progress < 0
+                                ? "is-idle"
+                                : i < progress ? "is-done" : i == progress ? "is-current" : "is-idle";
+                            <li class="@state">
+                                <span class="od-progress-dot"></span>
+                                <span class="od-progress-label">@steps[i]</span>
+                            </li>
+                        }
+                    </ol>
+                </section>
+
+                <section class="od-section">
+                    <h3>Items Ordered</h3>
+                    <div class="od-item-list">
+                        @foreach (var item in Order.Items)
+                        {
+                            <article class="od-item">
+                                <img src="@item.ImageUrl"
+                                     alt="@item.Name"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="od-item-copy">
+                                    <strong>@item.Name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(item.Size)
+                                        && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <span>Size: @item.Size</span>
+                                    }
+                                    <span>Qty: @item.Quantity × ₱@item.Price.ToString("N0")</span>
+                                </div>
+                                <strong class="od-item-total">₱@((item.Price * item.Quantity).ToString("N0"))</strong>
+                            </article>
+                        }
+                    </div>
+                </section>
+
+                <div class="od-cards">
+                    <section class="od-card">
+                        <h3>
+                            <Icon Name="map-pin" Size="14" />
+                            Fulfillment
+                        </h3>
+                        @if (Order.IsDelivery)
+                        {
+                            <strong>Delivery</strong>
+                            <p>@Order.RecipientName</p>
+                            <p>@(string.IsNullOrWhiteSpace(Order.RecipientPhone) ? "—" : Order.RecipientPhone)</p>
+                            <p>@(string.IsNullOrWhiteSpace(Order.ShippingAddressLabel) ? "Delivery address on file" : Order.ShippingAddressLabel)</p>
+                        }
+                        else
+                        {
+                            <strong>Campus Pickup</strong>
+                            <p>@OrderFlow.PickupLocation</p>
+                            <p>@OrderFlow.PickupHoursDays</p>
+                            <p>@OrderFlow.PickupHoursTime</p>
+                        }
+                    </section>
+
+                    <section class="od-card">
+                        <h3>
+                            <Icon Name="wallet" Size="14" />
+                            Payment
+                        </h3>
+                        @if (!string.IsNullOrWhiteSpace(Order.PaymentMethod))
+                        {
+                            <span class="od-card-method">@Order.PaymentMethod</span>
+                        }
+                        <strong>@OrderFlow.PaymentHeadline(Order.PaymentStatus)</strong>
+                        <p>@OrderFlow.PaymentDetail(Order.PaymentMethod, Order.PaymentStatus)</p>
+                    </section>
+                </div>
+
+                <section class="od-section">
+                    <h3>Order Summary</h3>
+                    <dl class="od-summary">
+                        <div>
+                            <dt>Subtotal</dt>
+                            <dd>₱@itemSubtotal.ToString("N0")</dd>
+                        </div>
+                        @if (Order.DiscountAmount > 0)
+                        {
+                            <div>
+                                <dt>Discount</dt>
+                                <dd class="is-free">-₱@Order.DiscountAmount.ToString("N0")</dd>
+                            </div>
+                        }
+                        <div>
+                            <dt>@feeLabel</dt>
+                            <dd class="@(Order.ShippingFee > 0 ? "" : "is-free")">
+                                @(Order.ShippingFee > 0 ? $"₱{Order.ShippingFee:N0}" : "Free")
+                            </dd>
+                        </div>
+                        <div class="is-total">
+                            <dt>Total</dt>
+                            <dd>₱@Order.Total.ToString("N0")</dd>
+                        </div>
+                    </dl>
+                </section>
+
+                <aside class="od-info @(progress < 0 ? "is-cancelled" : "")">
+                    <div class="od-info-icon" aria-hidden="true">
+                        <Icon Name="@(progress < 0 ? "x" : "map-pin")" Size="16" />
+                    </div>
+                    <div>
+                        <strong>@panel.Title</strong>
+                        <p>@panel.Message</p>
+                    </div>
+                </aside>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public MockOrder? Order { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private Task Close() => OnClose.InvokeAsync();
+}
