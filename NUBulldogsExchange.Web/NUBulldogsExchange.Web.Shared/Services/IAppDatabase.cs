@@ -31,6 +31,7 @@ public interface IAppDatabase
 
     // Orders
     Task<List<AdminOrder>> GetOrdersAsync();
+    Task<List<AdminOrder>> GetCustomerOrdersAsync(string? email = null);
     Task<AdminOrder?> GetOrderByIdAsync(string id);
     Task<AdminOrder> UpsertOrderAsync(AdminOrder order);
     Task<bool> DeleteOrderAsync(string id);
@@ -60,6 +61,7 @@ public interface IAppDatabase
     // Notifications (customer)
     Task<List<MockNotification>> GetCustomerNotificationsAsync(string? email = null);
     Task SaveCustomerNotificationsAsync(IEnumerable<MockNotification> items, string? email = null);
+    Task AddCustomerNotificationAsync(string email, string? authUserId, MockNotification notification);
 
     // Admin notifications
     Task<List<AdminNotificationItem>> GetAdminNotificationsAsync();

@@ -254,6 +254,24 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         return orders;
     }
 
+    public async Task<List<AdminOrder>> GetCustomerOrdersAsync(string? email = null)
+    {
+        if (!_session.IsAuthenticated)
+            return [];
+
+        var path = "rest/v1/orders?select=*&order=date.desc";
+        if (!string.IsNullOrWhiteSpace(_session.AuthUserId))
+            path = $"rest/v1/orders?select=*&auth_user_id=eq.{Esc(_session.AuthUserId)}&order=date.desc";
+        else if (!string.IsNullOrWhiteSpace(email))
+            path = $"rest/v1/orders?select=*&customer_email=eq.{Esc(email.Trim())}&order=date.desc";
+
+        var orders = await GetListAsync<AdminOrder>(path);
+        foreach (var order in orders)
+            order.Items = await GetOrderItemsAsync(order.Id);
+
+        return orders;
+    }
+
     public async Task<AdminOrder?> GetOrderByIdAsync(string id)
     {
         if (string.IsNullOrWhiteSpace(id)) return null;
@@ -570,6 +588,9 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
         if (!AuthValidation.IsValidEmail(request.Email))
             return Fail("Enter a valid email address.");
+
+        if (string.IsNullOrWhiteSpace(request.PhoneNumber))
+            return Fail("Phone number is required.");
 
         if (!AuthValidation.IsValidPhone(request.PhoneNumber))
             return Fail("Enter a valid phone number.");
@@ -1020,6 +1041,63 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             "rest/v1/notifications",
             rows);
         await EnsureSuccessAsync(insert);
+    }
+
+    public async Task AddCustomerNotificationAsync(string email, string? authUserId, MockNotification notification)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(notification.Id))
+                notification.Id = Guid.NewGuid().ToString("N");
+
+            var uid = await ResolveNotificationUserIdAsync(email, authUserId);
+            if (string.IsNullOrWhiteSpace(uid))
+                return;
+
+            var row = new Dictionary<string, object?>
+            {
+                ["id"] = notification.Id,
+                ["auth_user_id"] = uid,
+                ["email"] = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant(),
+                ["title"] = notification.Title,
+                ["message"] = notification.Message,
+                ["time_ago"] = string.IsNullOrWhiteSpace(notification.TimeAgo) ? "Just now" : notification.TimeAgo,
+                ["icon"] = string.IsNullOrWhiteSpace(notification.Icon) ? "bell" : notification.Icon,
+                ["tone"] = string.IsNullOrWhiteSpace(notification.Tone) ? "blue" : notification.Tone,
+                ["is_read"] = notification.IsRead,
+                ["created_at"] = DateTime.UtcNow
+            };
+
+            using var insert = await SendAsync(
+                HttpMethod.Post,
+                "rest/v1/notifications",
+                row);
+            _ = insert.IsSuccessStatusCode;
+        }
+        catch
+        {
+            // Best-effort: RLS or missing columns should not block status updates.
+        }
+    }
+
+    private async Task<string?> ResolveNotificationUserIdAsync(string email, string? authUserId)
+    {
+        if (Guid.TryParse(authUserId, out _))
+            return authUserId;
+
+        if (string.IsNullOrWhiteSpace(email))
+            return null;
+
+        try
+        {
+            var rows = await GetListAsync<UserWithRoleRow>(
+                $"rest/v1/users_with_roles?select=id&email=eq.{Esc(email.Trim())}&limit=1");
+            return rows.FirstOrDefault()?.Id;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     // ========================================================
@@ -1703,9 +1781,20 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     // Private helpers
     // ========================================================
 
-    private async Task<List<AdminOrderItem>> GetOrderItemsAsync(string orderId) =>
-        await GetListAsync<AdminOrderItem>(
-            $"rest/v1/order_items?select=product_id,name,image_url,quantity,price,variant_id,size,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");
+    private async Task<List<AdminOrderItem>> GetOrderItemsAsync(string orderId)
+    {
+        try
+        {
+            return await GetListAsync<AdminOrderItem>(
+                $"rest/v1/order_items?select=product_id,name,image_url,quantity,price,variant_id,size,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("permission denied", StringComparison.OrdinalIgnoreCase))
+        {
+            // Missing GRANT/RLS on public.order_items. Run docs/sql/004_order_items_grants_rls.sql.
+            return [];
+        }
+    }
 
     private async Task<MockUser?> BuildMockUserAsync(string authUserId, string accessToken)
     {

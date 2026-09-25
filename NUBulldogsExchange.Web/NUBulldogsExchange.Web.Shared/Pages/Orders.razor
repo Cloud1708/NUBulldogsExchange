@@ -40,7 +40,7 @@ else
                 <h1>My Orders</h1>
 
                 <div class="order-filter-tabs" role="tablist" aria-label="Filter orders">
-                    @foreach (var filter in Filters)
+                    @foreach (var filter in OrderFlow.CustomerTabs)
                     {
                         <button type="button"
                                 role="tab"
@@ -75,9 +75,25 @@ else
                                 <div class="order-card-top">
                                     <div>
                                         <strong>@order.Id</strong>
-                                        <span>@order.DateLabel • @order.ItemCountLabel</span>
+                                        <span>@order.FormattedDate • @order.ItemCountLabel</span>
                                     </div>
-                                    <span class="order-status status-@order.StatusKey">@order.Status</span>
+                                    <span class="order-status status-@order.CustomerStatusKey">@order.CustomerCategory</span>
+                                </div>
+
+                                <div class="order-card-fulfillment @(order.IsDelivery ? "is-delivery" : "is-pickup")">
+                                    <span class="order-fulfillment-badge">
+                                        @(order.IsDelivery ? "🚚 Delivery" : "📍 Campus Pickup")
+                                    </span>
+                                    <span class="order-fulfillment-location">
+                                        @(string.IsNullOrWhiteSpace(order.FulfillmentLocationLabel)
+                                            ? (order.IsDelivery ? "Delivery address on file" : OrderFlow.PickupLocation)
+                                            : order.FulfillmentLocationLabel)
+                                    </span>
+                                </div>
+
+                                <div class="order-card-payment">
+                                    <span>Payment: @(string.IsNullOrWhiteSpace(order.PaymentMethod) ? "—" : order.PaymentMethod)</span>
+                                    <span>Payment Status: @order.PaymentStatus</span>
                                 </div>
 
                                 <div class="order-card-items">
@@ -87,8 +103,14 @@ else
                                             <img src="@item.ImageUrl"
                                                  alt="@item.Name"
                                                  onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                                            <span class="order-card-item-name">@item.Name</span>
-                                            <span class="order-card-item-qty">x@item.Quantity</span>
+                                            <div class="order-card-item-copy">
+                                                <span class="order-card-item-name">@item.Name</span>
+                                                @if (!string.IsNullOrWhiteSpace(item.Size) && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <span class="order-card-item-size">Size: @item.Size</span>
+                                                }
+                                            </div>
+                                            <span class="order-card-item-qty">Qty: @item.Quantity</span>
                                         </div>
                                     }
                                 </div>
@@ -102,7 +124,7 @@ else
                                                 Cancel Order
                                             </button>
                                         }
-                                        <button type="button" class="btn btn-navy btn-view-order" @onclick="() => ViewOrder(order.Id)">
+                                        <button type="button" class="btn btn-navy btn-view-order" @onclick="() => ViewOrder(order)">
                                             View Order
                                         </button>
                                     </div>
@@ -113,21 +135,130 @@ else
                 }
             </div>
         </AccountShell>
+
+        @if (_selectedOrder is not null)
+        {
+            <div class="order-details-backdrop" @onclick="CloseDetails">
+                <div class="order-details-sheet" @onclick:stopPropagation="true">
+                    <header class="order-details-header">
+                        <div>
+                            <h2>Order @_selectedOrder.Id</h2>
+                            <p>Placed on @_selectedOrder.FormattedDate</p>
+                        </div>
+                        <button type="button" class="order-details-close" @onclick="CloseDetails" aria-label="Close">
+                            <Icon Name="x" Size="18" />
+                        </button>
+                    </header>
+
+                    <div class="order-details-status-row">
+                        <span>Order Status</span>
+                        <span class="order-status status-@_selectedOrder.CustomerStatusKey">@_selectedOrder.CustomerCategory</span>
+                    </div>
+
+                    @if (_selectedOrder.IsDelivery)
+                    {
+                        <section class="order-details-block">
+                            <h3>🚚 Delivery</h3>
+                            <dl class="order-details-dl">
+                                <div><dt>Fulfillment</dt><dd>Delivery</dd></div>
+                                <div><dt>Recipient</dt><dd>@_selectedOrder.RecipientName</dd></div>
+                                <div><dt>Contact Number</dt><dd>@(string.IsNullOrWhiteSpace(_selectedOrder.RecipientPhone) ? "—" : _selectedOrder.RecipientPhone)</dd></div>
+                                <div>
+                                    <dt>Shipping Address</dt>
+                                    <dd>
+                                        @if (!string.IsNullOrWhiteSpace(_selectedOrder.ShippingAddressLine))
+                                        {
+                                            <span>@_selectedOrder.ShippingAddressLine</span>
+                                        }
+                                        @if (!string.IsNullOrWhiteSpace(_selectedOrder.ShippingBarangay))
+                                        {
+                                            <span>@_selectedOrder.ShippingBarangay</span>
+                                        }
+                                        <span>
+                                            @_selectedOrder.ShippingCity
+                                            @_selectedOrder.ShippingProvince
+                                            @_selectedOrder.ShippingPostalCode
+                                        </span>
+                                    </dd>
+                                </div>
+                            </dl>
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="order-details-block">
+                            <h3>📍 Campus Pickup</h3>
+                            <dl class="order-details-dl">
+                                <div><dt>Fulfillment</dt><dd>Campus Pickup</dd></div>
+                                <div><dt>Pickup Location</dt><dd>@OrderFlow.PickupLocation</dd></div>
+                            </dl>
+                        </section>
+                    }
+
+                    <section class="order-details-block">
+                        <dl class="order-details-dl">
+                            <div><dt>Payment Method</dt><dd>@(string.IsNullOrWhiteSpace(_selectedOrder.PaymentMethod) ? "—" : _selectedOrder.PaymentMethod)</dd></div>
+                            <div><dt>Payment Status</dt><dd>@_selectedOrder.PaymentStatus</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="order-details-block">
+                        <h3>Order Timeline</h3>
+                        <ol class="order-timeline">
+                            @{
+                                var steps = OrderFlow.TimelineSteps(_selectedOrder.Fulfillment);
+                                var progress = OrderFlow.TimelineProgress(_selectedOrder.Fulfillment, _selectedOrder.Status);
+                            }
+                            @for (var i = 0; i < steps.Length; i++)
+                            {
+                                var done = progress >= 0 && i <= progress;
+                                <li class="@(done ? "is-done" : "")">
+                                    <span class="order-timeline-dot">@(done ? "✓" : (i + 1).ToString())</span>
+                                    <span>@steps[i]</span>
+                                </li>
+                            }
+                        </ol>
+                    </section>
+
+                    <section class="order-details-block">
+                        <h3>Items</h3>
+                        <div class="order-card-items">
+                            @foreach (var item in _selectedOrder.Items)
+                            {
+                                <div class="order-card-item">
+                                    <img src="@item.ImageUrl"
+                                         alt="@item.Name"
+                                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                    <div class="order-card-item-copy">
+                                        <span class="order-card-item-name">@item.Name</span>
+                                        <span class="order-card-item-size">
+                                            @(string.IsNullOrWhiteSpace(item.Size) ? "Free Size" : item.Size) · Qty: @item.Quantity
+                                        </span>
+                                    </div>
+                                    <span class="order-card-item-qty">₱@((item.Price * item.Quantity).ToString("N0"))</span>
+                                </div>
+                            }
+                        </div>
+                    </section>
+
+                    <div class="order-details-actions">
+                        @if (_selectedOrder.CanCancel)
+                        {
+                            <button type="button" class="btn btn-cancel-order" @onclick="() => Cancel(_selectedOrder.Id)">
+                                Cancel Order
+                            </button>
+                        }
+                        <button type="button" class="btn btn-navy" @onclick="CloseDetails">Done</button>
+                    </div>
+                </div>
+            </div>
+        }
     }
 }
 
 @code {
-    private static readonly string[] Filters =
-    [
-        "All",
-        "Pending",
-        "Processing",
-        "Ready for Pickup",
-        "Completed",
-        "Cancelled"
-    ];
-
     private string _filter = "All";
+    private MockOrder? _selectedOrder;
 
     protected override async Task OnInitializedAsync()
     {
@@ -144,12 +275,15 @@ else
         StateHasChanged();
     });
 
-    private void ViewOrder(string orderId) =>
-        Toast.Show($"Order {orderId}");
+    private void ViewOrder(MockOrder order) => _selectedOrder = order;
+
+    private void CloseDetails() => _selectedOrder = null;
 
     private void Cancel(string orderId)
     {
         OrderService.Cancel(orderId);
+        if (_selectedOrder?.Id == orderId)
+            _selectedOrder = OrderService.Orders.FirstOrDefault(o => o.Id == orderId);
         Toast.Show($"Order {orderId} cancelled.");
     }
 

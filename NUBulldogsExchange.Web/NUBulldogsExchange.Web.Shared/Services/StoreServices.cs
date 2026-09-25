@@ -304,12 +304,17 @@ public class OrderService
         _loading = true;
         try
         {
-            var adminOrders = await _db.GetOrdersAsync();
+            var adminOrders = await _db.GetCustomerOrdersAsync(email);
             _orders.Clear();
-            var filtered = emailKey is null
-                ? adminOrders
-                : adminOrders.Where(o => o.CustomerEmail.Equals(emailKey, StringComparison.OrdinalIgnoreCase));
-            _orders.AddRange(filtered.Select(MockOrder.FromAdmin));
+            _orders.AddRange(adminOrders.Select(MockOrder.FromAdmin));
+            _loadedEmail = emailKey;
+            _loaded = true;
+            OnChange?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            _orders.Clear();
             _loadedEmail = emailKey;
             _loaded = true;
             OnChange?.Invoke();
@@ -329,13 +334,14 @@ public class OrderService
         if (string.IsNullOrWhiteSpace(status) || status.Equals("All", StringComparison.OrdinalIgnoreCase))
             return ordered;
 
-        return ordered.Where(o => o.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
+        return ordered.Where(o =>
+            o.CustomerCategory.Equals(status, StringComparison.OrdinalIgnoreCase));
     }
 
     public void Cancel(string orderId)
     {
         var order = _orders.FirstOrDefault(o => o.Id == orderId);
-        if (order is null || !order.CanCancel)
+        if (order is null || !OrderFlow.CanCustomerCancel(order))
             return;
 
         order.Status = "Cancelled";

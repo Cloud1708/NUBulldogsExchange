@@ -16,4 +16,9 @@
     <ProjectReference Include="..\NUBulldogsExchange.Web.Shared\NUBulldogsExchange.Web.Shared.csproj" />
   </ItemGroup>
 
+  <!-- Avoid MSB3027/MSB3021 when a previous Web.Web process still locks Shared.dll. -->
+  <Target Name="StopRunningHost" BeforeTargets="BeforeBuild">
+    <Exec Command="taskkill /F /IM NUBulldogsExchange.Web.Web.exe /T 2&gt;nul" IgnoreExitCode="true" />
+  </Target>
+
 </Project>

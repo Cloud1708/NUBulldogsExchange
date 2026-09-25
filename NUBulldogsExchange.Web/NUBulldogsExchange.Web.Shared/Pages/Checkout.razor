@@ -9,7 +9,6 @@
 @inject AdminOrderService AdminOrders
 @inject AdminCustomerService Customers
 @inject NotificationService Notifications
-@inject AdminNotificationService AdminNotifications
 @inject ProductCatalogService Catalog
 @inject AdminPromotionService PromotionService
 @inject AdminSettingsService Settings
@@ -59,13 +58,17 @@ else if (_checkoutPhase == CheckoutPhaseConfirmation && _confirmedOrder is not n
                 <div class="checkout-confirm-icon" aria-hidden="true">
                     <Icon Name="check-circle" Size="40" />
                 </div>
-                <h2>Order Placed Successfully</h2>
-                <p class="checkout-confirm-lead">Thank you! Your order has been received and is being processed.</p>
+                <h2>Order Confirmed!</h2>
+                <p class="checkout-confirm-lead">Thank you for supporting NU Bulldogs Exchange. Your order has been placed successfully.</p>
 
                 <dl class="checkout-confirm-details">
                     <div>
                         <dt>Order Number</dt>
-                        <dd>#@_confirmedOrder.Id</dd>
+                        <dd>@_confirmedOrder.Id</dd>
+                    </div>
+                    <div>
+                        <dt>Order Date</dt>
+                        <dd>@_confirmedOrder.Date.ToString("MMMM d, yyyy")</dd>
                     </div>
                     <div>
                         <dt>Payment Method</dt>
@@ -78,35 +81,38 @@ else if (_checkoutPhase == CheckoutPhaseConfirmation && _confirmedOrder is not n
                         </dd>
                     </div>
                     <div>
-                        <dt>Total</dt>
-                        <dd>₱@_confirmedOrder.Total.ToString("N0")</dd>
-                    </div>
-                    <div>
-                        <dt>Fulfillment</dt>
+                        <dt>Fulfillment Method</dt>
                         <dd>@_confirmedOrder.Fulfillment</dd>
                     </div>
-                    @if (string.Equals(_confirmedOrder.Fulfillment, DeliveryMethod, StringComparison.OrdinalIgnoreCase)
-                         && !string.IsNullOrWhiteSpace(_confirmedOrder.ShippingAddressLine))
-                    {
-                        <div class="checkout-confirm-address">
-                            <dt>Delivery To</dt>
-                            <dd>
-                                <span>@_confirmedOrder.ShippingRecipientName</span>
-                                <span>@_confirmedOrder.ShippingAddressLine</span>
-                                <span>@_confirmedOrder.ShippingBarangay</span>
-                                <span>@_confirmedOrder.ShippingCity, @_confirmedOrder.ShippingProvince @_confirmedOrder.ShippingPostalCode</span>
-                                <span>@_confirmedOrder.ShippingPhone</span>
-                            </dd>
-                        </div>
-                    }
-                    else if (string.Equals(_confirmedOrder.Fulfillment, CampusPickup, StringComparison.OrdinalIgnoreCase))
-                    {
-                        <div>
-                            <dt>Pickup Location</dt>
-                            <dd>NU Lipa Campus</dd>
-                        </div>
-                    }
+                    <div>
+                        <dt>Total Amount</dt>
+                        <dd>₱@_confirmedOrder.Total.ToString("N0")</dd>
+                    </div>
                 </dl>
+
+                @if (string.Equals(_confirmedOrder.Fulfillment, DeliveryMethod, StringComparison.OrdinalIgnoreCase))
+                {
+                    <div class="checkout-confirm-info">
+                        <strong>Delivery Information</strong>
+                        <p>
+                            <span>Recipient: @(_confirmedOrder.ShippingRecipientName)</span>
+                            <span>Shipping Address: @FormatConfirmedDeliveryAddress(_confirmedOrder)</span>
+                            <span>Contact Number: @(_confirmedOrder.ShippingPhone)</span>
+                            <span>Estimated Delivery: 3–7 business days</span>
+                        </p>
+                    </div>
+                }
+                else
+                {
+                    <div class="checkout-confirm-info">
+                        <strong>Campus Pickup Information</strong>
+                        <p>
+                            <span>Your order will be ready within @PickupReadyWindow.</span>
+                            <span>Pick up your order at the @PickupLocationLabel pickup location.</span>
+                            <span>You'll receive a notification when your order is ready.</span>
+                        </p>
+                    </div>
+                }
 
                 @if (_confirmedOrder.Items.Count > 0)
                 {
@@ -133,8 +139,9 @@ else if (_checkoutPhase == CheckoutPhaseConfirmation && _confirmedOrder is not n
                 }
 
                 <div class="checkout-confirm-actions">
-                    <a href="/orders" class="btn btn-navy">View My Orders</a>
-                    <a href="/shop" class="btn btn-outline-navy">Continue Shopping</a>
+                    <a href="/orders" class="btn btn-navy">Track Order</a>
+                    <a href="/orders" class="btn btn-outline-navy">View My Orders</a>
+                    <a href="/shop" class="btn btn-outline-navy">Continue Shopping →</a>
                 </div>
             </div>
         </div>
@@ -236,42 +243,12 @@ else
 
                                     <p class="checkout-online-note">@OnlinePaymentSecureNote</p>
 
-                                    @if (_paymentUiState == PaymentUiReady)
-                                    {
-                                        <button type="button"
-                                                class="btn btn-navy btn-block"
-                                                disabled="@(_submitting || _paymentProcessing)"
-                                                @onclick="BeginOnlinePaymentAsync">
-                                            @(_paymentProcessing ? "Processing…" : OnlinePaymentContinueLabel)
-                                        </button>
-                                    }
-                                    else if (_paymentUiState == PaymentUiTestGateway)
-                                    {
-                                        <div class="checkout-test-gateway" role="region" aria-label="Development payment simulator">
-                                            <strong>Development / test payment</strong>
-                                            <p>No live payment gateway is connected. Use the options below to simulate a result. A real GCash / e-wallet / card provider still needs to be integrated.</p>
-                                            <div class="checkout-test-gateway-actions">
-                                                <button type="button"
-                                                        class="btn btn-navy"
-                                                        disabled="@(_submitting || _paymentProcessing)"
-                                                        @onclick="SimulatePaymentSuccessAsync">
-                                                    @(_paymentProcessing ? "Processing…" : "Simulate Successful Payment")
-                                                </button>
-                                                <button type="button"
-                                                        class="btn btn-outline-navy"
-                                                        disabled="@(_submitting || _paymentProcessing)"
-                                                        @onclick="SimulatePaymentFailure">
-                                                    Simulate Failed Payment
-                                                </button>
-                                                <button type="button"
-                                                        class="btn btn-outline-navy"
-                                                        disabled="@(_submitting || _paymentProcessing)"
-                                                        @onclick="SimulatePaymentCancelled">
-                                                    Cancel Payment
-                                                </button>
-                                            </div>
-                                        </div>
-                                    }
+                                    <button type="button"
+                                            class="btn btn-navy btn-block"
+                                            disabled="@(_submitting || _paymentProcessing)"
+                                            @onclick="CompleteOnlineTestPaymentAsync">
+                                        @(_submitting || _paymentProcessing ? "Processing…" : $"{OnlinePaymentContinueLabel} →")
+                                    </button>
                                 </div>
                             }
 
@@ -364,7 +341,7 @@ else
                                 <Icon Name="map-pin" Size="18" CssClass="checkout-pickup-banner-icon" />
                                 <div>
                                     <strong>Campus Pickup Details</strong>
-                                    <p>Your order will be available for pickup at the NU Lipa Campus. You'll receive a notification when it's ready.</p>
+                                    <p>Your order will be ready within @PickupReadyWindow. Pick up your order at the @PickupLocationLabel pickup location. You'll receive a notification when it's ready.</p>
                                 </div>
                             </div>
                         }
@@ -518,14 +495,6 @@ else
                         {
                             <em class="checkout-inline-error">@_errors["payment"]</em>
                         }
-
-                        @if (IsOnlinePaymentMethod)
-                        {
-                            <div class="checkout-online-panel">
-                                <strong>@OnlinePaymentPanelTitle</strong>
-                                <p>@OnlinePaymentPanelBody</p>
-                            </div>
-                        }
                     </section>
 
                     @* —— Notes —— *@
@@ -612,7 +581,7 @@ else
                                 {
                                     <div class="checkout-summary-address">
                                         <strong>Pickup Location</strong>
-                                        <span>NU Lipa Campus</span>
+                                        <span>@PickupLocationLabel</span>
                                     </div>
                                 }
                                 else
@@ -637,7 +606,7 @@ else
                             @if (_fulfillment == CampusPickup)
                             {
                                 <div class="checkout-summary-note is-success">
-                                    You're saving on delivery fees! Free campus pickup at NU Lipa Campus.
+                                    You're saving on delivery fees! Free campus pickup at @PickupLocationLabel.
                                 </div>
                             }
                             else
@@ -708,14 +677,16 @@ else
     private const string DeliveryMethod = "Delivery";
     private const string CashOnPickup = "Cash on Pickup";
     private const string CashOnDelivery = "Cash on Delivery";
+    private const string GCash = "GCash";
+    private const string Maya = "Maya";
+    private const string CreditCard = "Credit Card";
     private const string CheckoutPhaseInformation = "information";
     private const string CheckoutPhasePayment = "payment";
     private const string CheckoutPhaseConfirmation = "confirmation";
-    private const string PaymentUiReady = "ready";
-    private const string PaymentUiTestGateway = "test-gateway";
     private const string PaymentOutcomeFailed = "failed";
     private const string PaymentOutcomeCancelled = "cancelled";
     private const decimal DefaultDeliveryFee = 150m;
+    private const string DefaultPickupLocation = "NU Lipa Campus";
 
     private static readonly string[] Provinces =
     [
@@ -725,7 +696,7 @@ else
 
     private static readonly HashSet<string> OnlinePaymentMethods = new(StringComparer.OrdinalIgnoreCase)
     {
-        "E-Wallet", "GCash", "Online Payment"
+        GCash, Maya, CreditCard
     };
 
     private bool _loadingCustomer = true;
@@ -759,10 +730,10 @@ else
     private bool _promoOk;
     private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
 
-    private string _paymentUiState = PaymentUiReady;
     private string? _paymentOutcome;
     private bool _paymentProcessing;
     private AdminOrder? _confirmedOrder;
+    private string? _placedOrderId;
 
     private decimal DeliveryFee =>
         Settings.Saved.Orders.DeliveryFee > 0
@@ -777,8 +748,28 @@ else
 
     private IReadOnlyList<string> AvailablePaymentMethods =>
         _fulfillment == DeliveryMethod
-            ? [CashOnDelivery, "E-Wallet", "Online Payment", "GCash"]
-            : [CashOnPickup, "E-Wallet", "Online Payment", "GCash"];
+            ? [CashOnDelivery, GCash, Maya, CreditCard]
+            : [CashOnPickup, GCash, Maya, CreditCard];
+
+    private string PickupLocationLabel => DefaultPickupLocation;
+
+    private string PickupReadyWindow =>
+        string.IsNullOrWhiteSpace(Settings.Saved.Orders.ProcessingTime)
+            ? "1–3 business days"
+            : Settings.Saved.Orders.ProcessingTime.Trim();
+
+    private static string FormatConfirmedDeliveryAddress(AdminOrder order)
+    {
+        var parts = new[]
+        {
+            order.ShippingAddressLine,
+            order.ShippingBarangay,
+            string.Join(" ", new[] { order.ShippingCity, order.ShippingProvince, order.ShippingPostalCode }
+                .Where(v => !string.IsNullOrWhiteSpace(v)))
+        };
+
+        return string.Join(", ", parts.Where(v => !string.IsNullOrWhiteSpace(v)));
+    }
 
     private string DefaultCashMethod =>
         _fulfillment == DeliveryMethod ? CashOnDelivery : CashOnPickup;
@@ -795,32 +786,35 @@ else
             : "e.g. Preferred pickup date, special instructions...";
 
     private string CheckoutActionButtonText =>
-        IsCashPaymentMethod ? "Place Order" : "Proceed to Payment";
+        IsCashPaymentMethod ? "Place Order →" : "Proceed to Payment →";
 
     private string OnlinePaymentPanelTitle => _paymentMethod switch
     {
-        "GCash" => "GCash Payment",
-        "E-Wallet" => "E-Wallet Payment",
-        "Online Payment" => "Online Payment",
+        GCash => "GCash Payment",
+        Maya => "Maya Payment",
+        CreditCard => "Credit Card Payment",
         _ => "Payment Details"
     };
 
     private string OnlinePaymentPanelBody => _paymentMethod switch
     {
-        "GCash" => "Pay securely using GCash. You will continue to the secure payment process to complete your transaction.",
-        "E-Wallet" => "Pay securely using your preferred e-wallet. You will continue to the secure payment process to complete your transaction.",
-        "Online Payment" => "Secure payment processing. You will continue to a provider-hosted payment flow. Card details are never stored by NU Bulldogs Exchange.",
+        GCash => "Pay securely using GCash.",
+        Maya => "Pay securely using Maya.",
+        CreditCard => "Secure card payment.",
         _ => "Follow the payment instructions to complete your order."
     };
 
-    private string OnlinePaymentSecureNote =>
-        "No live payment gateway is connected yet. Continuing opens a development/test payment step only.";
+    private string OnlinePaymentSecureNote => _paymentMethod switch
+    {
+        CreditCard => "This payment method is currently running in development/test mode. Card numbers, CVV, and PINs are not collected or stored.",
+        _ => "This payment method is currently running in development/test mode. No live payment gateway is connected."
+    };
 
     private string OnlinePaymentContinueLabel => _paymentMethod switch
     {
-        "GCash" => "Continue with GCash",
-        "E-Wallet" => "Continue with E-Wallet",
-        "Online Payment" => "Continue to Secure Payment",
+        GCash => "Continue with GCash",
+        Maya => "Continue with Maya",
+        CreditCard => "Continue with Credit Card",
         _ => "Continue to Payment"
     };
 
@@ -893,6 +887,7 @@ else
             _promoMessage = $"Promo Code: {Cart.AppliedPromoCode}";
         }
 
+        try { await Settings.EnsureLoadedAsync(); } catch { /* use defaults */ }
         await LoadAuthenticatedCustomerAsync();
     }
 
@@ -943,9 +938,12 @@ else
         _checkoutPhase = CheckoutPhaseInformation;
         ResetPaymentAttempt();
 
-        // Reset invalid cash method when fulfillment changes.
-        if (!AvailablePaymentMethods.Contains(_paymentMethod, StringComparer.OrdinalIgnoreCase))
+        // Cash option is fulfillment-specific; swap or clear if it is no longer valid.
+        if (IsCashPaymentMethod ||
+            !AvailablePaymentMethods.Contains(_paymentMethod, StringComparer.OrdinalIgnoreCase))
+        {
             _paymentMethod = DefaultCashMethod;
+        }
 
         if (method == DeliveryMethod)
         {
@@ -974,13 +972,15 @@ else
 
     private void ResetPaymentAttempt()
     {
-        _paymentUiState = PaymentUiReady;
         _paymentOutcome = null;
         _paymentProcessing = false;
     }
 
     private async Task OnCheckoutActionAsync()
     {
+        if (TryResumePlacedOrder())
+            return;
+
         if (!ValidateCheckout())
         {
             _error = "Please complete the required fields before continuing.";
@@ -999,36 +999,29 @@ else
         _checkoutPhase = CheckoutPhasePayment;
     }
 
-    private async Task BeginOnlinePaymentAsync()
+    private async Task CompleteOnlineTestPaymentAsync()
     {
+        if (TryResumePlacedOrder())
+            return;
+
         if (_paymentProcessing || _submitting || _checkoutPhase != CheckoutPhasePayment)
             return;
 
-        _paymentProcessing = true;
-        _paymentOutcome = null;
-        _error = null;
-        try
+        if (!ValidateCheckout())
         {
-            // Brief UX delay; there is no live gateway to redirect to.
-            await Task.Delay(450);
-            _paymentUiState = PaymentUiTestGateway;
-        }
-        finally
-        {
-            _paymentProcessing = false;
-        }
-    }
-
-    private async Task SimulatePaymentSuccessAsync()
-    {
-        if (_paymentProcessing || _submitting)
+            _checkoutPhase = CheckoutPhaseInformation;
+            ResetPaymentAttempt();
+            _error = "Please complete the required fields before continuing.";
             return;
+        }
 
         _paymentProcessing = true;
         _paymentOutcome = null;
         _error = null;
         try
         {
+            // Development/test only — no live GCash, Maya, or card gateway is connected.
+            // Existing convention: simulated online success is stored as Paid.
             await Task.Delay(350);
             await PlaceOrderAsync(markOnlinePaid: true);
         }
@@ -1036,26 +1029,6 @@ else
         {
             _paymentProcessing = false;
         }
-    }
-
-    private void SimulatePaymentFailure()
-    {
-        if (_paymentProcessing || _submitting)
-            return;
-
-        _paymentOutcome = PaymentOutcomeFailed;
-        _paymentUiState = PaymentUiReady;
-        _error = null;
-    }
-
-    private void SimulatePaymentCancelled()
-    {
-        if (_paymentProcessing || _submitting)
-            return;
-
-        _paymentOutcome = PaymentOutcomeCancelled;
-        _paymentUiState = PaymentUiReady;
-        _error = null;
     }
 
     private void SetAddressMode(bool useNew)
@@ -1232,8 +1205,22 @@ else
         return _errors.Count == 0;
     }
 
+    private bool TryResumePlacedOrder()
+    {
+        if (_confirmedOrder is null || string.IsNullOrWhiteSpace(_placedOrderId))
+            return false;
+
+        ResetPaymentAttempt();
+        _error = null;
+        _checkoutPhase = CheckoutPhaseConfirmation;
+        return true;
+    }
+
     private async Task PlaceOrderAsync(bool markOnlinePaid)
     {
+        if (TryResumePlacedOrder())
+            return;
+
         if (_submitting || Auth.CurrentUser is null || !Cart.Items.Any())
             return;
 
@@ -1300,6 +1287,7 @@ else
             };
 
             // Does NOT overwrite public.users.phone_number — order contact only.
+            // Admin notification is created by a SECURITY DEFINER trigger on public.orders.
             order = await AdminOrders.AddAsync(order, promoCode, 0);
 
             if (order.Total != expectedTotal)
@@ -1309,8 +1297,16 @@ else
                     order.Total = expectedTotal;
             }
 
-            Orders.PlaceOrder(order);
-            Catalog.ApplyPurchase(order.Items);
+            _placedOrderId = order.Id;
+            _confirmedOrder = order;
+            ResetPaymentAttempt();
+            _checkoutPhase = CheckoutPhaseConfirmation;
+
+            try { Orders.PlaceOrder(order); }
+            catch (Exception ex) { Console.Error.WriteLine(ex); }
+
+            try { Catalog.ApplyPurchase(order.Items); }
+            catch (Exception ex) { Console.Error.WriteLine(ex); }
 
             if (isDelivery && _saveAddress && (_useNewAddress || _savedAddresses.Count == 0) && user.Id != Guid.Empty)
             {
@@ -1336,43 +1332,42 @@ else
                 }
             }
 
-            await Notifications.AddAsync(new MockNotification
+            try
             {
-                Title = "Order Confirmed",
-                Message = $"Your order #{order.Id} has been placed and is being processed.",
-                TimeAgo = "Just now",
-                Icon = "check-circle",
-                Tone = "green",
-                IsRead = false
-            });
-
-            await AdminNotifications.AddAsync(new AdminNotificationItem
+                await Notifications.AddAsync(new MockNotification
+                {
+                    Title = "Order Confirmed",
+                    Message = $"Your order #{order.Id} has been placed and is being processed.",
+                    TimeAgo = "Just now",
+                    Icon = "check-circle",
+                    Tone = "green",
+                    IsRead = false
+                });
+            }
+            catch (Exception ex)
             {
-                Type = "order",
-                Title = "New Order Received",
-                Message = $"Order #{order.Id} placed by {order.CustomerName} — ₱{order.Total:N0}.",
-                RelatedId = order.Id,
-                RelatedLabel = order.Id,
-                RelatedHref = $"/admin/orders/{order.Id}",
-                Timestamp = DateTime.Now,
-                Read = false
-            });
+                Console.Error.WriteLine(ex);
+            }
 
             Toast.Show($"Order {order.Id} placed.");
-            _confirmedOrder = order;
             Cart.Clear();
-            await Cart.PersistAsync(user.Email);
-            ResetPaymentAttempt();
-            _checkoutPhase = CheckoutPhaseConfirmation;
+            try { await Cart.PersistAsync(user.Email); }
+            catch (Exception ex) { Console.Error.WriteLine(ex); }
         }
         catch (InvalidOperationException ex)
         {
+            if (TryResumePlacedOrder())
+                return;
+
             _error = ex.Message;
             if (_checkoutPhase == CheckoutPhasePayment)
                 _paymentOutcome = PaymentOutcomeFailed;
         }
         catch (Exception ex)
         {
+            if (TryResumePlacedOrder())
+                return;
+
             _error = "Unable to place order. Please try again.";
             Console.Error.WriteLine(ex);
             if (_checkoutPhase == CheckoutPhasePayment)

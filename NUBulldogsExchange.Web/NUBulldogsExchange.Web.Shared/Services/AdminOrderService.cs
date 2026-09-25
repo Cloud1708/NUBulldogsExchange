@@ -4,17 +4,14 @@ namespace NUBulldogsExchange.Web.Shared.Services;
 
 public class AdminOrderService
 {
-    public static readonly string[] StatusTabs =
+    public static readonly string[] FulfillmentTabs =
     [
-        "All Orders",
-        "Pending",
-        "Confirmed",
-        "Preparing",
-        "Processing",
-        "Ready for Pickup",
-        "Completed",
-        "Cancelled"
+        "All",
+        OrderFlow.CampusPickup,
+        OrderFlow.Delivery
     ];
+
+    public static readonly string[] StatusFilters = OrderFlow.AdminStatusFilters;
 
     public static readonly string[] PaymentFilters =
     [
@@ -25,11 +22,13 @@ public class AdminOrderService
         "Refunded"
     ];
 
+    public static readonly string[] PaymentMethodFilters = OrderFlow.PaymentMethodFilters;
+
     public static readonly string[] FulfillmentFilters =
     [
         "All Fulfillment",
-        "Campus Pickup",
-        "Delivery"
+        OrderFlow.CampusPickup,
+        OrderFlow.Delivery
     ];
 
     private readonly IAppDatabase _db;
@@ -85,25 +84,31 @@ public class AdminOrderService
         }
     }
 
-    public int CountByStatus(string status)
+    public int CountByFulfillment(string fulfillment)
     {
-        if (string.IsNullOrWhiteSpace(status) || status == "All Orders")
+        if (string.IsNullOrWhiteSpace(fulfillment) || fulfillment.Equals("All", StringComparison.OrdinalIgnoreCase))
             return _orders.Count;
 
-        return _orders.Count(o => o.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
+        return _orders.Count(o => o.Fulfillment.Equals(fulfillment, StringComparison.OrdinalIgnoreCase));
     }
 
     public AdminOrder? GetById(string id) =>
         _orders.FirstOrDefault(o => o.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
-    public IEnumerable<AdminOrder> Filter(string statusTab, string? search, string payment, string fulfillment)
+    public IEnumerable<AdminOrder> Filter(
+        string fulfillmentTab,
+        string? search,
+        string payment,
+        string paymentMethod,
+        string status)
     {
         IEnumerable<AdminOrder> query = _orders.OrderByDescending(o => o.Date).ThenByDescending(o => o.Id);
 
-        if (!string.IsNullOrWhiteSpace(statusTab) &&
-            !statusTab.Equals("All Orders", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(fulfillmentTab) &&
+            !fulfillmentTab.Equals("All", StringComparison.OrdinalIgnoreCase) &&
+            !fulfillmentTab.Equals("All Fulfillment", StringComparison.OrdinalIgnoreCase))
         {
-            query = query.Where(o => o.Status.Equals(statusTab, StringComparison.OrdinalIgnoreCase));
+            query = query.Where(o => o.Fulfillment.Equals(fulfillmentTab, StringComparison.OrdinalIgnoreCase));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -121,21 +126,51 @@ public class AdminOrderService
             query = query.Where(o => o.PaymentStatus.Equals(payment, StringComparison.OrdinalIgnoreCase));
         }
 
-        if (!string.IsNullOrWhiteSpace(fulfillment) &&
-            !fulfillment.Equals("All Fulfillment", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(paymentMethod) &&
+            !paymentMethod.Equals("All Methods", StringComparison.OrdinalIgnoreCase))
         {
-            query = query.Where(o => o.Fulfillment.Equals(fulfillment, StringComparison.OrdinalIgnoreCase));
+            query = query.Where(o => o.PaymentMethod.Equals(paymentMethod, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(status) &&
+            !status.Equals("All Statuses", StringComparison.OrdinalIgnoreCase) &&
+            !status.Equals("All Orders", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(o => o.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
         }
 
         return query;
     }
 
+    public IEnumerable<string> StatusOptionsFor(AdminOrder order) =>
+        OrderFlow.AdminStatusOptions(order.Fulfillment, order.Status);
+
     public async Task<bool> UpdateStatusAsync(string id, string status)
     {
         var order = GetById(id);
         if (order is null) return false;
+
+        var allowed = OrderFlow.AdminStatusOptions(order.Fulfillment, order.Status);
+        if (!allowed.Any(s => s.Equals(status, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        var oldStatus = order.Status;
+        if (oldStatus.Equals(status, StringComparison.OrdinalIgnoreCase))
+            return true;
+
         order.Status = status;
         await _db.UpsertOrderAsync(order);
+
+        try
+        {
+            await _db.AppendOrderStatusHistoryAsync(order.Id, oldStatus, status, null, null);
+        }
+        catch
+        {
+            // History is best-effort; status change still stands.
+        }
+
+        await TryNotifyCustomerAsync(order, status);
         OnChange?.Invoke();
         return true;
     }
@@ -155,5 +190,34 @@ public class AdminOrderService
         _orders.Add(saved);
         OnChange?.Invoke();
         return saved;
+    }
+
+    private async Task TryNotifyCustomerAsync(AdminOrder order, string newStatus)
+    {
+        var title = OrderFlow.CustomerNotificationTitle(order.Fulfillment, newStatus);
+        var message = OrderFlow.CustomerNotificationMessage(order.Id, order.Fulfillment, newStatus);
+        if (title is null || message is null)
+            return;
+
+        try
+        {
+            await _db.AddCustomerNotificationAsync(
+                order.CustomerEmail,
+                order.AuthUserId ?? order.CustomerId,
+                new MockNotification
+                {
+                    Id = Guid.NewGuid().ToString("N"),
+                    Title = title,
+                    Message = message,
+                    TimeAgo = "Just now",
+                    Icon = "package",
+                    Tone = "blue",
+                    IsRead = false
+                });
+        }
+        catch
+        {
+            // Existing notification system is best-effort.
+        }
     }
 }

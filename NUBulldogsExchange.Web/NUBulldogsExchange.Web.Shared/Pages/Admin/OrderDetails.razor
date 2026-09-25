@@ -31,48 +31,98 @@
 
         <div class="admin-order-details-grid">
             <section class="admin-card admin-order-summary">
-                <h2>Summary</h2>
+                <h2>Customer Information</h2>
                 <dl>
                     <div><dt>Customer</dt><dd><strong>@Order.CustomerName</strong><span>@Order.CustomerEmail</span></dd></div>
+                    <div><dt>Contact</dt><dd>@(string.IsNullOrWhiteSpace(Order.CustomerPhone) ? "—" : Order.CustomerPhone)</dd></div>
                     <div><dt>Date</dt><dd>@Order.DateLabel</dd></div>
-                    <div><dt>Total</dt><dd><strong>₱@Order.Total.ToString("N0")</strong></dd></div>
-                    <div><dt>Payment</dt><dd><span class="admin-payment-badge payment-@Order.PaymentKey">@Order.PaymentStatus</span></dd></div>
-                    <div><dt>Fulfillment</dt><dd>@Order.Fulfillment</dd></div>
-                    <div><dt>Status</dt><dd><span class="order-status status-@Order.StatusKey">@Order.Status</span></dd></div>
+                </dl>
+
+                <h2>Fulfillment</h2>
+                @if (Order.IsDelivery)
+                {
+                    <dl>
+                        <div><dt>Method</dt><dd>Delivery</dd></div>
+                        <div><dt>Recipient</dt><dd>@Order.RecipientName</dd></div>
+                        <div><dt>Phone</dt><dd>@(string.IsNullOrWhiteSpace(Order.RecipientPhone) ? "—" : Order.RecipientPhone)</dd></div>
+                        <div>
+                            <dt>Shipping Address</dt>
+                            <dd>
+                                @if (!string.IsNullOrWhiteSpace(Order.ShippingAddressLine))
+                                {
+                                    <span>@Order.ShippingAddressLine</span>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(Order.ShippingBarangay))
+                                {
+                                    <span>@Order.ShippingBarangay</span>
+                                }
+                                <span>
+                                    @Order.ShippingCity
+                                    @Order.ShippingProvince
+                                    @Order.ShippingPostalCode
+                                </span>
+                            </dd>
+                        </div>
+                    </dl>
+                }
+                else
+                {
+                    <dl>
+                        <div><dt>Method</dt><dd>Campus Pickup</dd></div>
+                        <div><dt>Pickup Location</dt><dd>@OrderFlow.PickupLocation</dd></div>
+                    </dl>
+                }
+
+                <h2>Payment</h2>
+                <dl>
+                    <div><dt>Payment Method</dt><dd>@(string.IsNullOrWhiteSpace(Order.PaymentMethod) ? "—" : Order.PaymentMethod)</dd></div>
+                    <div><dt>Payment Status</dt><dd><span class="admin-payment-badge payment-@Order.PaymentKey">@Order.PaymentStatus</span></dd></div>
                 </dl>
 
                 <label class="admin-field">
-                    <span>Update status (frontend demo)</span>
+                    <span>Order Status</span>
                     <select value="@Order.Status" @onchange="OnStatusChange">
-                        <option>Pending</option>
-                        <option>Confirmed</option>
-                        <option>Processing</option>
-                        <option>Ready for Pickup</option>
-                        <option>Completed</option>
-                        <option>Cancelled</option>
+                        @foreach (var status in OrderService.StatusOptionsFor(Order))
+                        {
+                            <option value="@status">@status</option>
+                        }
                     </select>
                 </label>
             </section>
 
-            <section class="admin-card admin-order-items">
-                <h2>Products</h2>
-                <div class="admin-order-item-list">
-                    @foreach (var item in Order.Items)
-                    {
-                        <article class="admin-order-item-row">
-                            <img src="@item.ImageUrl"
-                                 alt="@item.Name"
-                                 loading="lazy"
-                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                            <div>
-                                <strong>@item.Name</strong>
-                                <span>Qty @item.Quantity · ₱@item.Price.ToString("N0")</span>
-                            </div>
-                            <strong>₱@((item.Price * item.Quantity).ToString("N0"))</strong>
-                        </article>
-                    }
-                </div>
-            </section>
+            <div class="admin-order-details-stack">
+                <section class="admin-card admin-order-items">
+                    <h2>Order Items</h2>
+                    <div class="admin-order-item-list">
+                        @foreach (var item in Order.Items)
+                        {
+                            <article class="admin-order-item-row">
+                                <img src="@item.ImageUrl"
+                                     alt="@item.Name"
+                                     loading="lazy"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div>
+                                    <strong>@item.Name</strong>
+                                    <span>
+                                        @(string.IsNullOrWhiteSpace(item.Size) ? "Free Size" : item.Size)
+                                        · Qty @item.Quantity · ₱@item.Price.ToString("N0")
+                                    </span>
+                                </div>
+                                <strong>₱@((item.Price * item.Quantity).ToString("N0"))</strong>
+                            </article>
+                        }
+                    </div>
+                </section>
+
+                <section class="admin-card admin-order-items">
+                    <h2>Order Summary</h2>
+                    <dl class="admin-order-totals">
+                        <div><dt>Subtotal</dt><dd>₱@((Order.Subtotal > 0 ? Order.Subtotal : Order.Total).ToString("N0"))</dd></div>
+                        <div><dt>@(Order.IsDelivery ? "Delivery Fee" : "Fulfillment")</dt><dd>@(Order.ShippingFee > 0 ? $"₱{Order.ShippingFee:N0}" : "FREE")</dd></div>
+                        <div class="is-total"><dt>Total</dt><dd>₱@Order.Total.ToString("N0")</dd></div>
+                    </dl>
+                </section>
+            </div>
         </div>
     }
 </div>

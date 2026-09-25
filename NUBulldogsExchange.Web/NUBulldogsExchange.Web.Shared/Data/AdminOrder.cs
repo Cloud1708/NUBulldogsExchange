@@ -30,6 +30,7 @@ public class AdminOrder
     public string PaymentMethod { get; set; } = string.Empty;
     public string Fulfillment { get; set; } = "Campus Pickup";
     public string Status { get; set; } = "Pending";
+    public string? AuthUserId { get; set; }
     public string? OrderNotes { get; set; }
     public string? ShippingRecipientName { get; set; }
     public string? ShippingPhone { get; set; }
@@ -44,16 +45,14 @@ public class AdminOrder
     public int ItemCount => Items.Sum(i => i.Quantity);
     public string ItemCountLabel => ItemCount == 1 ? "1 item" : $"{ItemCount} items";
 
-    public string StatusKey => Status switch
-    {
-        "Ready for Pickup" => "ready",
-        "Processing" => "processing",
-        "Pending" => "pending",
-        "Completed" => "completed",
-        "Cancelled" => "cancelled",
-        "Confirmed" => "confirmed",
-        _ => "pending"
-    };
+    public bool IsDelivery => OrderFlow.IsDelivery(Fulfillment);
+    public string ShippingAddressLabel => OrderFlow.FormatShippingAddress(this);
+    public string RecipientName =>
+        string.IsNullOrWhiteSpace(ShippingRecipientName) ? CustomerName : ShippingRecipientName;
+    public string RecipientPhone =>
+        string.IsNullOrWhiteSpace(ShippingPhone) ? CustomerPhone : ShippingPhone;
+
+    public string StatusKey => OrderFlow.OperationalStatusKey(Status);
 
     public string PaymentKey => PaymentStatus switch
     {

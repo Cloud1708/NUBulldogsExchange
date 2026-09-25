@@ -98,6 +98,17 @@ public sealed class HttpAppDatabase : IAppDatabase
     public async Task<List<AdminOrder>> GetOrdersAsync() =>
         await _http.GetFromJsonAsync<List<AdminOrder>>("api/orders") ?? [];
 
+    public async Task<List<AdminOrder>> GetCustomerOrdersAsync(string? email = null)
+    {
+        var orders = await GetOrdersAsync();
+        if (string.IsNullOrWhiteSpace(email))
+            return orders;
+
+        return orders
+            .Where(o => o.CustomerEmail.Equals(email.Trim(), StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
     public async Task<AdminOrder?> GetOrderByIdAsync(string id) =>
         await _http.GetFromJsonAsync<AdminOrder>($"api/orders/{id}");
 
@@ -329,6 +340,16 @@ public sealed class HttpAppDatabase : IAppDatabase
         var url = string.IsNullOrWhiteSpace(email) ? "api/notifications" : $"api/notifications?email={Uri.EscapeDataString(email)}";
         var response = await _http.PutAsJsonAsync(url, items.ToList());
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task AddCustomerNotificationAsync(string email, string? authUserId, MockNotification notification)
+    {
+        _ = authUserId;
+        var items = await GetCustomerNotificationsAsync(email);
+        if (string.IsNullOrWhiteSpace(notification.Id))
+            notification.Id = Guid.NewGuid().ToString("N");
+        items.Insert(0, notification);
+        await SaveCustomerNotificationsAsync(items, email);
     }
 
     public async Task<List<AdminNotificationItem>> GetAdminNotificationsAsync() =>

@@ -50,7 +50,7 @@
                 <form class="auth-form" @onsubmit="HandleRegister" @onsubmit:preventDefault="true">
                     <div class="auth-field-row">
                         <div class="auth-field">
-                            <label for="reg-first">First Name</label>
+                            <label for="reg-first">First Name <span class="auth-required" aria-hidden="true">*</span></label>
                             <div class="auth-input-wrap @(_firstError is not null ? "has-error" : "")">
                                 <Icon Name="user" Size="18" CssClass="auth-input-icon" />
                                 <input id="reg-first"
@@ -67,7 +67,7 @@
                             }
                         </div>
                         <div class="auth-field">
-                            <label for="reg-last">Last Name</label>
+                            <label for="reg-last">Last Name <span class="auth-required" aria-hidden="true">*</span></label>
                             <div class="auth-input-wrap @(_lastError is not null ? "has-error" : "")">
                                 <Icon Name="user" Size="18" CssClass="auth-input-icon" />
                                 <input id="reg-last"
@@ -86,7 +86,7 @@
                     </div>
 
                     <div class="auth-field">
-                        <label for="reg-email">Email Address</label>
+                        <label for="reg-email">Email Address <span class="auth-required" aria-hidden="true">*</span></label>
                         <div class="auth-input-wrap @(_emailError is not null ? "has-error" : "")">
                             <Icon Name="mail" Size="18" CssClass="auth-input-icon" />
                             <input id="reg-email"
@@ -104,7 +104,7 @@
                     </div>
 
                     <div class="auth-field">
-                        <label for="reg-phone">Phone Number <span class="auth-optional">(optional)</span></label>
+                        <label for="reg-phone">Phone Number <span class="auth-required" aria-hidden="true">*</span></label>
                         <div class="auth-input-wrap @(_phoneError is not null ? "has-error" : "")">
                             <Icon Name="phone" Size="18" CssClass="auth-input-icon" />
                             <input id="reg-phone"
@@ -122,7 +122,7 @@
                     </div>
 
                     <div class="auth-field">
-                        <label for="reg-password">Password</label>
+                        <label for="reg-password">Password <span class="auth-required" aria-hidden="true">*</span></label>
                         <div class="auth-input-wrap @(_passwordError is not null ? "has-error" : "")">
                             <Icon Name="lock" Size="18" CssClass="auth-input-icon" />
                             <input id="reg-password"
@@ -147,7 +147,7 @@
                     </div>
 
                     <div class="auth-field">
-                        <label for="reg-confirm">Confirm Password</label>
+                        <label for="reg-confirm">Confirm Password <span class="auth-required" aria-hidden="true">*</span></label>
                         <div class="auth-input-wrap @(_confirmError is not null ? "has-error" : "")">
                             <Icon Name="lock" Size="18" CssClass="auth-input-icon" />
                             <input id="reg-confirm"
@@ -170,6 +170,21 @@
                             <span class="auth-field-error">@_confirmError</span>
                         }
                     </div>
+
+                    <label class="auth-consent @(_consentError is not null ? "has-error" : null)">
+                        <input type="checkbox"
+                               checked="@_agreePrivacy"
+                               disabled="@_isLoading"
+                               @onchange="OnConsentChanged" />
+                        <span>
+                            I agree to the <a href="#" @onclick:preventDefault="true">Data Privacy Policy</a>
+                            and to the collection and processing of my personal information.
+                        </span>
+                    </label>
+                    @if (_consentError is not null)
+                    {
+                        <span class="auth-field-error">@_consentError</span>
+                    }
 
                     @if (_formError is not null)
                     {
@@ -199,6 +214,7 @@
     private string _confirm = string.Empty;
     private bool _showPassword;
     private bool _showConfirm;
+    private bool _agreePrivacy;
     private bool _isLoading;
     private string? _firstError;
     private string? _lastError;
@@ -206,6 +222,7 @@
     private string? _phoneError;
     private string? _passwordError;
     private string? _confirmError;
+    private string? _consentError;
     private string? _formError;
 
     protected override void OnInitialized() => Auth.OnChange += Refresh;
@@ -216,11 +233,17 @@
         clearError();
     }
 
+    private void OnConsentChanged(ChangeEventArgs e)
+    {
+        _agreePrivacy = e.Value is bool b && b;
+        _consentError = null;
+    }
+
     private async Task HandleRegister()
     {
         if (_isLoading) return;
 
-        _firstError = _lastError = _emailError = _phoneError = _passwordError = _confirmError = _formError = null;
+        _firstError = _lastError = _emailError = _phoneError = _passwordError = _confirmError = _consentError = _formError = null;
         var hasError = false;
 
         if (string.IsNullOrWhiteSpace(_firstName))
@@ -247,7 +270,12 @@
             hasError = true;
         }
 
-        if (!AuthValidation.IsValidPhone(_phone))
+        if (string.IsNullOrWhiteSpace(_phone))
+        {
+            _phoneError = "Phone number is required.";
+            hasError = true;
+        }
+        else if (!AuthValidation.IsValidPhone(_phone))
         {
             _phoneError = "Please enter a valid phone number.";
             hasError = true;
@@ -272,6 +300,12 @@
         else if (_password != _confirm)
         {
             _confirmError = "Password and confirm password must match.";
+            hasError = true;
+        }
+
+        if (!_agreePrivacy)
+        {
+            _consentError = "Please agree to the Data Privacy Policy to create an account.";
             hasError = true;
         }
 

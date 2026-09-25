@@ -1,0 +1,302 @@
+namespace NUBulldogsExchange.Web.Shared.Data;
+
+/// <summary>
+/// Shared mapping between operational order fields and customer-facing labels.
+/// Does not rename stored Admin statuses.
+/// </summary>
+public static class OrderFlow
+{
+    public const string CampusPickup = "Campus Pickup";
+    public const string Delivery = "Delivery";
+    public const string PickupLocation = "NU Lipa Campus";
+
+    public const string ToPay = "To Pay";
+    public const string ToProcess = "To Process";
+    public const string ReadyForPickup = "Ready for Pickup";
+    public const string ToReceive = "To Receive";
+    public const string Completed = "Completed";
+    public const string Cancelled = "Cancelled";
+
+    public static readonly string[] CustomerTabs =
+    [
+        "All",
+        ToPay,
+        ToProcess,
+        ReadyForPickup,
+        ToReceive,
+        Completed,
+        Cancelled
+    ];
+
+    public static readonly string[] PickupAdminStatuses =
+    [
+        "Pending",
+        "Processing",
+        ReadyForPickup,
+        Completed,
+        Cancelled
+    ];
+
+    public static readonly string[] DeliveryAdminStatuses =
+    [
+        "Pending",
+        "Processing",
+        "Out for Delivery",
+        "Delivered",
+        Cancelled
+    ];
+
+    public static readonly string[] AdminStatusFilters =
+    [
+        "All Statuses",
+        "Pending",
+        "Processing",
+        ReadyForPickup,
+        "Out for Delivery",
+        "Delivered",
+        Completed,
+        Cancelled
+    ];
+
+    public static readonly string[] PaymentMethodFilters =
+    [
+        "All Methods",
+        "Cash on Pickup",
+        "Cash on Delivery",
+        "GCash",
+        "Maya",
+        "Credit Card"
+    ];
+
+    public static bool IsCampusPickup(string? fulfillment) =>
+        string.IsNullOrWhiteSpace(fulfillment) ||
+        fulfillment.Equals(CampusPickup, StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsDelivery(string? fulfillment) =>
+        fulfillment?.Equals(Delivery, StringComparison.OrdinalIgnoreCase) == true;
+
+    public static bool IsOnlinePaymentMethod(string? method)
+    {
+        if (string.IsNullOrWhiteSpace(method))
+            return false;
+
+        return method.Equals("GCash", StringComparison.OrdinalIgnoreCase)
+            || method.Equals("Maya", StringComparison.OrdinalIgnoreCase)
+            || method.Equals("Credit Card", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static bool IsPaymentPending(string? paymentStatus) =>
+        string.Equals(paymentStatus, "Pending", StringComparison.OrdinalIgnoreCase);
+
+    public static string GetCustomerOrderCategory(
+        string? fulfillment,
+        string? status,
+        string? paymentStatus,
+        string? paymentMethod)
+    {
+        if (EqualsStatus(status, Cancelled))
+            return Cancelled;
+
+        if (IsOnlinePaymentMethod(paymentMethod) && IsPaymentPending(paymentStatus))
+            return ToPay;
+
+        if (IsDelivery(fulfillment))
+        {
+            if (EqualsStatus(status, "Out for Delivery") || EqualsStatus(status, "Shipped"))
+                return ToReceive;
+
+            if (EqualsStatus(status, "Delivered") || EqualsStatus(status, Completed))
+                return Completed;
+
+            return ToProcess;
+        }
+
+        if (EqualsStatus(status, ReadyForPickup))
+            return ReadyForPickup;
+
+        if (EqualsStatus(status, Completed))
+            return Completed;
+
+        return ToProcess;
+    }
+
+    public static string GetCustomerOrderCategory(AdminOrder order) =>
+        GetCustomerOrderCategory(order.Fulfillment, order.Status, order.PaymentStatus, order.PaymentMethod);
+
+    public static string GetCustomerOrderCategory(MockOrder order) =>
+        GetCustomerOrderCategory(order.Fulfillment, order.Status, order.PaymentStatus, order.PaymentMethod);
+
+    public static bool CanCustomerCancel(string? fulfillment, string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+            return false;
+
+        if (EqualsStatus(status, Cancelled)
+            || EqualsStatus(status, Completed)
+            || EqualsStatus(status, "Delivered")
+            || EqualsStatus(status, ReadyForPickup)
+            || EqualsStatus(status, "Out for Delivery")
+            || EqualsStatus(status, "Shipped"))
+            return false;
+
+        return EqualsStatus(status, "Pending")
+            || EqualsStatus(status, "Processing")
+            || EqualsStatus(status, "Confirmed")
+            || EqualsStatus(status, "Preparing");
+    }
+
+    public static bool CanCustomerCancel(MockOrder order) =>
+        CanCustomerCancel(order.Fulfillment, order.Status);
+
+    public static bool CanCustomerCancel(AdminOrder order) =>
+        CanCustomerCancel(order.Fulfillment, order.Status);
+
+    public static string[] AllowedAdminStatuses(string? fulfillment) =>
+        IsDelivery(fulfillment) ? DeliveryAdminStatuses : PickupAdminStatuses;
+
+    public static IEnumerable<string> AdminStatusOptions(string? fulfillment, string? currentStatus)
+    {
+        var allowed = AllowedAdminStatuses(fulfillment).ToList();
+        if (!string.IsNullOrWhiteSpace(currentStatus)
+            && !allowed.Any(s => s.Equals(currentStatus, StringComparison.OrdinalIgnoreCase)))
+        {
+            allowed.Insert(0, currentStatus);
+        }
+
+        return allowed;
+    }
+
+    public static string CustomerStatusKey(string? category) => category switch
+    {
+        ToPay => "to-pay",
+        ToProcess => "to-process",
+        ReadyForPickup => "ready",
+        ToReceive => "to-receive",
+        Completed => "completed",
+        Cancelled => "cancelled",
+        _ => "pending"
+    };
+
+    public static string OperationalStatusKey(string? status) => status switch
+    {
+        ReadyForPickup => "ready",
+        "Out for Delivery" or "Shipped" => "out-for-delivery",
+        "Delivered" => "delivered",
+        "Processing" => "processing",
+        "Pending" => "pending",
+        Completed => "completed",
+        Cancelled => "cancelled",
+        "Confirmed" => "confirmed",
+        "Preparing" => "processing",
+        _ => "pending"
+    };
+
+    public static string[] TimelineSteps(string? fulfillment) =>
+        IsDelivery(fulfillment)
+            ? ["Order Placed", "Processing", "Out for Delivery", "Delivered"]
+            : ["Order Placed", "Processing", "Ready for Pickup", "Completed"];
+
+    /// <summary>0 = placed only, 1 = processing, 2 = ready/out, 3 = done, -1 = cancelled.</summary>
+    public static int TimelineProgress(string? fulfillment, string? status)
+    {
+        if (EqualsStatus(status, Cancelled))
+            return -1;
+
+        if (IsDelivery(fulfillment))
+        {
+            if (EqualsStatus(status, "Delivered") || EqualsStatus(status, Completed))
+                return 3;
+            if (EqualsStatus(status, "Out for Delivery") || EqualsStatus(status, "Shipped"))
+                return 2;
+            if (EqualsStatus(status, "Processing")
+                || EqualsStatus(status, "Confirmed")
+                || EqualsStatus(status, "Preparing"))
+                return 1;
+            return 0;
+        }
+
+        if (EqualsStatus(status, Completed))
+            return 3;
+        if (EqualsStatus(status, ReadyForPickup))
+            return 2;
+        if (EqualsStatus(status, "Processing")
+            || EqualsStatus(status, "Confirmed")
+            || EqualsStatus(status, "Preparing"))
+            return 1;
+        return 0;
+    }
+
+    public static string? CustomerNotificationTitle(string? fulfillment, string newStatus)
+    {
+        if (IsDelivery(fulfillment))
+        {
+            if (EqualsStatus(newStatus, "Out for Delivery") || EqualsStatus(newStatus, "Shipped"))
+                return "Out for Delivery";
+            if (EqualsStatus(newStatus, "Delivered"))
+                return "Order Delivered";
+            return null;
+        }
+
+        if (EqualsStatus(newStatus, ReadyForPickup))
+            return "Ready for Pickup";
+        if (EqualsStatus(newStatus, Completed))
+            return "Pickup Completed";
+        return null;
+    }
+
+    public static string? CustomerNotificationMessage(string orderId, string? fulfillment, string newStatus)
+    {
+        if (IsDelivery(fulfillment))
+        {
+            if (EqualsStatus(newStatus, "Out for Delivery") || EqualsStatus(newStatus, "Shipped"))
+                return $"Your order {orderId} is out for delivery.";
+            if (EqualsStatus(newStatus, "Delivered"))
+                return $"Your order {orderId} has been delivered.";
+            return null;
+        }
+
+        if (EqualsStatus(newStatus, ReadyForPickup))
+            return $"Your order {orderId} is ready for pickup at {PickupLocation}.";
+        if (EqualsStatus(newStatus, Completed))
+            return $"Your pickup order {orderId} has been completed.";
+        return null;
+    }
+
+    public static string FormatShippingAddress(AdminOrder order) =>
+        FormatShippingAddress(
+            order.ShippingAddressLine,
+            order.ShippingBarangay,
+            order.ShippingCity,
+            order.ShippingProvince,
+            order.ShippingPostalCode);
+
+    public static string FormatShippingAddress(MockOrder order) =>
+        FormatShippingAddress(
+            order.ShippingAddressLine,
+            order.ShippingBarangay,
+            order.ShippingCity,
+            order.ShippingProvince,
+            order.ShippingPostalCode);
+
+    public static string FormatShippingShort(string? barangay, string? city, string? province)
+    {
+        var parts = new[] { barangay, city, province }.Where(v => !string.IsNullOrWhiteSpace(v));
+        return string.Join(", ", parts);
+    }
+
+    private static string FormatShippingAddress(
+        string? line,
+        string? barangay,
+        string? city,
+        string? province,
+        string? postal)
+    {
+        var cityLine = string.Join(" ", new[] { city, province, postal }.Where(v => !string.IsNullOrWhiteSpace(v)));
+        var parts = new[] { line, barangay, cityLine }.Where(v => !string.IsNullOrWhiteSpace(v));
+        return string.Join(", ", parts);
+    }
+
+    private static bool EqualsStatus(string? value, string expected) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Equals(expected, StringComparison.OrdinalIgnoreCase);
+}

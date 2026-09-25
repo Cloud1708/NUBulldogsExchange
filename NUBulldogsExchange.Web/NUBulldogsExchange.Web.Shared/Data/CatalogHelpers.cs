@@ -24,14 +24,5 @@ public static class MockData
 
     public static string FormatColorName(string color) => CatalogHelpers.FormatColorName(color);
 
-    public static string StatusKey(string status) => status switch
-    {
-        "Ready for Pickup" => "ready",
-        "Processing" => "processing",
-        "Pending" => "pending",
-        "Completed" => "completed",
-        "Cancelled" => "cancelled",
-        "Confirmed" => "confirmed",
-        _ => "pending"
-    };
+    public static string StatusKey(string status) => OrderFlow.OperationalStatusKey(status);
 }

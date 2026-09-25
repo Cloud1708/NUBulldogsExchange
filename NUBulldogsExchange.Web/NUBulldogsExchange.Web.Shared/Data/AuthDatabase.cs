@@ -28,6 +28,8 @@ public sealed partial class DatabaseService
             return Fail("Last name is required.");
         if (!AuthValidation.IsValidEmail(email))
             return Fail("Please enter a valid email address.");
+        if (string.IsNullOrWhiteSpace(phone))
+            return Fail("Phone number is required.");
         if (!AuthValidation.IsValidPhone(phone))
             return Fail("Please enter a valid phone number.");
         if (string.IsNullOrWhiteSpace(password))

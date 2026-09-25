@@ -665,6 +665,18 @@ public sealed partial class DatabaseService : IAppDatabase
         return orders;
     }
 
+    public async Task<List<AdminOrder>> GetCustomerOrdersAsync(string? email = null)
+    {
+        var orders = await GetOrdersAsync();
+        if (string.IsNullOrWhiteSpace(email))
+            return orders;
+
+        var emailKey = email.Trim();
+        return orders
+            .Where(o => o.CustomerEmail.Equals(emailKey, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+    }
+
     public async Task<AdminOrder?> GetOrderByIdAsync(string id)
     {
         await EnsureReadyAsync();
@@ -1062,6 +1074,31 @@ public sealed partial class DatabaseService : IAppDatabase
         }
 
         await tx.CommitAsync();
+    }
+
+    public async Task AddCustomerNotificationAsync(string email, string? authUserId, MockNotification notification)
+    {
+        _ = authUserId;
+        await EnsureReadyAsync();
+        var emailKey = string.IsNullOrWhiteSpace(email) ? "" : email.Trim().ToLowerInvariant();
+        if (string.IsNullOrWhiteSpace(notification.Id))
+            notification.Id = Guid.NewGuid().ToString("N");
+
+        await using var connection = await OpenAsync();
+        await using var insert = connection.CreateCommand();
+        insert.CommandText = """
+            INSERT INTO Notifications (Id, Email, Title, Message, TimeAgo, Icon, Tone, IsRead)
+            VALUES ($id, $email, $title, $message, $timeAgo, $icon, $tone, $isRead);
+            """;
+        insert.Parameters.AddWithValue("$id", notification.Id);
+        insert.Parameters.AddWithValue("$email", emailKey);
+        insert.Parameters.AddWithValue("$title", notification.Title);
+        insert.Parameters.AddWithValue("$message", notification.Message);
+        insert.Parameters.AddWithValue("$timeAgo", notification.TimeAgo);
+        insert.Parameters.AddWithValue("$icon", notification.Icon);
+        insert.Parameters.AddWithValue("$tone", notification.Tone);
+        insert.Parameters.AddWithValue("$isRead", notification.IsRead ? 1 : 0);
+        await insert.ExecuteNonQueryAsync();
     }
 
     public async Task<List<AdminNotificationItem>> GetAdminNotificationsAsync()

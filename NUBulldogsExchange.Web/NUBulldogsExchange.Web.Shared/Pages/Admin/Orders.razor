@@ -17,19 +17,19 @@
         </div>
     </header>
 
-    <nav class="admin-order-tabs" aria-label="Order status">
-        @foreach (var tab in AdminOrderService.StatusTabs)
+    <nav class="admin-order-tabs" aria-label="Fulfillment">
+        @foreach (var tab in AdminOrderService.FulfillmentTabs)
         {
             <button type="button"
-                    class="admin-order-tab @(_statusTab == tab ? "active" : "")"
+                    class="admin-order-tab @(_fulfillmentTab == tab ? "active" : "")"
                     @onclick="() => SelectTab(tab)">
                 <span>@tab</span>
-                <strong>@OrderService.CountByStatus(tab)</strong>
+                <strong>@OrderService.CountByFulfillment(tab)</strong>
             </button>
         }
     </nav>
 
-    <section class="admin-orders-toolbar">
+    <section class="admin-orders-toolbar admin-orders-toolbar-wide">
         <div class="admin-products-search">
             <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
             <input type="search"
@@ -37,14 +37,20 @@
                    value="@_search"
                    @oninput="OnSearchInput" />
         </div>
+        <select class="admin-products-select" value="@_status" @onchange="OnStatusChange">
+            @foreach (var option in AdminOrderService.StatusFilters)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
         <select class="admin-products-select" value="@_payment" @onchange="OnPaymentChange">
             @foreach (var option in AdminOrderService.PaymentFilters)
             {
                 <option value="@option">@option</option>
             }
         </select>
-        <select class="admin-products-select" value="@_fulfillment" @onchange="OnFulfillmentChange">
-            @foreach (var option in AdminOrderService.FulfillmentFilters)
+        <select class="admin-products-select" value="@_paymentMethod" @onchange="OnPaymentMethodChange">
+            @foreach (var option in AdminOrderService.PaymentMethodFilters)
             {
                 <option value="@option">@option</option>
             }
@@ -69,14 +75,14 @@
                 <table class="admin-orders-table">
                     <thead>
                         <tr>
-                            <th>Order ID</th>
+                            <th>Order Number</th>
                             <th>Customer</th>
-                            <th>Date</th>
-                            <th>Products</th>
-                            <th>Total</th>
-                            <th>Payment</th>
                             <th>Fulfillment</th>
-                            <th>Status</th>
+                            <th>Payment</th>
+                            <th>Payment Status</th>
+                            <th>Total</th>
+                            <th>Order Status</th>
+                            <th>Date</th>
                             <th>Action</th>
                         </tr>
                     </thead>
@@ -93,29 +99,20 @@
                                         <span>@order.CustomerEmail</span>
                                     </div>
                                 </td>
-                                <td>@order.DateLabel</td>
                                 <td>
-                                    <div class="admin-order-products">
-                                        <div class="admin-order-thumbs" aria-hidden="true">
-                                            @foreach (var item in order.Items.SelectMany(i => Enumerable.Repeat(i, i.Quantity)).Take(3))
-                                            {
-                                                <img src="@item.ImageUrl"
-                                                     alt=""
-                                                     loading="lazy"
-                                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                                            }
-                                        </div>
-                                        <span>@order.ItemCountLabel</span>
-                                    </div>
+                                    <span class="admin-fulfillment-badge @(order.IsDelivery ? "is-delivery" : "is-pickup")">
+                                        @(order.IsDelivery ? "Delivery" : "Campus Pickup")
+                                    </span>
                                 </td>
-                                <td><strong class="admin-order-total">₱@order.Total.ToString("N0")</strong></td>
+                                <td>@(string.IsNullOrWhiteSpace(order.PaymentMethod) ? "—" : order.PaymentMethod)</td>
                                 <td>
                                     <span class="admin-payment-badge payment-@order.PaymentKey">@order.PaymentStatus</span>
                                 </td>
-                                <td>@order.Fulfillment</td>
+                                <td><strong class="admin-order-total">₱@order.Total.ToString("N0")</strong></td>
                                 <td>
                                     <span class="order-status status-@order.StatusKey">@order.Status</span>
                                 </td>
+                                <td>@order.DateLabel</td>
                                 <td>
                                     <a href="@($"/admin/orders/{order.Id}")" class="btn btn-navy admin-order-view-btn">
                                         <Icon Name="eye" Size="14" />
@@ -136,22 +133,20 @@
 </div>
 
 @code {
-    private string _statusTab = "All Orders";
+    private string _fulfillmentTab = "All";
     private string _search = string.Empty;
     private string _payment = "All Payments";
-    private string _fulfillment = "All Fulfillment";
+    private string _paymentMethod = "All Methods";
+    private string _status = "All Statuses";
 
     private List<AdminOrder> Filtered =>
-        OrderService.Filter(_statusTab, _search, _payment, _fulfillment).ToList();
+        OrderService.Filter(_fulfillmentTab, _search, _payment, _paymentMethod, _status).ToList();
 
     protected override void OnInitialized() => OrderService.OnChange += Refresh;
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
-    private void SelectTab(string tab)
-    {
-        _statusTab = tab;
-    }
+    private void SelectTab(string tab) => _fulfillmentTab = tab;
 
     private void OnSearchInput(ChangeEventArgs e) =>
         _search = e.Value?.ToString() ?? string.Empty;
@@ -159,15 +154,19 @@
     private void OnPaymentChange(ChangeEventArgs e) =>
         _payment = e.Value?.ToString() ?? "All Payments";
 
-    private void OnFulfillmentChange(ChangeEventArgs e) =>
-        _fulfillment = e.Value?.ToString() ?? "All Fulfillment";
+    private void OnPaymentMethodChange(ChangeEventArgs e) =>
+        _paymentMethod = e.Value?.ToString() ?? "All Methods";
+
+    private void OnStatusChange(ChangeEventArgs e) =>
+        _status = e.Value?.ToString() ?? "All Statuses";
 
     private void ClearFilters()
     {
-        _statusTab = "All Orders";
+        _fulfillmentTab = "All";
         _search = string.Empty;
         _payment = "All Payments";
-        _fulfillment = "All Fulfillment";
+        _paymentMethod = "All Methods";
+        _status = "All Statuses";
     }
 
     public void Dispose() => OrderService.OnChange -= Refresh;

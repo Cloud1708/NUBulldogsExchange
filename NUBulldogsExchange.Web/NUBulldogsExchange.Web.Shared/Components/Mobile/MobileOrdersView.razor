@@ -59,9 +59,22 @@
                     <div class="mobile-order-card-header">
                         <div class="mobile-order-header-left">
                             <strong class="mobile-order-id">#@order.Id</strong>
-                            <span class="mobile-order-date">@FormatDate(order.Date)</span>
+                            <span class="mobile-order-date">@FormatDate(order.Date) • @order.ItemCountLabel</span>
                         </div>
-                        <span class="mobile-status-pill status-@order.StatusKey">@order.Status</span>
+                        <span class="mobile-status-pill status-@order.CustomerStatusKey">@order.CustomerCategory</span>
+                    </div>
+
+                    <div class="mobile-order-fulfillment @(order.IsDelivery ? "is-delivery" : "is-pickup")">
+                        <strong>@(order.IsDelivery ? "🚚 Delivery" : "📍 Campus Pickup")</strong>
+                        <span>
+                            @(string.IsNullOrWhiteSpace(order.FulfillmentLocationLabel)
+                                ? (order.IsDelivery ? "Delivery address on file" : OrderFlow.PickupLocation)
+                                : order.FulfillmentLocationLabel)
+                        </span>
+                    </div>
+                    <div class="mobile-order-payment-meta">
+                        <span>Payment: @(string.IsNullOrWhiteSpace(order.PaymentMethod) ? "—" : order.PaymentMethod)</span>
+                        <span>Payment Status: @order.PaymentStatus</span>
                     </div>
 
                     <div class="mobile-order-items-list">
@@ -74,7 +87,13 @@
                                      onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                 <div class="mobile-order-item-info">
                                     <h4 class="mobile-order-item-title">@item.Name</h4>
-                                    <span class="mobile-order-item-meta">Size: @(string.IsNullOrEmpty(item.Size) ? "Free Size" : item.Size) · Qty: @item.Quantity</span>
+                                    <span class="mobile-order-item-meta">
+                                        @if (!string.IsNullOrEmpty(item.Size) && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
+                                        {
+                                            <text>Size: @item.Size · </text>
+                                        }
+                                        Qty: @item.Quantity
+                                    </span>
                                 </div>
                             </div>
                         }
@@ -87,7 +106,8 @@
                         </div>
 
                         <div class="mobile-order-actions-row">
-                            @if (order.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase))
+                            @if (order.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+                                || order.Status.Equals("Delivered", StringComparison.OrdinalIgnoreCase))
                             {
                                 <button type="button" class="mobile-order-action-btn btn-outline" @onclick="() => BuyAgain(order)">Buy Again</button>
                                 <button type="button" class="mobile-order-action-btn btn-gold" @onclick="() => OpenReview(order)">Review</button>
@@ -126,15 +146,29 @@
             </div>
 
             <div style="margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between;">
-                <span style="font-size: 13px; font-weight: 600; color: #475569;">Fulfillment Status</span>
-                <span class="mobile-status-pill status-@_selectedOrder.StatusKey">@_selectedOrder.Status</span>
+                <span style="font-size: 13px; font-weight: 600; color: #475569;">Order Status</span>
+                <span class="mobile-status-pill status-@_selectedOrder.CustomerStatusKey">@_selectedOrder.CustomerCategory</span>
             </div>
 
-            <div style="background: #F8FAFC; border-radius: 14px; padding: 12px; margin-bottom: 16px;">
-                <div style="font-size: 12px; font-weight: 700; color: #14366A; margin-bottom: 4px;">📍 Pickup Location</div>
-                <div style="font-size: 12px; color: #475569;">NU Bulldogs Exchange Counter</div>
-                <div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">Bring your student ID upon claim</div>
-            </div>
+            @if (_selectedOrder.IsDelivery)
+            {
+                <div style="background: #F8FAFC; border-radius: 14px; padding: 12px; margin-bottom: 16px;">
+                    <div style="font-size: 12px; font-weight: 700; color: #14366A; margin-bottom: 4px;">🚚 Delivery</div>
+                    <div style="font-size: 12px; color: #475569;">Recipient: @_selectedOrder.RecipientName</div>
+                    <div style="font-size: 12px; color: #475569;">Contact: @(string.IsNullOrWhiteSpace(_selectedOrder.RecipientPhone) ? "—" : _selectedOrder.RecipientPhone)</div>
+                    <div style="font-size: 12px; color: #475569; margin-top: 4px;">@_selectedOrder.ShippingAddressLabel</div>
+                    <div style="font-size: 11px; color: #94A3B8; margin-top: 6px;">Payment: @(string.IsNullOrWhiteSpace(_selectedOrder.PaymentMethod) ? "—" : _selectedOrder.PaymentMethod) · @_selectedOrder.PaymentStatus</div>
+                </div>
+            }
+            else
+            {
+                <div style="background: #F8FAFC; border-radius: 14px; padding: 12px; margin-bottom: 16px;">
+                    <div style="font-size: 12px; font-weight: 700; color: #14366A; margin-bottom: 4px;">📍 Campus Pickup</div>
+                    <div style="font-size: 12px; color: #475569;">@OrderFlow.PickupLocation</div>
+                    <div style="font-size: 11px; color: #94A3B8; margin-top: 2px;">Bring your student ID upon claim</div>
+                    <div style="font-size: 11px; color: #94A3B8; margin-top: 6px;">Payment: @(string.IsNullOrWhiteSpace(_selectedOrder.PaymentMethod) ? "—" : _selectedOrder.PaymentMethod) · @_selectedOrder.PaymentStatus</div>
+                </div>
+            }
 
             <div style="font-size: 13px; font-weight: 700; color: #14366A; margin-bottom: 10px;">Ordered Items</div>
             <div class="mobile-order-items-list" style="margin-bottom: 16px;">
@@ -189,7 +223,7 @@
             <div class="mobile-modal-header">
                 <div>
                     <h3 class="mobile-modal-title">Track Order #@_trackingOrder.Id</h3>
-                    <span class="mobile-order-date">Expected Pickup: Today / Next School Day</span>
+                    <span class="mobile-order-date">@(_trackingOrder.IsDelivery ? "Estimated delivery: 3–7 business days" : "Expected pickup: today / next school day")</span>
                 </div>
                 <button type="button" class="mobile-modal-close-btn" @onclick="CloseTracking" aria-label="Close">
                     <Icon Name="x" Size="18" />
@@ -197,43 +231,26 @@
             </div>
 
             <div style="margin: 20px 10px 24px 10px; display: flex; flex-direction: column; gap: 20px;">
-                <div style="display: flex; gap: 14px; align-items: flex-start;">
-                    <div style="width: 28px; height: 28px; border-radius: 50%; background: #10B981; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">✓</div>
-                    <div>
-                        <strong style="font-size: 13px; color: #14366A; display: block;">Order Placed & Confirmed</strong>
-                        <span style="font-size: 11px; color: #64748B;">@FormatDate(_trackingOrder.Date)</span>
+                @{
+                    var trackSteps = OrderFlow.TimelineSteps(_trackingOrder.Fulfillment);
+                    var trackProgress = OrderFlow.TimelineProgress(_trackingOrder.Fulfillment, _trackingOrder.Status);
+                }
+                @for (var i = 0; i < trackSteps.Length; i++)
+                {
+                    var done = trackProgress >= 0 && i <= trackProgress;
+                    <div style="display: flex; gap: 14px; align-items: flex-start;">
+                        <div style="width: 28px; height: 28px; border-radius: 50%; background: @(done ? "#10B981" : "#E2E8F0"); color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">
+                            @(done ? "✓" : (i + 1).ToString())
+                        </div>
+                        <div>
+                            <strong style="font-size: 13px; color: #14366A; display: block;">@trackSteps[i]</strong>
+                            @if (i == 0)
+                            {
+                                <span style="font-size: 11px; color: #64748B;">@FormatDate(_trackingOrder.Date)</span>
+                            }
+                        </div>
                     </div>
-                </div>
-
-                <div style="display: flex; gap: 14px; align-items: flex-start;">
-                    <div style="width: 28px; height: 28px; border-radius: 50%; background: @(_trackingOrder.StatusKey is "processing" or "ready" or "completed" ? "#10B981" : "#E2E8F0"); color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">
-                        @(_trackingOrder.StatusKey is "processing" or "ready" or "completed" ? "✓" : "2")
-                    </div>
-                    <div>
-                        <strong style="font-size: 13px; color: #14366A; display: block;">Preparing at Inventory Counter</strong>
-                        <span style="font-size: 11px; color: #64748B;">Items are being packaged with receipt</span>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 14px; align-items: flex-start;">
-                    <div style="width: 28px; height: 28px; border-radius: 50%; background: @(_trackingOrder.StatusKey is "ready" or "completed" ? "#10B981" : "#E2E8F0"); color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">
-                        @(_trackingOrder.StatusKey is "ready" or "completed" ? "✓" : "3")
-                    </div>
-                    <div>
-                        <strong style="font-size: 13px; color: #14366A; display: block;">Ready for Campus Pickup</strong>
-                        <span style="font-size: 11px; color: #64748B;">Available at NU Bulldogs Exchange Counter</span>
-                    </div>
-                </div>
-
-                <div style="display: flex; gap: 14px; align-items: flex-start;">
-                    <div style="width: 28px; height: 28px; border-radius: 50%; background: @(_trackingOrder.StatusKey == "completed" ? "#10B981" : "#E2E8F0"); color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800;">
-                        @(_trackingOrder.StatusKey == "completed" ? "✓" : "4")
-                    </div>
-                    <div>
-                        <strong style="font-size: 13px; color: #14366A; display: block;">Completed</strong>
-                        <span style="font-size: 11px; color: #64748B;">Claimed and verified</span>
-                    </div>
-                </div>
+                }
             </div>
 
             <button type="button" class="mobile-order-action-btn btn-navy" style="width: 100%; padding: 10px;" @onclick="CloseTracking">
@@ -285,16 +302,7 @@
 }
 
 @code {
-    private static readonly string[] Filters =
-    [
-        "All",
-        "Pending",
-        "Confirmed",
-        "Processing",
-        "Ready for Pickup",
-        "Completed",
-        "Cancelled"
-    ];
+    private static readonly string[] Filters = OrderFlow.CustomerTabs;
 
     private string _filter = "All";
     private MockOrder? _selectedOrder;

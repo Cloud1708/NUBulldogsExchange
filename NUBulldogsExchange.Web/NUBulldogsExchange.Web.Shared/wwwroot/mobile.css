@@ -462,6 +462,52 @@
     color: #EF4444;
 }
 
+.status-to-pay {
+    background: #FEF3C7;
+    color: #D97706;
+}
+
+.status-to-process {
+    background: #DBEAFE;
+    color: #2563EB;
+}
+
+.status-to-receive,
+.status-out-for-delivery {
+    background: #E0F2FE;
+    color: #0369A1;
+}
+
+.status-delivered {
+    background: #DCFCE7;
+    color: #16A34A;
+}
+
+.mobile-order-fulfillment,
+.mobile-order-payment-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin-bottom: 10px;
+}
+
+.mobile-order-fulfillment strong {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--nu-navy);
+}
+
+.mobile-order-fulfillment.is-delivery strong {
+    color: #047857;
+}
+
+.mobile-order-fulfillment span,
+.mobile-order-payment-meta span {
+    font-size: 11px;
+    color: #64748B;
+    font-weight: 600;
+}
+
 /* Items List in Order Card */
 .mobile-order-items-list {
     display: flex;
