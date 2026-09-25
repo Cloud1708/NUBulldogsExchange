@@ -802,6 +802,53 @@ public sealed partial class DatabaseService : IAppDatabase
         return order;
     }
 
+    public async Task UpdateOrderStatusAsync(string orderId, string status)
+    {
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Orders SET Status = $status WHERE Id = $id;";
+        command.Parameters.AddWithValue("$status", status);
+        command.Parameters.AddWithValue("$id", orderId);
+        var rows = await command.ExecuteNonQueryAsync();
+        if (rows <= 0)
+            throw new InvalidOperationException("Order status could not be saved.");
+    }
+
+    public async Task UpdateAdminOrderAsync(
+        string orderId,
+        string status,
+        string paymentStatus,
+        string? adminRemarks)
+    {
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Orders SET Status = $status, PaymentStatus = $paymentStatus WHERE Id = $id;";
+        command.Parameters.AddWithValue("$status", status);
+        command.Parameters.AddWithValue("$paymentStatus", paymentStatus);
+        command.Parameters.AddWithValue("$id", orderId);
+        var rows = await command.ExecuteNonQueryAsync();
+        if (rows <= 0)
+            throw new InvalidOperationException("Order could not be saved.");
+
+        if (string.IsNullOrWhiteSpace(adminRemarks))
+            return;
+
+        try
+        {
+            await using var remarks = connection.CreateCommand();
+            remarks.CommandText = "UPDATE Orders SET AdminRemarks = $remarks WHERE Id = $id;";
+            remarks.Parameters.AddWithValue("$remarks", adminRemarks.Trim());
+            remarks.Parameters.AddWithValue("$id", orderId);
+            await remarks.ExecuteNonQueryAsync();
+        }
+        catch
+        {
+            // Local SQLite schema may not have AdminRemarks.
+        }
+    }
+
     public async Task<bool> DeleteOrderAsync(string id)
     {
         await EnsureReadyAsync();
@@ -1737,6 +1784,42 @@ public sealed partial class DatabaseService : IAppDatabase
                 """),
             TotalOrders = await ScalarAsync("SELECT COUNT(*) FROM Orders;")
         };
+    }
+
+    public async Task<AdminOrder> PersistCheckoutPaymentAsync(
+        string orderId,
+        string paymentMethod,
+        string paymentStatus)
+    {
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = "UPDATE Orders SET PaymentStatus = $paymentStatus WHERE Id = $id;";
+        command.Parameters.AddWithValue("$paymentStatus",
+            string.Equals(paymentMethod, "Cash on Pickup", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(paymentMethod, "Cash on Delivery", StringComparison.OrdinalIgnoreCase)
+                ? "Pending"
+                : paymentStatus);
+        command.Parameters.AddWithValue("$id", orderId);
+        var rows = await command.ExecuteNonQueryAsync();
+        if (rows <= 0)
+            throw new InvalidOperationException("Payment details could not be saved.");
+
+        try
+        {
+            await using var methodCmd = connection.CreateCommand();
+            methodCmd.CommandText = "UPDATE Orders SET PaymentMethod = $method WHERE Id = $id;";
+            methodCmd.Parameters.AddWithValue("$method", paymentMethod);
+            methodCmd.Parameters.AddWithValue("$id", orderId);
+            await methodCmd.ExecuteNonQueryAsync();
+        }
+        catch
+        {
+            // Local SQLite schema may not have PaymentMethod.
+        }
+
+        return await GetOrderByIdAsync(orderId)
+            ?? throw new InvalidOperationException("Order not found after payment save.");
     }
 
     public async Task PlaceCheckoutOrderAsync(AdminOrder order, string? promoCode, decimal discountAmount, string userEmail)

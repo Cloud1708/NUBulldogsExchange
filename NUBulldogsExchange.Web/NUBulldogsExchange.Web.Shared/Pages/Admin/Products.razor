@@ -308,7 +308,7 @@
                                           StockTextChanged="OnStockTextChanged"
                                           StockError="@(_formErrors.GetValueOrDefault("stock"))"
                                           VariantsError="@(_formErrors.GetValueOrDefault("variants"))"
-                                          BaseSku="_formSku" />
+                                          BaseSku="@_formSku" />
 
                 @if (_isEditMode)
                 {
@@ -585,6 +585,9 @@
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
                 .ToList();
+
+            if (names.Count == 0)
+                names.AddRange(AdminProductService.Categories);
 
             if (!string.IsNullOrWhiteSpace(_formCategory) &&
                 !names.Any(n => n.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
@@ -1047,8 +1050,7 @@
 
         if (string.IsNullOrWhiteSpace(_formCategory))
             _formErrors["category"] = "Please select a category.";
-        else if (!FormCategoryNames.Any(c => c.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)) &&
-                 !CategoryService.All.Any(c => c.Name.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
+        else if (!IsKnownCategory(_formCategory))
             _formErrors["category"] = "Please select a valid category.";
 
         if (string.IsNullOrWhiteSpace(_formStatus))
@@ -1075,25 +1077,40 @@
         else if (stock < 0)
             _formErrors["stock"] = "Stock quantity cannot be negative.";
 
-        if (requireImages && _previewImages.Count == 0)
-            _formErrors["images"] = "Please add at least one product image.";
-
         return _formErrors.Count == 0;
+    }
+
+    private bool IsKnownCategory(string category) =>
+        FormCategoryNames.Any(c => c.Equals(category, StringComparison.OrdinalIgnoreCase))
+        || CategoryService.All.Any(c => c.Name.Equals(category, StringComparison.OrdinalIgnoreCase))
+        || AdminProductService.Categories.Any(c => c.Equals(category, StringComparison.OrdinalIgnoreCase));
+
+    private void EnsureSku()
+    {
+        if (string.IsNullOrWhiteSpace(_formSku) && !string.IsNullOrWhiteSpace(_formCategory))
+            _formSku = ProductService.SuggestSku(_formCategory);
     }
 
     private async Task SaveProduct()
     {
-        if (!ValidateForm(requireImages: true))
+        EnsureSku();
+        if (!ValidateForm(requireImages: false))
+        {
+            Toast.Show(_formErrors.Values.FirstOrDefault() ?? "Please complete the required fields.");
             return;
+        }
 
         try
         {
             await PersistProductAsync(_formStatus);
             Toast.Show("Product added successfully.");
-        }
-        finally
-        {
             await CloseProductModalAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message)
+                ? "Product could not be saved."
+                : ex.Message);
         }
     }
 
@@ -1142,18 +1159,14 @@
             return;
         }
 
-        if (!FormCategoryNames.Any(c => c.Equals(_formCategory, StringComparison.OrdinalIgnoreCase)))
+        if (!IsKnownCategory(_formCategory))
         {
             _formErrors.Clear();
             _formErrors["category"] = "Please select a valid category.";
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(_formSku))
-        {
-            if (!string.IsNullOrWhiteSpace(_formCategory))
-                _formSku = ProductService.SuggestSku(_formCategory);
-        }
+        EnsureSku();
 
         if (!string.IsNullOrWhiteSpace(_formSku) && ProductService.SkuExists(_formSku, _editProductId))
         {
@@ -1198,10 +1211,13 @@
         {
             await PersistProductAsync("Draft");
             Toast.Show("Product saved as draft.");
-        }
-        finally
-        {
             await CloseProductModalAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message)
+                ? "Draft could not be saved."
+                : ex.Message);
         }
     }
 
@@ -1219,7 +1235,25 @@
         if (_hasSizeVariants)
             stock = variants.Sum(v => Math.Max(0, v.StockQuantity));
 
-        var images = _previewImages.Select(p => p.DataUrl).Where(u => !string.IsNullOrWhiteSpace(u)).ToList();
+        var sku = string.IsNullOrWhiteSpace(_formSku)
+            ? ProductService.SuggestSku(_formCategory)
+            : _formSku.Trim().ToUpperInvariant();
+
+        foreach (var variant in variants)
+        {
+            if (string.IsNullOrWhiteSpace(variant.Sku)
+                || variant.Sku.Contains("_formSku", StringComparison.Ordinal))
+            {
+                variant.Sku = string.IsNullOrWhiteSpace(variant.Size)
+                    ? sku
+                    : $"{sku}-{variant.Size.Trim().ToUpperInvariant()}";
+            }
+        }
+
+        var images = _previewImages
+            .Select(p => p.DataUrl)
+            .Where(u => !string.IsNullOrWhiteSpace(u))
+            .ToList();
         var model = new AdminProduct
         {
             Id = _editProductId ?? 0,
@@ -1228,13 +1262,11 @@
             Category = _formCategory.Trim(),
             Status = status,
             Price = price,
-            Sku = string.IsNullOrWhiteSpace(_formSku)
-                ? ProductService.SuggestSku(_formCategory)
-                : _formSku.Trim().ToUpperInvariant(),
+            Sku = sku,
             Stock = stock,
             Sold = _isEditMode ? _formSold : 0,
             Images = images,
-            ImageUrl = images.Count > 0 ? images[0] : MockData.PlaceholderImage,
+            ImageUrl = images.Count > 0 ? images[0]! : MockData.PlaceholderImage,
             Colors = SplitColors(_formColors),
             Sizes = _hasSizeVariants
                 ? variants.Select(v => v.Size).ToList()

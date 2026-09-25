@@ -21,6 +21,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     private readonly HttpClient _http;
     private readonly SupabaseOptions _options;
     private readonly SupabaseSessionState _session;
+    private readonly IProductImageStore? _localImages;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -33,11 +34,13 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     public SupabaseAppDatabase(
         HttpClient http,
         SupabaseOptions options,
-        SupabaseSessionState session)
+        SupabaseSessionState session,
+        IProductImageStore? localImages = null)
     {
         _http = http;
         _options = options;
         _session = session;
+        _localImages = localImages;
 
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(_options.Url);
@@ -65,25 +68,148 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
     public async Task<Product> UpsertProductAsync(Product product)
     {
-        var body = ProductPayload(product);
+        await SanitizeProductImagesAsync(product);
 
         if (product.Id <= 0)
         {
-            var rows = await SendForListAsync<Product>(
-                HttpMethod.Post,
-                "rest/v1/products",
-                body,
-                "return=representation");
-            return rows.First();
+            var inserted = await TryWriteProductAsync(HttpMethod.Post, "rest/v1/products", product);
+            if (inserted is not null)
+                return inserted;
+
+            throw new InvalidOperationException(
+                "Product could not be saved to the database. Run docs/sql/007_admin_products_write.sql in Supabase, then try again.");
         }
 
-        var updated = await SendForListAsync<Product>(
+        var updated = await TryWriteProductAsync(
             HttpMethod.Patch,
             $"rest/v1/products?id=eq.{product.Id}",
-            body,
-            "return=representation");
+            product);
+        return updated ?? product;
+    }
 
-        return updated.FirstOrDefault() ?? product;
+    private async Task<Product?> TryWriteProductAsync(HttpMethod method, string path, Product product)
+    {
+        Exception? last = null;
+        foreach (var body in ProductWritePayloads(product))
+        {
+            try
+            {
+                var rows = await SendForListAsync<Product>(method, path, body, "return=representation");
+                if (rows.Count > 0)
+                    return rows[0];
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                var message = ex.Message ?? string.Empty;
+                if (!IsRetryableProductWriteError(message))
+                    throw;
+            }
+        }
+
+        if (last is not null)
+            throw last;
+        return null;
+    }
+
+    private static bool IsRetryableProductWriteError(string message)
+    {
+        var lower = message.ToLowerInvariant();
+        return lower.Contains("could not find")
+            || lower.Contains("column")
+            || lower.Contains("schema cache")
+            || lower.Contains("pgrst204")
+            || lower.Contains("payload too large")
+            || lower.Contains("value too long")
+            || lower.Contains("invalid input");
+    }
+
+    private async Task SanitizeProductImagesAsync(Product product)
+    {
+        var urls = new List<string>();
+        foreach (var image in (product.Images ?? []).Prepend(product.ImageUrl))
+        {
+            var url = await PersistProductImageUrlAsync(image);
+            if (!string.IsNullOrWhiteSpace(url) && !urls.Contains(url, StringComparer.OrdinalIgnoreCase))
+                urls.Add(url);
+        }
+
+        if (urls.Count == 0)
+            urls.Add(CatalogHelpers.PlaceholderImage);
+
+        product.ImageUrl = urls[0];
+        product.Images = urls;
+    }
+
+    private async Task<string> PersistProductImageUrlAsync(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return CatalogHelpers.PlaceholderImage;
+
+        if (!url.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            return url.Trim();
+
+        if (url.StartsWith("data:image/svg+xml", StringComparison.OrdinalIgnoreCase))
+            return url;
+
+        var uploaded = await TryPersistUploadedImageAsync(url);
+        return uploaded ?? url;
+    }
+
+    private async Task<string?> TryPersistUploadedImageAsync(string dataUrl)
+    {
+        var comma = dataUrl.IndexOf(',');
+        if (comma < 0)
+            return null;
+
+        var meta = dataUrl[..comma];
+        var payload = dataUrl[(comma + 1)..];
+        byte[] bytes;
+        try
+        {
+            bytes = Convert.FromBase64String(payload);
+        }
+        catch
+        {
+            return null;
+        }
+
+        if (bytes.Length == 0)
+            return null;
+
+        var mime = meta.Contains("image/png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
+        var ext = mime == "image/png" ? "png" : "jpg";
+        var fileName = $"{Guid.NewGuid():N}.{ext}";
+
+        foreach (var bucket in new[] { "product-images", "products", "images" })
+        {
+            try
+            {
+                var request = new HttpRequestMessage(HttpMethod.Post, $"storage/v1/object/{bucket}/{fileName}");
+                request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+                request.Headers.Authorization = new AuthenticationHeaderValue(
+                    "Bearer",
+                    !string.IsNullOrWhiteSpace(_session.AccessToken) ? _session.AccessToken : _options.AnonKey);
+                request.Headers.TryAddWithoutValidation("x-upsert", "true");
+                request.Content = new ByteArrayContent(bytes);
+                request.Content.Headers.ContentType = new MediaTypeHeaderValue(mime);
+
+                using var response = await _http.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                    continue;
+
+                return $"{_options.Url.TrimEnd('/')}/storage/v1/object/public/{bucket}/{fileName}";
+            }
+            catch
+            {
+                // Try local disk next.
+            }
+        }
+
+        if (_localImages is not null)
+            return await _localImages.SaveAsync(bytes, ext, mime);
+
+        return dataUrl.Length <= 900_000 ? dataUrl : null;
     }
 
     public async Task<bool> DeleteProductAsync(int id)
@@ -160,15 +286,15 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
     public async Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants)
     {
+        if (variants.Count == 0)
+            return;
+
         using (var delete = await SendAsync(
                    HttpMethod.Delete,
                    $"rest/v1/product_variants?product_id=eq.{productId}"))
         {
             await EnsureSuccessAsync(delete);
         }
-
-        if (variants.Count == 0)
-            return;
 
         var now = DateTime.UtcNow;
         var rows = variants.Select(v => new Dictionary<string, object?>
@@ -369,6 +495,67 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         return saved;
     }
 
+    public async Task UpdateOrderStatusAsync(string orderId, string status)
+    {
+        if (string.IsNullOrWhiteSpace(orderId))
+            throw new InvalidOperationException("Order number is missing.");
+
+        var updated = await SendForListAsync<AdminOrder>(
+            HttpMethod.Patch,
+            $"rest/v1/orders?id=eq.{Esc(orderId)}",
+            new Dictionary<string, object?> { ["status"] = status.Trim() },
+            "return=representation");
+
+        if (updated.Count == 0)
+            throw new InvalidOperationException(
+                "Order status could not be saved. The admin account may not have permission to update public.orders.");
+    }
+
+    public async Task UpdateAdminOrderAsync(
+        string orderId,
+        string status,
+        string paymentStatus,
+        string? adminRemarks)
+    {
+        if (string.IsNullOrWhiteSpace(orderId))
+            throw new InvalidOperationException("Order number is missing.");
+
+        var updated = await SendForListAsync<AdminOrder>(
+            HttpMethod.Patch,
+            $"rest/v1/orders?id=eq.{Esc(orderId)}",
+            new Dictionary<string, object?>
+            {
+                ["status"] = status.Trim(),
+                ["payment_status"] = paymentStatus.Trim()
+            },
+            "return=representation");
+
+        if (updated.Count == 0)
+            throw new InvalidOperationException(
+                "Order could not be saved. The admin account may not have permission to update public.orders.");
+
+        await TryPatchAdminRemarksAsync(orderId, adminRemarks);
+    }
+
+    private async Task TryPatchAdminRemarksAsync(string orderId, string? adminRemarks)
+    {
+        if (string.IsNullOrWhiteSpace(orderId) || string.IsNullOrWhiteSpace(adminRemarks))
+            return;
+
+        try
+        {
+            using var response = await SendAsync(
+                HttpMethod.Patch,
+                $"rest/v1/orders?id=eq.{Esc(orderId)}",
+                new Dictionary<string, object?> { ["admin_remarks"] = adminRemarks.Trim() });
+            _ = response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            // admin_remarks is optional until docs/sql/005_admin_remarks.sql is applied.
+        }
+    }
+
     public async Task<bool> DeleteOrderAsync(string id)
     {
         using var response = await SendAsync(
@@ -404,6 +591,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
                     : order.Fulfillment,
                 ["customer_phone"] = string.IsNullOrWhiteSpace(order.CustomerPhone) ? null : order.CustomerPhone.Trim(),
                 ["payment_method"] = string.IsNullOrWhiteSpace(order.PaymentMethod) ? null : order.PaymentMethod.Trim(),
+                ["payment_status"] = requestedPaymentStatus,
                 ["order_notes"] = string.IsNullOrWhiteSpace(order.OrderNotes) ? null : order.OrderNotes.Trim(),
                 ["shipping_fee"] = order.ShippingFee,
                 ["shipping_recipient_name"] = order.ShippingRecipientName,
@@ -440,15 +628,121 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         order.PromotionId = result.PromotionId;
         order.PromotionCode = result.PromotionCode;
         order.Status = result.Status ?? "Pending";
-        order.PaymentStatus = result.PaymentStatus ?? "Pending";
-        if (string.Equals(requestedPaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase))
-            order.PaymentStatus = "Paid";
+        order.PaymentStatus = requestedPaymentStatus;
         order.Date = result.Date ?? DateTime.UtcNow;
         order.CustomerEmail = _session.Email ?? order.CustomerEmail;
         order.CustomerId = _session.AuthUserId ?? order.CustomerId;
 
         // Best-effort snapshot write if RPC does not yet persist these columns.
         await TryPatchOrderCheckoutSnapshotAsync(order);
+
+        var persisted = await PersistCheckoutPaymentAsync(
+            order.Id,
+            order.PaymentMethod,
+            requestedPaymentStatus);
+        order.PaymentMethod = persisted.PaymentMethod;
+        order.PaymentStatus = persisted.PaymentStatus;
+        if (!string.IsNullOrWhiteSpace(persisted.Status))
+            order.Status = persisted.Status;
+    }
+
+    public async Task<AdminOrder> PersistCheckoutPaymentAsync(
+        string orderId,
+        string paymentMethod,
+        string paymentStatus)
+    {
+        if (string.IsNullOrWhiteSpace(orderId))
+            throw new InvalidOperationException("Order number is missing.");
+
+        var method = paymentMethod?.Trim() ?? string.Empty;
+        var status = string.IsNullOrWhiteSpace(paymentStatus) ? "Pending" : paymentStatus.Trim();
+        if (string.Equals(method, "Cash on Pickup", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(method, "Cash on Delivery", StringComparison.OrdinalIgnoreCase))
+        {
+            status = "Pending";
+        }
+
+        var current = await GetOrderByIdAsync(orderId)
+            ?? throw new InvalidOperationException("Order not found after checkout.");
+
+        if (OrderFlow.PaymentSnapshotMatches(current, method, status))
+            return current;
+
+        var persistedViaRpc = await TryConfirmCheckoutPaymentRpcAsync(orderId, method, status);
+        if (persistedViaRpc is not null && OrderFlow.PaymentSnapshotMatches(persistedViaRpc, method, status))
+            return persistedViaRpc;
+
+        var patched = await TryPatchCheckoutPaymentAsync(orderId, method, status);
+        if (patched is not null && OrderFlow.PaymentSnapshotMatches(patched, method, status))
+            return patched;
+
+        var reloaded = await GetOrderByIdAsync(orderId);
+        if (OrderFlow.PaymentSnapshotMatches(reloaded, method, status))
+            return reloaded!;
+
+        throw new InvalidOperationException(
+            "Payment details could not be saved. Run docs/sql/006_confirm_checkout_payment.sql in Supabase, then retry. Your cart was not cleared.");
+    }
+
+    private async Task<AdminOrder?> TryConfirmCheckoutPaymentRpcAsync(
+        string orderId,
+        string paymentMethod,
+        string paymentStatus)
+    {
+        try
+        {
+            var row = await SendForSingleAsync<AdminOrder>(
+                HttpMethod.Post,
+                "rest/v1/rpc/confirm_checkout_payment",
+                new Dictionary<string, object?>
+                {
+                    ["p_order_id"] = orderId,
+                    ["p_payment_method"] = paymentMethod,
+                    ["p_payment_status"] = paymentStatus
+                });
+
+            if (row is not null && !string.IsNullOrWhiteSpace(row.Id))
+            {
+                row.Items = await GetOrderItemsAsync(row.Id);
+                return row;
+            }
+
+            return await GetOrderByIdAsync(orderId);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private async Task<AdminOrder?> TryPatchCheckoutPaymentAsync(
+        string orderId,
+        string paymentMethod,
+        string paymentStatus)
+    {
+        try
+        {
+            var updated = await SendForListAsync<AdminOrder>(
+                HttpMethod.Patch,
+                $"rest/v1/orders?id=eq.{Esc(orderId)}",
+                new Dictionary<string, object?>
+                {
+                    ["payment_method"] = paymentMethod,
+                    ["payment_status"] = paymentStatus
+                },
+                "return=representation");
+
+            var row = updated.FirstOrDefault();
+            if (row is null)
+                return null;
+
+            row.Items = await GetOrderItemsAsync(row.Id);
+            return row;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task TryPatchOrderCheckoutSnapshotAsync(AdminOrder order)
@@ -1963,7 +2257,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         string path,
         object? body = null,
         string? prefer = null,
-        string? bearerOverride = null)
+        string? bearerOverride = null,
+        string? contentType = null)
     {
         // Relative paths must resolve against BaseAddress (…supabase.co/).
         var request = new HttpRequestMessage(method, path.TrimStart('/'));
@@ -1982,7 +2277,13 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (!string.IsNullOrWhiteSpace(prefer))
             request.Headers.TryAddWithoutValidation("Prefer", prefer);
 
-        if (body is not null)
+        if (body is byte[] rawBytes)
+        {
+            request.Content = new ByteArrayContent(rawBytes);
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType);
+        }
+        else if (body is not null)
         {
             var json = JsonSerializer.Serialize(body, JsonOptions);
             request.Content = new StringContent(json, Encoding.UTF8, "application/json");
@@ -2075,39 +2376,58 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         return message.Length > 300 ? fallback : message;
     }
 
-    private static Dictionary<string, object?> ProductPayload(Product p) => new()
+    private static IEnumerable<Dictionary<string, object?>> ProductWritePayloads(Product p)
     {
-        ["name"] = p.Name,
-        ["category"] = p.Category,
-        ["image_url"] = p.ImageUrl,
-        ["images"] = p.Images,
-        ["price"] = p.Price,
-        ["original_price"] = p.OriginalPrice,
-        ["rating"] = p.Rating,
-        ["reviews"] = p.Reviews,
-        ["sold"] = p.Sold,
-        ["stock"] = Math.Max(0, p.Stock),
-        ["badge"] = p.Badge,
-        ["colors"] = p.Colors,
-        ["sizes"] = p.Sizes,
-        ["material"] = p.Material,
-        ["sku"] = p.Sku,
-        ["in_stock"] = p.Stock > 0,
-        ["is_featured"] = p.IsFeatured,
-        ["is_fresh_drop"] = p.IsFreshDrop,
-        ["is_best_seller"] = p.IsBestSeller,
-        ["is_new_arrival"] = p.IsNewArrival,
-        ["is_favorite"] = p.IsFavorite,
-        ["description"] = p.Description,
-        ["full_description"] = p.FullDescription,
-        ["features"] = p.Features,
-        ["rating_breakdown"] = p.RatingBreakdown,
-        ["section"] = p.Section,
-        ["status"] = p.Status,
-        ["is_published"] = p.IsPublished,
-        ["published_at"] = p.PublishedAt,
-        ["created_by"] = p.CreatedBy
-    };
+        var imageUrl = string.IsNullOrWhiteSpace(p.ImageUrl) ? CatalogHelpers.PlaceholderImage : p.ImageUrl;
+        var images = (p.Images is { Count: > 0 } ? p.Images : [imageUrl])
+            .Where(u => !string.IsNullOrWhiteSpace(u))
+            .ToList();
+        var colors = p.Colors is { Count: > 0 } ? p.Colors : ["navy"];
+        var sizes = p.Sizes ?? [];
+        var status = string.IsNullOrWhiteSpace(p.Status) ? "Active" : p.Status;
+        var description = p.Description ?? string.Empty;
+
+        yield return new Dictionary<string, object?>
+        {
+            ["name"] = p.Name,
+            ["category"] = p.Category,
+            ["sku"] = p.Sku,
+            ["price"] = p.Price,
+            ["stock"] = Math.Max(0, p.Stock),
+            ["sold"] = p.Sold,
+            ["description"] = description,
+            ["full_description"] = string.IsNullOrWhiteSpace(p.FullDescription) ? description : p.FullDescription,
+            ["image_url"] = imageUrl,
+            ["images"] = images,
+            ["colors"] = colors,
+            ["sizes"] = sizes,
+            ["status"] = status,
+            ["in_stock"] = p.Stock > 0 && p.IsPublished,
+            ["is_published"] = p.IsPublished,
+            ["section"] = string.IsNullOrWhiteSpace(p.Section) ? "apparel" : p.Section
+        };
+
+        yield return new Dictionary<string, object?>
+        {
+            ["name"] = p.Name,
+            ["category"] = p.Category,
+            ["sku"] = p.Sku,
+            ["price"] = p.Price,
+            ["stock"] = Math.Max(0, p.Stock),
+            ["description"] = description,
+            ["image_url"] = imageUrl,
+            ["status"] = status
+        };
+
+        yield return new Dictionary<string, object?>
+        {
+            ["name"] = p.Name,
+            ["category"] = p.Category,
+            ["sku"] = p.Sku,
+            ["price"] = p.Price,
+            ["stock"] = Math.Max(0, p.Stock)
+        };
+    }
 
     private Dictionary<string, object?> OrderPayload(AdminOrder o) => new()
     {

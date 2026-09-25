@@ -34,8 +34,11 @@ public interface IAppDatabase
     Task<List<AdminOrder>> GetCustomerOrdersAsync(string? email = null);
     Task<AdminOrder?> GetOrderByIdAsync(string id);
     Task<AdminOrder> UpsertOrderAsync(AdminOrder order);
+    Task UpdateOrderStatusAsync(string orderId, string status);
+    Task UpdateAdminOrderAsync(string orderId, string status, string paymentStatus, string? adminRemarks);
     Task<bool> DeleteOrderAsync(string id);
     Task PlaceCheckoutOrderAsync(AdminOrder order, string? promoCode, decimal discountAmount, string userEmail);
+    Task<AdminOrder> PersistCheckoutPaymentAsync(string orderId, string paymentMethod, string paymentStatus);
     Task AppendOrderStatusHistoryAsync(string orderId, string? oldStatus, string newStatus, string? notes, string? changedBy);
     Task<List<OrderStatusHistoryEntry>> GetOrderStatusHistoryAsync(string orderId);
 

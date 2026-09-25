@@ -33,13 +33,16 @@ builder.Services.AddHttpClient("Supabase", (sp, client) =>
     client.DefaultVersionPolicy = System.Net.Http.HttpVersionPolicy.RequestVersionOrLower;
 });
 
+builder.Services.AddSingleton<IProductImageStore, WebProductImageStore>();
+
 builder.Services.AddScoped<SupabaseAppDatabase>(sp =>
 {
     var factory = sp.GetRequiredService<IHttpClientFactory>();
     return new SupabaseAppDatabase(
         factory.CreateClient("Supabase"),
         sp.GetRequiredService<SupabaseOptions>(),
-        sp.GetRequiredService<SupabaseSessionState>());
+        sp.GetRequiredService<SupabaseSessionState>(),
+        sp.GetService<IProductImageStore>());
 });
 
 builder.Services.AddScoped<IAppDatabase>(sp =>
@@ -81,6 +84,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 app.UseAntiforgery();
+app.UseStaticFiles();
 app.MapStaticAssets();
 
 // No custom /api or PHP bulldogs_api is required for this direct-Supabase setup.

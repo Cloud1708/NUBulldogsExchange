@@ -1,0 +1,307 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminOrderService OrderService
+@inject ToastService Toast
+
+@if (Order is not null)
+{
+    var itemSubtotal = Order.Items.Count > 0
+        ? Order.Items.Sum(i => i.Price * i.Quantity)
+        : (Order.Subtotal > 0 ? Order.Subtotal : Order.Total);
+    var feeLabel = Order.IsDelivery ? "Delivery Fee" : "Fulfillment Fee";
+    var paymentMethod = string.IsNullOrWhiteSpace(Order.PaymentMethod)
+        ? null
+        : Order.PaymentMethod;
+
+    <div class="aod-backdrop" @onclick="Close">
+        <div class="aod-modal" role="dialog" aria-modal="true" aria-labelledby="aod-title" @onclick:stopPropagation="true">
+            <header class="aod-header">
+                <div>
+                    <h2 id="aod-title">@Order.Id</h2>
+                    <p>@Order.DateLabel • @Order.ItemCountLabel</p>
+                </div>
+                <div class="aod-header-actions">
+                    <span class="order-status status-@Order.StatusKey">@Order.Status</span>
+                    <button type="button" class="aod-close" @onclick="Close" aria-label="Close">
+                        <Icon Name="x" Size="16" />
+                    </button>
+                </div>
+            </header>
+
+            <div class="aod-body">
+                <nav class="aod-nav" aria-label="Order sections">
+                    @foreach (var section in Sections)
+                    {
+                        <button type="button"
+                                class="aod-nav-item @(_section == section.Key ? "active" : "")"
+                                @onclick="() => _section = section.Key">
+                            @section.Label
+                        </button>
+                    }
+                </nav>
+
+                <div class="aod-content">
+                    <div class="aod-content-scroll">
+                        @if (_section == "details")
+                        {
+                            <section>
+                                <h3>Order Details</h3>
+                                <dl class="aod-dl">
+                                    <div><dt>Order Number</dt><dd>@Order.Id</dd></div>
+                                    <div><dt>Order Date</dt><dd>@Order.DateLabel</dd></div>
+                                    <div><dt>Item Count</dt><dd>@Order.ItemCountLabel</dd></div>
+                                    <div><dt>Order Status</dt><dd><span class="order-status status-@Order.StatusKey">@Order.Status</span></dd></div>
+                                    <div><dt>Payment Status</dt><dd><span class="admin-payment-badge payment-@Order.PaymentKey">@Order.PaymentStatus</span></dd></div>
+                                    <div><dt>Payment Method</dt><dd>@(paymentMethod ?? "Not recorded")</dd></div>
+                                    <div><dt>Fulfillment</dt><dd>@(Order.IsDelivery ? "Delivery" : "Campus Pickup")</dd></div>
+                                    @if (!string.IsNullOrWhiteSpace(Order.OrderNotes))
+                                    {
+                                        <div><dt>Customer Notes</dt><dd>@Order.OrderNotes</dd></div>
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(Order.AdminRemarks))
+                                    {
+                                        <div><dt>Admin Remarks</dt><dd>@Order.AdminRemarks</dd></div>
+                                    }
+                                </dl>
+                            </section>
+                        }
+                        else if (_section == "customer")
+                        {
+                            <section>
+                                <h3>Customer Info</h3>
+                                <dl class="aod-dl">
+                                    <div><dt>Customer Name</dt><dd>@Order.CustomerName</dd></div>
+                                    <div><dt>Email</dt><dd>@Order.CustomerEmail</dd></div>
+                                    <div><dt>Contact Number</dt><dd>@(string.IsNullOrWhiteSpace(Order.CustomerPhone) ? "Not recorded" : Order.CustomerPhone)</dd></div>
+                                    @if (Order.IsDelivery && !string.Equals(Order.RecipientName, Order.CustomerName, StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        <div><dt>Recipient</dt><dd>@Order.RecipientName</dd></div>
+                                    }
+                                </dl>
+                            </section>
+                        }
+                        else if (_section == "items")
+                        {
+                            <section>
+                                <h3>Order Items</h3>
+                                <div class="aod-item-list">
+                                    @foreach (var item in Order.Items)
+                                    {
+                                        <article class="aod-item">
+                                            <img src="@item.ImageUrl"
+                                                 alt="@item.Name"
+                                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                            <div>
+                                                <strong>@item.Name</strong>
+                                                @if (!string.IsNullOrWhiteSpace(item.Size)
+                                                    && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
+                                                {
+                                                    <span>Size: @item.Size</span>
+                                                }
+                                                <span>Qty: @item.Quantity × ₱@item.Price.ToString("N0")</span>
+                                            </div>
+                                            <strong class="aod-item-total">₱@((item.Price * item.Quantity).ToString("N0"))</strong>
+                                        </article>
+                                    }
+                                </div>
+                            </section>
+                        }
+                        else if (_section == "payment")
+                        {
+                            <section>
+                                <h3>Payment &amp; Fulfillment</h3>
+                                <dl class="aod-dl">
+                                    @if (Order.IsDelivery)
+                                    {
+                                        <div><dt>Fulfillment</dt><dd>Delivery</dd></div>
+                                        <div><dt>Recipient Name</dt><dd>@Order.RecipientName</dd></div>
+                                        <div><dt>Recipient Phone</dt><dd>@(string.IsNullOrWhiteSpace(Order.RecipientPhone) ? "Not recorded" : Order.RecipientPhone)</dd></div>
+                                        <div>
+                                            <dt>Shipping Address</dt>
+                                            <dd>@(string.IsNullOrWhiteSpace(Order.ShippingAddressLabel) ? "Not recorded" : Order.ShippingAddressLabel)</dd>
+                                        </div>
+                                        <div><dt>Delivery Fee</dt><dd>@(Order.ShippingFee > 0 ? $"₱{Order.ShippingFee:N0}" : "Free")</dd></div>
+                                        <div><dt>Estimated Delivery</dt><dd>3–7 business days</dd></div>
+                                    }
+                                    else
+                                    {
+                                        <div><dt>Fulfillment</dt><dd>Campus Pickup</dd></div>
+                                        <div><dt>Pickup Location</dt><dd>@OrderFlow.PickupLocation</dd></div>
+                                        <div><dt>Pickup Schedule</dt><dd>@OrderFlow.PickupHoursDays<br />@OrderFlow.PickupHoursTime</dd></div>
+                                    }
+                                    <div><dt>Payment Method</dt><dd>@(paymentMethod ?? "Not recorded")</dd></div>
+                                    <div><dt>Payment Status</dt><dd><span class="admin-payment-badge payment-@Order.PaymentKey">@Order.PaymentStatus</span></dd></div>
+                                </dl>
+                            </section>
+                        }
+                        else
+                        {
+                            <section>
+                                <h3>Order Summary</h3>
+                                <dl class="aod-summary">
+                                    <div><dt>Subtotal</dt><dd>₱@itemSubtotal.ToString("N0")</dd></div>
+                                    @if (Order.DiscountAmount > 0)
+                                    {
+                                        <div><dt>Discount</dt><dd class="is-free">-₱@Order.DiscountAmount.ToString("N0")</dd></div>
+                                    }
+                                    <div>
+                                        <dt>@feeLabel</dt>
+                                        <dd class="@(Order.ShippingFee > 0 ? "" : "is-free")">
+                                            @(Order.ShippingFee > 0 ? $"₱{Order.ShippingFee:N0}" : "Free")
+                                        </dd>
+                                    </div>
+                                    <div class="is-total"><dt>Total</dt><dd>₱@Order.Total.ToString("N0")</dd></div>
+                                </dl>
+                            </section>
+                        }
+                    </div>
+
+                    <footer class="aod-update">
+                        <h3 class="aod-update-title">Update Order</h3>
+                        <div class="aod-update-row">
+                            <label>
+                                <span>Order Status</span>
+                                <select @bind="_draftStatus">
+                                    @foreach (var status in OrderService.StatusOptionsFor(Order))
+                                    {
+                                        <option value="@status">@status</option>
+                                    }
+                                </select>
+                            </label>
+                            <label>
+                                <span>Payment Status</span>
+                                <select @bind="_draftPaymentStatus">
+                                    @foreach (var payment in OrderService.PaymentStatusOptionsFor(Order))
+                                    {
+                                        <option value="@payment">@payment</option>
+                                    }
+                                </select>
+                            </label>
+                        </div>
+                        <label class="aod-update-remarks">
+                            <span>Admin Remarks</span>
+                            <textarea @bind="_draftRemarks"
+                                      rows="3"
+                                      placeholder="Optional internal/order update remarks..."></textarea>
+                        </label>
+                        <label class="aod-update-check">
+                            <input type="checkbox" @bind="_notifyCustomer" />
+                            <span>Notify customer about this update</span>
+                        </label>
+                        <div class="aod-update-actions">
+                            <button type="button"
+                                    class="btn btn-navy"
+                                    @onclick="SaveChanges">
+                                @(_saving ? "Saving..." : "Save Changes")
+                            </button>
+                        </div>
+                    </footer>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private static readonly (string Key, string Label)[] Sections =
+    [
+        ("details", "Order Details"),
+        ("customer", "Customer Info"),
+        ("items", "Order Items"),
+        ("payment", "Payment & Fulfillment"),
+        ("summary", "Order Summary")
+    ];
+
+    private string _section = "details";
+    private string _draftStatus = "Pending";
+    private string _draftPaymentStatus = "Pending";
+    private string _draftRemarks = string.Empty;
+    private bool _notifyCustomer = true;
+    private string? _boundOrderId;
+    private bool _saving;
+
+    [Parameter] public AdminOrder? Order { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (Order is null)
+        {
+            _boundOrderId = null;
+            return;
+        }
+
+        if (!string.Equals(_boundOrderId, Order.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            _boundOrderId = Order.Id;
+            _section = "details";
+            BindDraftsFromOrder();
+        }
+        else if (string.IsNullOrWhiteSpace(_draftStatus))
+        {
+            BindDraftsFromOrder();
+        }
+    }
+
+    private void BindDraftsFromOrder()
+    {
+        if (Order is null) return;
+        _draftStatus = Order.Status;
+        _draftPaymentStatus = string.IsNullOrWhiteSpace(Order.PaymentStatus) ? "Pending" : Order.PaymentStatus;
+        _draftRemarks = Order.AdminRemarks ?? string.Empty;
+        _notifyCustomer = true;
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+
+    private bool HasPendingChanges =>
+        Order is not null
+        && (!string.Equals(_draftStatus, Order.Status, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(_draftPaymentStatus, Order.PaymentStatus, StringComparison.OrdinalIgnoreCase)
+            || !string.Equals(_draftRemarks.Trim(), Order.AdminRemarks?.Trim() ?? string.Empty, StringComparison.Ordinal));
+
+    private async Task SaveChanges()
+    {
+        if (Order is null || string.IsNullOrWhiteSpace(_draftStatus) || string.IsNullOrWhiteSpace(_draftPaymentStatus) || _saving)
+            return;
+
+        if (!HasPendingChanges)
+        {
+            Toast.Show("No changes to save.");
+            return;
+        }
+
+        _saving = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            if (await OrderService.UpdateOrderAsync(
+                    Order.Id,
+                    _draftStatus,
+                    _draftPaymentStatus,
+                    _draftRemarks,
+                    _notifyCustomer))
+            {
+                _draftStatus = Order.Status;
+                _draftPaymentStatus = Order.PaymentStatus;
+                _draftRemarks = Order.AdminRemarks ?? string.Empty;
+                Toast.Show("Order updated successfully.");
+            }
+            else
+            {
+                Toast.Show("This status is not allowed for this order.");
+            }
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message)
+                ? "Unable to update this order."
+                : ex.Message);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

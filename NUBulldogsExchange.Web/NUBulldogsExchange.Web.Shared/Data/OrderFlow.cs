@@ -60,6 +60,15 @@ public static class OrderFlow
         Cancelled
     ];
 
+    public static readonly string[] PaymentStatusOptions =
+    [
+        "Pending",
+        "Paid",
+        "Failed",
+        "Cancelled",
+        "Refunded"
+    ];
+
     public static readonly string[] PaymentMethodFilters =
     [
         "All Methods",
@@ -89,6 +98,15 @@ public static class OrderFlow
 
     public static bool IsPaymentPending(string? paymentStatus) =>
         string.Equals(paymentStatus, "Pending", StringComparison.OrdinalIgnoreCase);
+
+    public static string CheckoutPaymentStatus(string? paymentMethod, bool markOnlinePaid) =>
+        markOnlinePaid && IsOnlinePaymentMethod(paymentMethod) ? "Paid" : "Pending";
+
+    public static bool PaymentSnapshotMatches(AdminOrder? order, string? paymentMethod, string? paymentStatus) =>
+        order is not null
+        && !string.IsNullOrWhiteSpace(order.PaymentMethod)
+        && order.PaymentMethod.Equals(paymentMethod?.Trim(), StringComparison.OrdinalIgnoreCase)
+        && order.PaymentStatus.Equals(paymentStatus?.Trim(), StringComparison.OrdinalIgnoreCase);
 
     public static string GetCustomerOrderCategory(
         string? fulfillment,
@@ -294,28 +312,34 @@ public static class OrderFlow
 
     public static string? CustomerNotificationTitle(string? fulfillment, string newStatus)
     {
+        if (EqualsStatus(newStatus, Cancelled))
+            return "Order Cancelled";
+
         if (IsDelivery(fulfillment))
         {
             if (EqualsStatus(newStatus, "Out for Delivery") || EqualsStatus(newStatus, "Shipped"))
-                return "Out for Delivery";
+                return "Order Out for Delivery";
             if (EqualsStatus(newStatus, "Delivered"))
                 return "Order Delivered";
             return null;
         }
 
         if (EqualsStatus(newStatus, ReadyForPickup))
-            return "Ready for Pickup";
+            return "Order Ready for Pickup";
         if (EqualsStatus(newStatus, Completed))
-            return "Pickup Completed";
+            return "Order Completed";
         return null;
     }
 
     public static string? CustomerNotificationMessage(string orderId, string? fulfillment, string newStatus)
     {
+        if (EqualsStatus(newStatus, Cancelled))
+            return $"Your order {orderId} has been cancelled.";
+
         if (IsDelivery(fulfillment))
         {
             if (EqualsStatus(newStatus, "Out for Delivery") || EqualsStatus(newStatus, "Shipped"))
-                return $"Your order {orderId} is out for delivery.";
+                return $"Your order {orderId} is now out for delivery.";
             if (EqualsStatus(newStatus, "Delivered"))
                 return $"Your order {orderId} has been delivered.";
             return null;
@@ -324,8 +348,20 @@ public static class OrderFlow
         if (EqualsStatus(newStatus, ReadyForPickup))
             return $"Your order {orderId} is ready for pickup at {PickupLocation}.";
         if (EqualsStatus(newStatus, Completed))
-            return $"Your pickup order {orderId} has been completed.";
+            return $"Your order {orderId} has been completed.";
         return null;
+    }
+
+    public static IEnumerable<string> PaymentStatusChoices(string? current)
+    {
+        var list = PaymentStatusOptions.ToList();
+        if (!string.IsNullOrWhiteSpace(current)
+            && !list.Any(s => s.Equals(current, StringComparison.OrdinalIgnoreCase)))
+        {
+            list.Insert(0, current);
+        }
+
+        return list;
     }
 
     public static string FormatShippingAddress(AdminOrder order) =>

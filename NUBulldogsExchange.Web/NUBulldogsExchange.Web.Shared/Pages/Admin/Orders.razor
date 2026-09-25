@@ -1,10 +1,10 @@
 @page "/admin/orders"
 @layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminOrderService OrderService
-@inject NavigationManager Navigation
 @implements IDisposable
 
 <PageTitle>Orders | Admin | NU Bulldogs Exchange</PageTitle>
@@ -91,7 +91,9 @@
                         {
                             <tr>
                                 <td>
-                                    <a class="admin-order-id" href="@($"/admin/orders/{order.Id}")">@order.Id</a>
+                                    <button type="button" class="admin-order-id" @onclick="() => OpenOrder(order)">
+                                        @order.Id
+                                    </button>
                                 </td>
                                 <td>
                                     <div class="admin-order-customer">
@@ -114,10 +116,10 @@
                                 </td>
                                 <td>@order.DateLabel</td>
                                 <td>
-                                    <a href="@($"/admin/orders/{order.Id}")" class="btn btn-navy admin-order-view-btn">
+                                    <button type="button" class="btn btn-navy admin-order-view-btn" @onclick="() => OpenOrder(order)">
                                         <Icon Name="eye" Size="14" />
                                         View
-                                    </a>
+                                    </button>
                                 </td>
                             </tr>
                         }
@@ -132,12 +134,15 @@
     </section>
 </div>
 
+<AdminOrderDetailsModal Order="_selectedOrder" OnClose="CloseOrder" />
+
 @code {
     private string _fulfillmentTab = "All";
     private string _search = string.Empty;
     private string _payment = "All Payments";
     private string _paymentMethod = "All Methods";
     private string _status = "All Statuses";
+    private AdminOrder? _selectedOrder;
 
     private List<AdminOrder> Filtered =>
         OrderService.Filter(_fulfillmentTab, _search, _payment, _paymentMethod, _status).ToList();
@@ -168,6 +173,13 @@
         _paymentMethod = "All Methods";
         _status = "All Statuses";
     }
+
+    private void OpenOrder(AdminOrder order)
+    {
+        _selectedOrder = order;
+    }
+
+    private void CloseOrder() => _selectedOrder = null;
 
     public void Dispose() => OrderService.OnChange -= Refresh;
 }

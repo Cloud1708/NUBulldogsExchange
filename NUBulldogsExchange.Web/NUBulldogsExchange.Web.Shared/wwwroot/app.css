@@ -7088,7 +7088,7 @@ img {
     display: flex;
     align-items: center;
     justify-content: center;
-    z-index: 80;
+    z-index: 5000;
     padding: 20px;
 }
 
@@ -7151,7 +7151,7 @@ img {
     backdrop-filter: blur(4px);
     -webkit-backdrop-filter: blur(4px);
     padding: 16px;
-    z-index: 85;
+    z-index: 5000;
 }
 
 .admin-product-modal {
@@ -8024,10 +8024,364 @@ img {
 .admin-order-id {
     color: #123A63;
     font-weight: 800;
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
 }
 
 .admin-order-id:hover {
     text-decoration: underline;
+}
+
+.aod-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 5000;
+    background: rgba(15, 23, 42, .45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px 16px;
+}
+
+.aod-modal {
+    width: min(1000px, 95vw);
+    max-height: 90vh;
+    background: #fff;
+    border-radius: 24px;
+    box-shadow: 0 28px 80px rgba(15, 23, 42, .22);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.aod-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 22px 24px 16px;
+    border-bottom: 1px solid #F1F5F9;
+}
+
+.aod-header h2 {
+    margin: 0;
+    color: #0F172A;
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    word-break: break-all;
+}
+
+.aod-header p {
+    margin: 4px 0 0;
+    color: #94A3B8;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.aod-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
+.aod-close {
+    border: none;
+    background: transparent;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    color: #94A3B8;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.aod-close:hover {
+    background: #F8FAFC;
+    color: #123A63;
+}
+
+.aod-body {
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    min-height: 0;
+    flex: 1;
+}
+
+.aod-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 18px 14px;
+    border-right: 1px solid #F1F5F9;
+    background: #FCFDFE;
+}
+
+.aod-nav-item {
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 10px;
+    color: #64748B;
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.aod-nav-item:hover {
+    background: #F1F5F9;
+    color: #123A63;
+}
+
+.aod-nav-item.active {
+    background: #EEF2FF;
+    color: #123A63;
+}
+
+.aod-content {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+}
+
+.aod-content-scroll {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 24px;
+}
+
+.aod-content-scroll h3 {
+    margin: 0 0 16px;
+    color: #123A63;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.aod-dl {
+    margin: 0;
+    display: grid;
+    gap: 12px;
+}
+
+.aod-dl div {
+    display: grid;
+    grid-template-columns: 160px 1fr;
+    gap: 12px;
+    align-items: start;
+}
+
+.aod-dl dt {
+    color: #94A3B8;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.aod-dl dd {
+    margin: 0;
+    color: #0F172A;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.aod-item-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.aod-item {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    gap: 12px;
+    align-items: center;
+    padding: 12px;
+    background: #F8FAFC;
+    border-radius: 14px;
+}
+
+.aod-item img {
+    width: 56px;
+    height: 56px;
+    object-fit: cover;
+    border-radius: 10px;
+    background: #fff;
+}
+
+.aod-item strong {
+    display: block;
+    color: #0F172A;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.aod-item span {
+    display: block;
+    color: #94A3B8;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.aod-item-total {
+    color: #123A63;
+}
+
+.aod-summary {
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.aod-summary div {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    color: #64748B;
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.aod-summary .is-free {
+    color: #16A34A;
+    font-weight: 700;
+}
+
+.aod-summary .is-total {
+    padding-top: 10px;
+    border-top: 1px solid #E2E8F0;
+    color: #0F172A;
+    font-size: 16px;
+    font-weight: 800;
+}
+
+.aod-update {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 24px 20px;
+    border-top: 1px solid #F1F5F9;
+    background: #FCFDFE;
+}
+
+.aod-update-title {
+    margin: 0;
+    color: #94A3B8;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.aod-update-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+}
+
+.aod-update label {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.aod-update span {
+    color: #94A3B8;
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+}
+
+.aod-update select,
+.aod-update textarea {
+    border: 1px solid #E2E8F0;
+    border-radius: 10px;
+    padding: 0 12px;
+    font: inherit;
+    color: #123A63;
+    background: #fff;
+}
+
+.aod-update select {
+    height: 42px;
+}
+
+.aod-update textarea {
+    min-height: 72px;
+    padding: 10px 12px;
+    resize: vertical;
+}
+
+.aod-update-check {
+    flex-direction: row !important;
+    align-items: center;
+    gap: 8px;
+}
+
+.aod-update-check input {
+    width: 16px;
+    height: 16px;
+    accent-color: #123A63;
+}
+
+.aod-update-check span {
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+}
+
+.aod-update-actions {
+    display: flex;
+    justify-content: flex-end;
+}
+
+@media (max-width: 800px) {
+    .aod-body {
+        grid-template-columns: 1fr;
+    }
+
+    .aod-nav {
+        flex-direction: row;
+        overflow-x: auto;
+        border-right: none;
+        border-bottom: 1px solid #F1F5F9;
+    }
+
+    .aod-nav-item {
+        white-space: nowrap;
+    }
+
+    .aod-dl div {
+        grid-template-columns: 1fr;
+        gap: 4px;
+    }
+
+    .aod-update-row {
+        grid-template-columns: 1fr;
+    }
+
+    .aod-update-actions {
+        justify-content: stretch;
+    }
+
+    .aod-update-actions .btn {
+        width: 100%;
+    }
 }
 
 .admin-order-customer {

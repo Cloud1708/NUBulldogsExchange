@@ -34,6 +34,7 @@ public class AdminProductService
         ["T-Shirts"] = "NUBE-TS",
         ["Polo Shirts"] = "NUBE-PL",
         ["Hoodies"] = "NUBE-HD",
+        ["Hoodie"] = "NUBE-HD",
         ["Jackets"] = "NUBE-JK",
         ["Caps"] = "NUBE-CP",
         ["Bags"] = "NUBE-BG",
@@ -183,9 +184,19 @@ public class AdminProductService
 
         var stored = await PersistAsync(product);
         product.Id = stored.Id;
-        await _db.ReplaceProductVariantsAsync(product.Id, product.Variants);
-        product.Variants = await _db.GetProductVariantsAsync(product.Id);
-        NormalizeVariantState(product);
+        if (product.HasSizeVariants)
+        {
+            try
+            {
+                await _db.ReplaceProductVariantsAsync(product.Id, product.Variants);
+                product.Variants = await _db.GetProductVariantsAsync(product.Id);
+                NormalizeVariantState(product);
+            }
+            catch
+            {
+                // Product row is already saved; variants can be edited later.
+            }
+        }
 
         _products.Add(product);
         SyncStorefront(product);

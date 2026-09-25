@@ -72,7 +72,7 @@ else if (_checkoutPhase == CheckoutPhaseConfirmation && _confirmedOrder is not n
                     </div>
                     <div>
                         <dt>Payment Method</dt>
-                        <dd>@_confirmedOrder.PaymentMethod</dd>
+                        <dd>@(string.IsNullOrWhiteSpace(_confirmedOrder.PaymentMethod) ? "Not recorded" : _confirmedOrder.PaymentMethod)</dd>
                     </div>
                     <div>
                         <dt>Payment Status</dt>
@@ -1221,7 +1221,10 @@ else
         if (TryResumePlacedOrder())
             return;
 
-        if (_submitting || Auth.CurrentUser is null || !Cart.Items.Any())
+        if (_submitting || Auth.CurrentUser is null)
+            return;
+
+        if (!Cart.Items.Any() && string.IsNullOrWhiteSpace(_placedOrderId))
             return;
 
         // Re-validate (cash places immediately; online places after simulated payment success).
@@ -1245,51 +1248,85 @@ else
             var promoCode = Cart.AppliedPromoCode;
             var isDelivery = _fulfillment == DeliveryMethod;
             var expectedTotal = GrandTotal;
-            var paymentStatus = markOnlinePaid && IsOnlinePaymentMethod ? "Paid" : "Pending";
+            var paymentStatus = OrderFlow.CheckoutPaymentStatus(_paymentMethod, markOnlinePaid);
+            AdminOrder order;
 
-            var order = new AdminOrder
+            if (!string.IsNullOrWhiteSpace(_placedOrderId) && _confirmedOrder is null)
             {
-                Id = string.Empty,
-                CustomerId = user.UserId > 0 ? user.UserId.ToString() : customer.Id,
-                CustomerName = _fullName.Trim(),
-                CustomerEmail = _email.Trim(),
-                CustomerPhone = _contactPhone.Trim(),
-                Date = DateTime.Now,
-                Subtotal = Cart.Subtotal,
-                DiscountAmount = Cart.AppliedDiscount,
-                ShippingFee = isDelivery ? DeliveryFee : 0,
-                Total = expectedTotal,
-                PaymentStatus = paymentStatus,
-                PaymentMethod = _paymentMethod,
-                Fulfillment = _fulfillment,
-                Status = "Pending",
-                OrderNotes = string.IsNullOrWhiteSpace(_orderNotes) ? null : _orderNotes.Trim(),
-                ShippingRecipientName = isDelivery ? _shipRecipient.Trim() : null,
-                ShippingPhone = isDelivery ? _shipPhone.Trim() : null,
-                ShippingAddressLine = isDelivery ? _shipAddressLine.Trim() : null,
-                ShippingBarangay = isDelivery ? _shipBarangay.Trim() : null,
-                ShippingCity = isDelivery ? _shipCity.Trim() : null,
-                ShippingProvince = isDelivery ? _shipProvince.Trim() : null,
-                ShippingPostalCode = isDelivery ? _shipPostal.Trim() : null,
-                Items = Cart.Items.Select(i => new AdminOrderItem
+                order = await AdminOrders.ConfirmCheckoutPaymentAsync(
+                    _placedOrderId,
+                    _paymentMethod,
+                    paymentStatus);
+            }
+            else
+            {
+                var draft = new AdminOrder
                 {
-                    ProductId = i.Product.Id,
-                    Name = i.Product.Name,
-                    ImageUrl = i.Product.ImageUrl,
-                    Quantity = i.Quantity,
-                    Price = i.Product.Price,
-                    VariantId = i.VariantId,
-                    Size = i.SelectedSize,
-                    VariantSku = i.VariantId is int vid
-                        ? i.Product.Variants.FirstOrDefault(v => v.Id == vid)?.Sku
-                        : null
-                }).ToList()
-            };
+                    Id = string.Empty,
+                    CustomerId = user.UserId > 0 ? user.UserId.ToString() : customer.Id,
+                    CustomerName = _fullName.Trim(),
+                    CustomerEmail = _email.Trim(),
+                    CustomerPhone = _contactPhone.Trim(),
+                    Date = DateTime.Now,
+                    Subtotal = Cart.Subtotal,
+                    DiscountAmount = Cart.AppliedDiscount,
+                    ShippingFee = isDelivery ? DeliveryFee : 0,
+                    Total = expectedTotal,
+                    PaymentStatus = paymentStatus,
+                    PaymentMethod = _paymentMethod,
+                    Fulfillment = _fulfillment,
+                    Status = "Pending",
+                    OrderNotes = string.IsNullOrWhiteSpace(_orderNotes) ? null : _orderNotes.Trim(),
+                    ShippingRecipientName = isDelivery ? _shipRecipient.Trim() : null,
+                    ShippingPhone = isDelivery ? _shipPhone.Trim() : null,
+                    ShippingAddressLine = isDelivery ? _shipAddressLine.Trim() : null,
+                    ShippingBarangay = isDelivery ? _shipBarangay.Trim() : null,
+                    ShippingCity = isDelivery ? _shipCity.Trim() : null,
+                    ShippingProvince = isDelivery ? _shipProvince.Trim() : null,
+                    ShippingPostalCode = isDelivery ? _shipPostal.Trim() : null,
+                    Items = Cart.Items.Select(i => new AdminOrderItem
+                    {
+                        ProductId = i.Product.Id,
+                        Name = i.Product.Name,
+                        ImageUrl = i.Product.ImageUrl,
+                        Quantity = i.Quantity,
+                        Price = i.Product.Price,
+                        VariantId = i.VariantId,
+                        Size = i.SelectedSize,
+                        VariantSku = i.VariantId is int vid
+                            ? i.Product.Variants.FirstOrDefault(v => v.Id == vid)?.Sku
+                            : null
+                    }).ToList()
+                };
 
-            // Does NOT overwrite public.users.phone_number — order contact only.
-            // Admin notification is created by a SECURITY DEFINER trigger on public.orders.
-            order = await AdminOrders.AddAsync(order, promoCode, 0);
+                try
+                {
+                    // Does NOT overwrite public.users.phone_number — order contact only.
+                    // Admin notification is created by a SECURITY DEFINER trigger on public.orders.
+                    order = await AdminOrders.AddAsync(draft, promoCode, 0);
+                }
+                catch
+                {
+                    if (!string.IsNullOrWhiteSpace(draft.Id))
+                        _placedOrderId = draft.Id;
+                    throw;
+                }
+            }
 
+            _placedOrderId = order.Id;
+            var persisted = await Database.GetOrderByIdAsync(order.Id) ?? order;
+            if (!OrderFlow.PaymentSnapshotMatches(persisted, _paymentMethod, paymentStatus))
+            {
+                persisted = await AdminOrders.ConfirmCheckoutPaymentAsync(
+                    order.Id,
+                    _paymentMethod,
+                    paymentStatus);
+            }
+
+            if (!OrderFlow.PaymentSnapshotMatches(persisted, _paymentMethod, paymentStatus))
+                throw new InvalidOperationException("Payment details could not be saved. Please try again.");
+
+            order = persisted;
             if (order.Total != expectedTotal)
             {
                 // Prefer server-authoritative total when present; otherwise keep local checkout total.

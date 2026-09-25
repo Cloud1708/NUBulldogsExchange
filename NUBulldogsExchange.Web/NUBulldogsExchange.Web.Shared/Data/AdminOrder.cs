@@ -32,6 +32,7 @@ public class AdminOrder
     public string Status { get; set; } = "Pending";
     public string? AuthUserId { get; set; }
     public string? OrderNotes { get; set; }
+    public string? AdminRemarks { get; set; }
     public string? ShippingRecipientName { get; set; }
     public string? ShippingPhone { get; set; }
     public string? ShippingAddressLine { get; set; }
@@ -60,6 +61,7 @@ public class AdminOrder
         "Pending" => "pending",
         "Failed" => "failed",
         "Refunded" => "refunded",
+        "Cancelled" => "failed",
         _ => "pending"
     };
 }

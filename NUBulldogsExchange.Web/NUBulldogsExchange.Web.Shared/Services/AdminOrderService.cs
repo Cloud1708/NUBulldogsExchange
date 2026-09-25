@@ -19,7 +19,8 @@ public class AdminOrderService
         "Paid",
         "Pending",
         "Failed",
-        "Refunded"
+        "Refunded",
+        "Cancelled"
     ];
 
     public static readonly string[] PaymentMethodFilters = OrderFlow.PaymentMethodFilters;
@@ -145,6 +146,63 @@ public class AdminOrderService
     public IEnumerable<string> StatusOptionsFor(AdminOrder order) =>
         OrderFlow.AdminStatusOptions(order.Fulfillment, order.Status);
 
+    public IEnumerable<string> PaymentStatusOptionsFor(AdminOrder order) =>
+        OrderFlow.PaymentStatusChoices(order.PaymentStatus);
+
+    public async Task<bool> UpdateOrderAsync(
+        string id,
+        string status,
+        string paymentStatus,
+        string? adminRemarks,
+        bool notifyCustomer)
+    {
+        var order = GetById(id);
+        if (order is null) return false;
+
+        var allowedStatuses = StatusOptionsFor(order);
+        if (!allowedStatuses.Any(s => s.Equals(status, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        var allowedPayments = PaymentStatusOptionsFor(order);
+        if (!allowedPayments.Any(s => s.Equals(paymentStatus, StringComparison.OrdinalIgnoreCase)))
+            return false;
+
+        var oldStatus = order.Status;
+        var statusChanged = !oldStatus.Equals(status, StringComparison.OrdinalIgnoreCase);
+        var paymentChanged = !order.PaymentStatus.Equals(paymentStatus, StringComparison.OrdinalIgnoreCase);
+        var remarksValue = string.IsNullOrWhiteSpace(adminRemarks) ? null : adminRemarks.Trim();
+        var remarksChanged = !string.Equals(
+            order.AdminRemarks?.Trim(),
+            remarksValue,
+            StringComparison.Ordinal);
+
+        if (!statusChanged && !paymentChanged && !remarksChanged)
+            return true;
+
+        await _db.UpdateAdminOrderAsync(order.Id, status, paymentStatus, remarksValue);
+        order.Status = status;
+        order.PaymentStatus = paymentStatus;
+        order.AdminRemarks = remarksValue;
+
+        if (statusChanged)
+        {
+            try
+            {
+                await _db.AppendOrderStatusHistoryAsync(order.Id, oldStatus, status, remarksValue, null);
+            }
+            catch
+            {
+                // History is best-effort; the order update still stands.
+            }
+        }
+
+        if (notifyCustomer && statusChanged)
+            await TryNotifyCustomerAsync(order, status);
+
+        OnChange?.Invoke();
+        return true;
+    }
+
     public async Task<bool> UpdateStatusAsync(string id, string status)
     {
         var order = GetById(id);
@@ -158,8 +216,8 @@ public class AdminOrderService
         if (oldStatus.Equals(status, StringComparison.OrdinalIgnoreCase))
             return true;
 
+        await _db.UpdateOrderStatusAsync(order.Id, status);
         order.Status = status;
-        await _db.UpsertOrderAsync(order);
 
         try
         {
@@ -180,13 +238,22 @@ public class AdminOrderService
         if (string.IsNullOrWhiteSpace(order.Id))
             order.Id = string.Empty;
 
-        var requestedPaymentStatus = order.PaymentStatus;
         await _db.PlaceCheckoutOrderAsync(order, promoCode, discountAmount, order.CustomerEmail);
 
         _orders.RemoveAll(o => o.Id.Equals(order.Id, StringComparison.OrdinalIgnoreCase));
         var saved = await _db.GetOrderByIdAsync(order.Id) ?? order;
-        if (string.Equals(requestedPaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase))
-            saved.PaymentStatus = "Paid";
+        _orders.Add(saved);
+        OnChange?.Invoke();
+        return saved;
+    }
+
+    public async Task<AdminOrder> ConfirmCheckoutPaymentAsync(
+        string orderId,
+        string paymentMethod,
+        string paymentStatus)
+    {
+        var saved = await _db.PersistCheckoutPaymentAsync(orderId, paymentMethod, paymentStatus);
+        _orders.RemoveAll(o => o.Id.Equals(saved.Id, StringComparison.OrdinalIgnoreCase));
         _orders.Add(saved);
         OnChange?.Invoke();
         return saved;

@@ -127,6 +127,43 @@ public sealed class HttpAppDatabase : IAppDatabase
         return (await put.Content.ReadFromJsonAsync<AdminOrder>())!;
     }
 
+    public async Task UpdateOrderStatusAsync(string orderId, string status)
+    {
+        var order = await GetOrderByIdAsync(orderId)
+            ?? throw new InvalidOperationException("Order not found.");
+        order.Status = status;
+        await UpsertOrderAsync(order);
+    }
+
+    public async Task UpdateAdminOrderAsync(
+        string orderId,
+        string status,
+        string paymentStatus,
+        string? adminRemarks)
+    {
+        var order = await GetOrderByIdAsync(orderId)
+            ?? throw new InvalidOperationException("Order not found.");
+        order.Status = status;
+        order.PaymentStatus = paymentStatus;
+        order.AdminRemarks = string.IsNullOrWhiteSpace(adminRemarks) ? null : adminRemarks.Trim();
+        await UpsertOrderAsync(order);
+    }
+
+    public async Task<AdminOrder> PersistCheckoutPaymentAsync(
+        string orderId,
+        string paymentMethod,
+        string paymentStatus)
+    {
+        var order = await GetOrderByIdAsync(orderId)
+            ?? throw new InvalidOperationException("Order not found.");
+        order.PaymentMethod = paymentMethod;
+        order.PaymentStatus = string.Equals(paymentMethod, "Cash on Pickup", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(paymentMethod, "Cash on Delivery", StringComparison.OrdinalIgnoreCase)
+            ? "Pending"
+            : paymentStatus;
+        return await UpsertOrderAsync(order);
+    }
+
     public async Task PlaceCheckoutOrderAsync(AdminOrder order, string? promoCode, decimal discountAmount, string userEmail)
     {
         var response = await _http.PostAsJsonAsync("api/checkout", new CheckoutRequest
