@@ -43,31 +43,48 @@ public sealed class OrderCardModel
 {
     public required MockOrder Order { get; init; }
     public string DisplayId => Order.Id.TrimStart('#');
+    public string CustomerCategory => Order.CustomerCategory;
     public string DateAndItemsText => $"{Order.FormattedDate} • {Order.ItemCountLabel}";
     public string DateText => Order.FormattedDate;
     public string Status => Order.Status;
     public string TotalText => $"₱{Order.Total:N0}";
     public IReadOnlyList<MockOrderItem> Items => Order.Items;
+    public bool CanCancel => Order.CanCancel;
 
-    public Color BadgeBackground => Order.Status switch
+    public string FulfillmentBadgeText => Order.IsDelivery ? "🚚 Delivery" : "📍 Campus Pickup";
+    public string FulfillmentLocationText =>
+        string.IsNullOrWhiteSpace(Order.FulfillmentLocationLabel)
+            ? (Order.IsDelivery ? "Delivery address on file" : OrderFlow.PickupLocation)
+            : Order.FulfillmentLocationLabel;
+
+    public string PaymentMethodText => $"Payment: {(string.IsNullOrWhiteSpace(Order.PaymentMethod) ? "—" : Order.PaymentMethod)}";
+    public string PaymentStatusText => $"Status: {Order.PaymentStatus}";
+
+    public Color BadgeBackground => Order.CustomerCategory switch
     {
+        OrderFlow.ToPay => Color.FromArgb("#FEF3C7"),
+        OrderFlow.ToProcess => Color.FromArgb("#DBEAFE"),
+        OrderFlow.ReadyForPickup => Color.FromArgb("#E0F2FE"),
+        OrderFlow.ToReceive => Color.FromArgb("#E0F2FE"),
+        OrderFlow.Completed => Color.FromArgb("#DCFCE7"),
+        OrderFlow.Cancelled => Color.FromArgb("#FEE2E2"),
         "Pending" => Color.FromArgb("#FEF3C7"),
         "Confirmed" => Color.FromArgb("#DBEAFE"),
-        "Processing" => Color.FromArgb("#EDE9FE"),
-        "Ready for Pickup" => Color.FromArgb("#E0F2FE"),
-        "Completed" => Color.FromArgb("#DCFCE7"),
-        "Cancelled" => Color.FromArgb("#FEE2E2"),
+        "Processing" => Color.FromArgb("#F3E8FF"),
         _ => Color.FromArgb("#F1F5F9")
     };
 
     public Color BadgeTextColor => Order.CustomerCategory switch
     {
-        "Pending" => Color.FromArgb("#B45309"),
-        "Confirmed" => Color.FromArgb("#1D4ED8"),
-        "Processing" => Color.FromArgb("#6D28D9"),
-        "Ready for Pickup" => Color.FromArgb("#0369A1"),
-        "Completed" => Color.FromArgb("#15803D"),
-        "Cancelled" => Color.FromArgb("#B91C1C"),
+        OrderFlow.ToPay => Color.FromArgb("#D97706"),
+        OrderFlow.ToProcess => Color.FromArgb("#2563EB"),
+        OrderFlow.ReadyForPickup => Color.FromArgb("#0284C7"),
+        OrderFlow.ToReceive => Color.FromArgb("#0369A1"),
+        OrderFlow.Completed => Color.FromArgb("#16A34A"),
+        OrderFlow.Cancelled => Color.FromArgb("#EF4444"),
+        "Pending" => Color.FromArgb("#D97706"),
+        "Confirmed" => Color.FromArgb("#2563EB"),
+        "Processing" => Color.FromArgb("#7C3AED"),
         _ => Color.FromArgb("#475569")
     };
 
