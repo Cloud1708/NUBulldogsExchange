@@ -34,6 +34,8 @@ public class InventoryRow
     public int Available { get; set; }
     public int Reserved { get; set; }
     public int LowStockLevel { get; set; } = 20;
+    public List<ProductVariant> Variants { get; set; } = [];
+    public bool HasVariants => Variants.Count > 0;
 
     public string StockState => Available switch
     {

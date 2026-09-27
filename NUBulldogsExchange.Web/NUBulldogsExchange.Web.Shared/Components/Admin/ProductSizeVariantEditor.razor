@@ -2,15 +2,24 @@
 @using NUBulldogsExchange.Web.Shared.Data
 
 <div class="admin-size-variants">
-    <label class="admin-size-variants-toggle">
-        <input type="checkbox"
-               checked="@HasSizeVariants"
-               @onchange="OnToggleChanged"
-               disabled="@Disabled" />
-        <span>This product has size variants</span>
-    </label>
+    <div class="admin-size-variants-toggles">
+        <label class="admin-size-variants-toggle">
+            <input type="checkbox"
+                   checked="@HasSizeVariants"
+                   @onchange="OnSizeToggleChanged"
+                   disabled="@Disabled" />
+            <span>This product has size variants</span>
+        </label>
+        <label class="admin-size-variants-toggle">
+            <input type="checkbox"
+                   checked="@HasColorVariants"
+                   @onchange="OnColorToggleChanged"
+                   disabled="@Disabled" />
+            <span>This product has color variants</span>
+        </label>
+    </div>
 
-    @if (!HasSizeVariants)
+    @if (!HasSizeVariants && !HasColorVariants)
     {
         <label class="admin-field admin-product-stock-field">
             <span>Stock Quantity</span>
@@ -27,17 +36,36 @@
             }
         </label>
     }
-    else
+    else if (HasSizeVariants && !HasColorVariants)
     {
         <div class="admin-size-variants-panel">
             <div class="admin-size-variants-head">
                 <strong>Size Variants</strong>
                 <span class="admin-size-variants-total">Total Stock: @TotalStock</span>
             </div>
+            @RenderSizeTable(Variants)
+            @RenderSizeSuggestions(colorName: null)
+            <button type="button"
+                    class="btn btn-outline-navy admin-size-variants-add"
+                    disabled="@Disabled"
+                    @onclick="() => AddEmptySize(null)">
+                + Add Size
+            </button>
+            @RenderVariantsError()
+        </div>
+    }
+    else if (!HasSizeVariants && HasColorVariants)
+    {
+        <div class="admin-size-variants-panel">
+            <div class="admin-size-variants-head">
+                <strong>Color Variants</strong>
+                <span class="admin-size-variants-total">Total Stock: @TotalStock</span>
+            </div>
 
-            <div class="admin-size-variants-table" role="table">
-                <div class="admin-size-variants-row is-header" role="row">
-                    <span role="columnheader">Size</span>
+            <div class="admin-size-variants-table admin-color-variants-table" role="table">
+                <div class="admin-color-variants-row is-header" role="row">
+                    <span role="columnheader">Color Name</span>
+                    <span role="columnheader">Color</span>
                     <span role="columnheader">Stock</span>
                     <span role="columnheader">SKU</span>
                     <span role="columnheader">Status</span>
@@ -48,12 +76,24 @@
                 {
                     var index = i;
                     var row = Variants[index];
-                    <div class="admin-size-variants-row" role="row">
+                    <div class="admin-color-variants-row" role="row">
                         <input type="text"
-                               value="@row.Size"
-                               placeholder="M"
+                               value="@row.ColorName"
+                               placeholder="Navy"
                                disabled="@Disabled"
-                               @oninput="e => OnSizeChanged(index, e)" />
+                               @oninput="e => OnColorNameChanged(index, e)" />
+                        <div class="admin-color-picker-cell">
+                            <input type="color"
+                                   value="@ColorInputValue(row.ColorHex, row.ColorName)"
+                                   disabled="@Disabled"
+                                   @oninput="e => OnColorHexPickerChanged(index, e)"
+                                   aria-label="Color picker" />
+                            <input type="text"
+                                   value="@row.ColorHex"
+                                   placeholder="#0B1F3A"
+                                   disabled="@Disabled"
+                                   @oninput="e => OnColorHexTextChanged(index, e)" />
+                        </div>
                         <input type="number"
                                min="0"
                                step="1"
@@ -62,7 +102,7 @@
                                @oninput="e => OnVariantStockChanged(index, e)" />
                         <input type="text"
                                value="@row.Sku"
-                               placeholder="NUBE-TS-M"
+                               placeholder="NUBE-HD-NV"
                                disabled="@Disabled"
                                @oninput="e => OnSkuChanged(index, e)" />
                         <select value="@(string.IsNullOrWhiteSpace(row.Status) ? "Active" : row.Status)"
@@ -73,7 +113,7 @@
                         </select>
                         <button type="button"
                                 class="admin-size-variants-remove"
-                                title="Remove size"
+                                title="Remove color"
                                 disabled="@Disabled"
                                 @onclick="() => RemoveRow(index)">
                             <Icon Name="trash" Size="14" />
@@ -82,30 +122,69 @@
                 }
             </div>
 
-            <div class="admin-size-variants-suggestions">
-                @foreach (var size in SuggestedSizes)
-                {
-                    var already = Variants.Any(v => v.Size.Equals(size, StringComparison.OrdinalIgnoreCase));
-                    <button type="button"
-                            class="admin-size-chip @(already ? "is-used" : "")"
-                            disabled="@(Disabled || already)"
-                            @onclick="() => AddSuggested(size)">
-                        @size
-                    </button>
-                }
+            @RenderColorSuggestions()
+            @RenderAddColorForm()
+            @RenderVariantsError()
+        </div>
+    }
+    else
+    {
+        <div class="admin-size-variants-panel">
+            <div class="admin-size-variants-head">
+                <strong>Color + Size Variants</strong>
+                <span class="admin-size-variants-total">Total Stock: @TotalStock</span>
             </div>
 
-            <button type="button"
-                    class="btn btn-outline-navy admin-size-variants-add"
-                    disabled="@Disabled"
-                    @onclick="AddEmptyRow">
-                + Add Size
-            </button>
-
-            @if (!string.IsNullOrWhiteSpace(VariantsError))
+            @foreach (var group in ColorGroups)
             {
-                <em class="admin-size-variants-error">@VariantsError</em>
+                var colorKey = group.Key;
+                var first = group.First();
+                <div class="admin-color-group">
+                    <div class="admin-color-group-head">
+                        <span class="admin-color-swatch"
+                              style="background:@ColorInputValue(first.ColorHex, first.ColorName)"
+                              title="@first.ColorName"></span>
+                        <strong>COLOR: @(string.IsNullOrWhiteSpace(first.ColorName) ? "Untitled" : first.ColorName.ToUpperInvariant())</strong>
+                        <input type="text"
+                               class="admin-color-group-name"
+                               value="@first.ColorName"
+                               placeholder="Navy"
+                               disabled="@Disabled"
+                               @oninput="e => OnGroupColorNameChanged(colorKey, e)" />
+                        <input type="color"
+                               value="@ColorInputValue(first.ColorHex, first.ColorName)"
+                               disabled="@Disabled"
+                               @oninput="e => OnGroupHexPickerChanged(colorKey, e)"
+                               aria-label="Color picker" />
+                        <input type="text"
+                               class="admin-color-group-hex"
+                               value="@first.ColorHex"
+                               placeholder="#0B1F3A"
+                               disabled="@Disabled"
+                               @oninput="e => OnGroupHexTextChanged(colorKey, e)" />
+                        <button type="button"
+                                class="admin-size-variants-remove"
+                                title="Remove color"
+                                disabled="@Disabled"
+                                @onclick="() => RemoveColorGroup(colorKey)">
+                            <Icon Name="trash" Size="14" />
+                        </button>
+                    </div>
+
+                    @RenderSizeTable(group.ToList())
+                    @RenderSizeSuggestions(colorKey)
+                    <button type="button"
+                            class="btn btn-outline-navy admin-size-variants-add"
+                            disabled="@Disabled"
+                            @onclick="() => AddEmptySize(colorKey)">
+                        + Add Size
+                    </button>
+                </div>
             }
+
+            @RenderColorSuggestions()
+            @RenderAddColorForm()
+            @RenderVariantsError()
         </div>
     }
 </div>
@@ -115,6 +194,8 @@
 
     [Parameter] public bool HasSizeVariants { get; set; }
     [Parameter] public EventCallback<bool> HasSizeVariantsChanged { get; set; }
+    [Parameter] public bool HasColorVariants { get; set; }
+    [Parameter] public EventCallback<bool> HasColorVariantsChanged { get; set; }
     [Parameter] public List<ProductVariant> Variants { get; set; } = [];
     [Parameter] public EventCallback<List<ProductVariant>> VariantsChanged { get; set; }
     [Parameter] public string StockText { get; set; } = "0";
@@ -125,22 +206,293 @@
     [Parameter] public bool Disabled { get; set; }
     [Parameter] public string[]? SizeSuggestions { get; set; }
 
-    private IEnumerable<string> SuggestedSizes => SizeSuggestions ?? DefaultSuggestions;
+    private string _newColorName = string.Empty;
+    private string _newColorHex = "#0B1F3A";
+    private bool _showAddColor;
 
+    private IEnumerable<string> SuggestedSizes => SizeSuggestions ?? DefaultSuggestions;
     private int TotalStock => Variants.Sum(v => Math.Max(0, v.StockQuantity));
 
-    private async Task OnToggleChanged(ChangeEventArgs e)
+    private IEnumerable<IGrouping<string, ProductVariant>> ColorGroups =>
+        Variants.GroupBy(v => (v.ColorName ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase);
+
+    private RenderFragment RenderVariantsError() => __builder =>
     {
-        var enabled = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(VariantsError))
+        {
+            <em class="admin-size-variants-error">@VariantsError</em>
+        }
+    };
+
+    private RenderFragment RenderSizeTable(IReadOnlyList<ProductVariant> rows) => __builder =>
+    {
+        <div class="admin-size-variants-table" role="table">
+            <div class="admin-size-variants-row is-header" role="row">
+                <span role="columnheader">Size</span>
+                <span role="columnheader">Stock</span>
+                <span role="columnheader">SKU</span>
+                <span role="columnheader">Status</span>
+                <span role="columnheader" class="admin-size-variants-actions"> </span>
+            </div>
+
+            @foreach (var row in rows)
+            {
+                var index = Variants.IndexOf(row);
+                if (index < 0) continue;
+                <div class="admin-size-variants-row" role="row">
+                    <input type="text"
+                           value="@row.Size"
+                           placeholder="M"
+                           disabled="@Disabled"
+                           @oninput="e => OnSizeChanged(index, e)" />
+                    <input type="number"
+                           min="0"
+                           step="1"
+                           value="@row.StockQuantity"
+                           disabled="@Disabled"
+                           @oninput="e => OnVariantStockChanged(index, e)" />
+                    <input type="text"
+                           value="@row.Sku"
+                           placeholder="NUBE-TS-M"
+                           disabled="@Disabled"
+                           @oninput="e => OnSkuChanged(index, e)" />
+                    <select value="@(string.IsNullOrWhiteSpace(row.Status) ? "Active" : row.Status)"
+                            disabled="@Disabled"
+                            @onchange="e => OnVariantStatusChanged(index, e)">
+                        <option value="Active">Active</option>
+                        <option value="Inactive">Inactive</option>
+                    </select>
+                    <button type="button"
+                            class="admin-size-variants-remove"
+                            title="Remove size"
+                            disabled="@Disabled"
+                            @onclick="() => RemoveRow(index)">
+                        <Icon Name="trash" Size="14" />
+                    </button>
+                </div>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderSizeSuggestions(string? colorName) => __builder =>
+    {
+        <div class="admin-size-variants-suggestions">
+            @foreach (var size in SuggestedSizes)
+            {
+                var already = Variants.Any(v =>
+                    ProductVariantLogic.SameText(v.Size, size) &&
+                    ProductVariantLogic.SameText(v.ColorName, colorName));
+                <button type="button"
+                        class="admin-size-chip @(already ? "is-used" : "")"
+                        disabled="@(Disabled || already)"
+                        @onclick="() => AddSuggestedSize(size, colorName)">
+                    @size
+                </button>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderColorSuggestions() => __builder =>
+    {
+        <div class="admin-size-variants-suggestions">
+            @foreach (var suggestion in ProductVariantLogic.SuggestedColors)
+            {
+                var already = Variants.Any(v => ProductVariantLogic.SameText(v.ColorName, suggestion.Name));
+                <button type="button"
+                        class="admin-size-chip @(already ? "is-used" : "")"
+                        disabled="@(Disabled || already)"
+                        @onclick="() => AddColor(suggestion.Name, suggestion.Hex)">
+                    @suggestion.Name
+                </button>
+            }
+        </div>
+    };
+
+    private RenderFragment RenderAddColorForm() => __builder =>
+    {
+        @if (_showAddColor)
+        {
+            <div class="admin-add-color-form">
+                <label class="admin-field">
+                    <span>Color Name</span>
+                    <input type="text"
+                           value="@_newColorName"
+                           placeholder="Navy"
+                           disabled="@Disabled"
+                           @oninput="e => _newColorName = e.Value?.ToString() ?? string.Empty" />
+                </label>
+                <label class="admin-field">
+                    <span>Color</span>
+                    <input type="color"
+                           value="@ColorInputValue(_newColorHex, _newColorName)"
+                           disabled="@Disabled"
+                           @oninput="OnNewColorPickerChanged" />
+                </label>
+                <label class="admin-field">
+                    <span>Hex</span>
+                    <input type="text"
+                           value="@_newColorHex"
+                           placeholder="#0B1F3A"
+                           disabled="@Disabled"
+                           @oninput="OnNewColorHexChanged" />
+                </label>
+                <button type="button"
+                        class="btn btn-navy"
+                        disabled="@Disabled"
+                        @onclick="SubmitNewColor">
+                    Add Color
+                </button>
+                <button type="button"
+                        class="btn btn-outline-navy"
+                        disabled="@Disabled"
+                        @onclick="() => _showAddColor = false">
+                    Cancel
+                </button>
+            </div>
+        }
+        else
+        {
+            <button type="button"
+                    class="btn btn-outline-navy admin-size-variants-add"
+                    disabled="@Disabled"
+                    @onclick="() => _showAddColor = true">
+                + Add Color
+            </button>
+        }
+    };
+
+    private async Task OnSizeToggleChanged(ChangeEventArgs e)
+    {
+        var enabled = IsChecked(e);
         HasSizeVariants = enabled;
         await HasSizeVariantsChanged.InvokeAsync(enabled);
+        await SyncVariantShapeAsync();
+    }
 
-        if (enabled && Variants.Count == 0)
+    private async Task OnColorToggleChanged(ChangeEventArgs e)
+    {
+        var enabled = IsChecked(e);
+        HasColorVariants = enabled;
+        await HasColorVariantsChanged.InvokeAsync(enabled);
+        await SyncVariantShapeAsync();
+    }
+
+    private async Task SyncVariantShapeAsync()
+    {
+        if (!HasSizeVariants && !HasColorVariants)
         {
-            foreach (var size in new[] { "S", "M", "L", "XL" })
-                Variants.Add(CreateRow(size, 0));
+            Variants.Clear();
             await VariantsChanged.InvokeAsync(Variants);
+            return;
         }
+
+        if (HasSizeVariants && !HasColorVariants)
+        {
+            if (Variants.Count == 0)
+            {
+                foreach (var size in ProductVariantLogic.DefaultSizes)
+                    Variants.Add(CreateRow(size, 0, null, null));
+            }
+            else
+            {
+                CollapseToSizeOnly();
+            }
+        }
+        else if (!HasSizeVariants && HasColorVariants)
+        {
+            if (Variants.Count == 0)
+            {
+                Variants.Add(CreateRow(string.Empty, 0, "Navy", ProductVariantLogic.DefaultHex("Navy")));
+            }
+            else
+            {
+                CollapseToColorOnly();
+            }
+        }
+        else if (Variants.Count == 0)
+        {
+            foreach (var size in ProductVariantLogic.DefaultSizes)
+                Variants.Add(CreateRow(size, 0, "Navy", ProductVariantLogic.DefaultHex("Navy")));
+        }
+        else if (Variants.All(v => string.IsNullOrWhiteSpace(v.ColorName)))
+        {
+            foreach (var variant in Variants)
+            {
+                variant.ColorName = "Navy";
+                variant.ColorHex = ProductVariantLogic.DefaultHex("Navy");
+                ProductVariantLogic.ApplySuggestedSku(variant, BaseSku, null, variant.Size);
+            }
+        }
+        else if (Variants.All(v => string.IsNullOrWhiteSpace(v.Size)))
+        {
+            ExpandColorsWithDefaultSizes();
+        }
+
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private void CollapseToSizeOnly()
+    {
+        var merged = new List<ProductVariant>();
+        foreach (var group in Variants.GroupBy(v => (v.Size ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(group.Key))
+                continue;
+
+            var first = group.First().Clone();
+            first.Size = group.Key;
+            first.ColorName = null;
+            first.ColorHex = null;
+            first.StockQuantity = group.Sum(v => Math.Max(0, v.StockQuantity));
+            ProductVariantLogic.ApplySuggestedSku(first, BaseSku, first.ColorName, first.Size);
+            merged.Add(first);
+        }
+
+        Variants.Clear();
+        Variants.AddRange(merged.Count > 0 ? merged : ProductVariantLogic.DefaultSizes.Select(s => CreateRow(s, 0, null, null)));
+    }
+
+    private void CollapseToColorOnly()
+    {
+        var merged = new List<ProductVariant>();
+        foreach (var group in Variants.GroupBy(v => (v.ColorName ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(group.Key))
+                continue;
+
+            var first = group.First().Clone();
+            first.ColorName = group.Key;
+            first.Size = string.Empty;
+            first.StockQuantity = group.Sum(v => Math.Max(0, v.StockQuantity));
+            ProductVariantLogic.ApplySuggestedSku(first, BaseSku, first.ColorName, first.Size);
+            merged.Add(first);
+        }
+
+        Variants.Clear();
+        Variants.AddRange(merged.Count > 0
+            ? merged
+            : [CreateRow(string.Empty, 0, "Navy", ProductVariantLogic.DefaultHex("Navy"))]);
+    }
+
+    private void ExpandColorsWithDefaultSizes()
+    {
+        var expanded = new List<ProductVariant>();
+        foreach (var group in Variants.GroupBy(v => (v.ColorName ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase))
+        {
+            if (string.IsNullOrWhiteSpace(group.Key))
+                continue;
+
+            var source = group.First();
+            var remaining = source.StockQuantity;
+            for (var i = 0; i < ProductVariantLogic.DefaultSizes.Length; i++)
+            {
+                var size = ProductVariantLogic.DefaultSizes[i];
+                expanded.Add(CreateRow(size, i == 0 ? remaining : 0, source.ColorName, source.ColorHex));
+            }
+        }
+
+        Variants.Clear();
+        Variants.AddRange(expanded);
     }
 
     private async Task OnStockInput(ChangeEventArgs e)
@@ -152,7 +504,63 @@
     private async Task OnSizeChanged(int index, ChangeEventArgs e)
     {
         if (index < 0 || index >= Variants.Count) return;
+        var previousSize = Variants[index].Size;
         Variants[index].Size = e.Value?.ToString() ?? string.Empty;
+        ProductVariantLogic.ApplySuggestedSku(Variants[index], BaseSku, Variants[index].ColorName, previousSize);
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnColorNameChanged(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        var previous = Variants[index].ColorName;
+        Variants[index].ColorName = e.Value?.ToString() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(Variants[index].ColorHex))
+            Variants[index].ColorHex = ProductVariantLogic.DefaultHex(Variants[index].ColorName);
+        ProductVariantLogic.ApplySuggestedSku(Variants[index], BaseSku, previous, Variants[index].Size);
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnColorHexPickerChanged(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        Variants[index].ColorHex = ProductVariantLogic.NormalizeHex(e.Value?.ToString());
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnColorHexTextChanged(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        Variants[index].ColorHex = ProductVariantLogic.NormalizeHex(e.Value?.ToString()) ?? e.Value?.ToString();
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnGroupColorNameChanged(string previousKey, ChangeEventArgs e)
+    {
+        var next = e.Value?.ToString() ?? string.Empty;
+        foreach (var variant in Variants.Where(v => ProductVariantLogic.SameText(v.ColorName, previousKey)))
+        {
+            var previous = variant.ColorName;
+            variant.ColorName = next;
+            ProductVariantLogic.ApplySuggestedSku(variant, BaseSku, previous, variant.Size);
+        }
+
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnGroupHexPickerChanged(string colorKey, ChangeEventArgs e)
+    {
+        var hex = ProductVariantLogic.NormalizeHex(e.Value?.ToString());
+        foreach (var variant in Variants.Where(v => ProductVariantLogic.SameText(v.ColorName, colorKey)))
+            variant.ColorHex = hex;
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task OnGroupHexTextChanged(string colorKey, ChangeEventArgs e)
+    {
+        var hex = ProductVariantLogic.NormalizeHex(e.Value?.ToString()) ?? e.Value?.ToString();
+        foreach (var variant in Variants.Where(v => ProductVariantLogic.SameText(v.ColorName, colorKey)))
+            variant.ColorHex = hex;
         await VariantsChanged.InvokeAsync(Variants);
     }
 
@@ -180,19 +588,72 @@
         await VariantsChanged.InvokeAsync(Variants);
     }
 
-    private async Task AddSuggested(string size)
+    private async Task AddSuggestedSize(string size, string? colorName)
     {
-        if (Variants.Any(v => v.Size.Equals(size, StringComparison.OrdinalIgnoreCase)))
+        if (Variants.Any(v =>
+                ProductVariantLogic.SameText(v.Size, size) &&
+                ProductVariantLogic.SameText(v.ColorName, colorName)))
+        {
             return;
-        Variants.Add(CreateRow(size, 0));
+        }
+
+        var hex = string.IsNullOrWhiteSpace(colorName)
+            ? null
+            : Variants.FirstOrDefault(v => ProductVariantLogic.SameText(v.ColorName, colorName))?.ColorHex
+              ?? ProductVariantLogic.DefaultHex(colorName);
+        Variants.Add(CreateRow(size, 0, colorName, hex));
         await VariantsChanged.InvokeAsync(Variants);
     }
 
-    private async Task AddEmptyRow()
+    private async Task AddEmptySize(string? colorName)
     {
-        Variants.Add(CreateRow(string.Empty, 0));
+        var hex = string.IsNullOrWhiteSpace(colorName)
+            ? null
+            : Variants.FirstOrDefault(v => ProductVariantLogic.SameText(v.ColorName, colorName))?.ColorHex
+              ?? ProductVariantLogic.DefaultHex(colorName);
+        Variants.Add(CreateRow(string.Empty, 0, colorName, hex));
         await VariantsChanged.InvokeAsync(Variants);
     }
+
+    private async Task AddColor(string name, string hex)
+    {
+        if (Variants.Any(v => ProductVariantLogic.SameText(v.ColorName, name)))
+            return;
+
+        if (HasSizeVariants)
+        {
+            var sizes = ProductVariantLogic.DistinctSizes(Variants).ToList();
+            if (sizes.Count == 0)
+                sizes.AddRange(ProductVariantLogic.DefaultSizes);
+
+            foreach (var size in sizes)
+                Variants.Add(CreateRow(size, 0, name, hex));
+        }
+        else
+        {
+            Variants.Add(CreateRow(string.Empty, 0, name, hex));
+        }
+
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private async Task SubmitNewColor()
+    {
+        var name = _newColorName.Trim();
+        if (string.IsNullOrWhiteSpace(name))
+            return;
+
+        await AddColor(name, ProductVariantLogic.NormalizeHex(_newColorHex) ?? ProductVariantLogic.DefaultHex(name));
+        _newColorName = string.Empty;
+        _newColorHex = "#0B1F3A";
+        _showAddColor = false;
+    }
+
+    private void OnNewColorPickerChanged(ChangeEventArgs e) =>
+        _newColorHex = ProductVariantLogic.NormalizeHex(e.Value?.ToString()) ?? "#0B1F3A";
+
+    private void OnNewColorHexChanged(ChangeEventArgs e) =>
+        _newColorHex = ProductVariantLogic.NormalizeHex(e.Value?.ToString()) ?? e.Value?.ToString() ?? string.Empty;
 
     private async Task RemoveRow(int index)
     {
@@ -201,43 +662,36 @@
         await VariantsChanged.InvokeAsync(Variants);
     }
 
-    private ProductVariant CreateRow(string size, int stock)
+    private async Task RemoveColorGroup(string colorKey)
     {
-        var suffix = string.IsNullOrWhiteSpace(size)
-            ? string.Empty
-            : "-" + size.Trim().ToUpperInvariant().Replace(' ', '-');
-        var baseSku = (BaseSku ?? string.Empty).Trim().TrimEnd('-');
+        Variants.RemoveAll(v => ProductVariantLogic.SameText(v.ColorName, colorKey));
+        await VariantsChanged.InvokeAsync(Variants);
+    }
+
+    private ProductVariant CreateRow(string size, int stock, string? colorName, string? colorHex)
+    {
         return new ProductVariant
         {
             Size = size,
+            ColorName = string.IsNullOrWhiteSpace(colorName) ? null : colorName.Trim(),
+            ColorHex = ProductVariantLogic.NormalizeHex(colorHex)
+                       ?? (string.IsNullOrWhiteSpace(colorName) ? null : ProductVariantLogic.DefaultHex(colorName)),
             StockQuantity = stock,
-            Sku = string.IsNullOrWhiteSpace(baseSku) || string.IsNullOrWhiteSpace(suffix)
-                ? null
-                : $"{baseSku}{suffix}",
+            Sku = ProductVariantLogic.SuggestSku(BaseSku, colorName, size),
             PriceAdjustment = 0,
             Status = "Active"
         };
     }
 
-    public static string? Validate(bool hasVariants, IReadOnlyList<ProductVariant> variants)
-    {
-        if (!hasVariants)
-            return null;
+    private static string ColorInputValue(string? hex, string? colorName) =>
+        ProductVariantLogic.NormalizeHex(hex) ?? ProductVariantLogic.DefaultHex(colorName);
 
-        if (variants.Count == 0)
-            return "Add at least one size variant.";
+    private static bool IsChecked(ChangeEventArgs e) =>
+        e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
 
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var variant in variants)
-        {
-            if (string.IsNullOrWhiteSpace(variant.Size))
-                return "Each size variant needs a size name.";
-            if (variant.StockQuantity < 0)
-                return "Variant stock cannot be negative.";
-            if (!seen.Add(variant.Size.Trim()))
-                return $"Duplicate product size: {variant.Size.Trim()}";
-        }
+    public static string? Validate(bool hasVariants, IReadOnlyList<ProductVariant> variants) =>
+        ProductVariantLogic.Validate(hasVariants, false, variants);
 
-        return null;
-    }
+    public static string? Validate(bool hasSize, bool hasColor, IReadOnlyList<ProductVariant> variants) =>
+        ProductVariantLogic.Validate(hasSize, hasColor, variants);
 }

@@ -88,6 +88,10 @@
                                 <div class="mobile-order-item-info">
                                     <h4 class="mobile-order-item-title">@item.Name</h4>
                                     <span class="mobile-order-item-meta">
+                                        @if (!string.IsNullOrWhiteSpace(item.Color))
+                                        {
+                                            <text>Color: @item.Color · </text>
+                                        }
                                         @if (!string.IsNullOrEmpty(item.Size) && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
                                         {
                                             <text>Size: @item.Size · </text>
@@ -281,7 +285,7 @@
             var prod = Catalog.Products.FirstOrDefault(p => p.Id == item.ProductId || p.Name.Equals(item.Name, StringComparison.OrdinalIgnoreCase));
             if (prod is not null)
             {
-                Cart.Add(prod, item.Quantity, prod.Colors.FirstOrDefault(), item.Size);
+                Cart.Add(prod, item.Quantity, item.Color ?? prod.Colors.FirstOrDefault(), item.Size);
                 added++;
             }
         }

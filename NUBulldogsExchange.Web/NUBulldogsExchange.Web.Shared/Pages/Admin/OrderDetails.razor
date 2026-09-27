@@ -79,6 +79,23 @@
                     <div><dt>Payment Status</dt><dd><span class="admin-payment-badge payment-@Order.PaymentKey">@Order.PaymentStatus</span></dd></div>
                 </dl>
 
+                @{
+                    var nextLabel = OrderFlow.NextAdminActionLabel(Order.Fulfillment, Order.Status);
+                    var canCancel = OrderFlow.CanAdminCancel(Order);
+                }
+                @if (!string.IsNullOrWhiteSpace(nextLabel) || canCancel)
+                {
+                    <div class="aod-next-actions" style="margin-bottom: 12px;">
+                        @if (!string.IsNullOrWhiteSpace(nextLabel))
+                        {
+                            <button type="button" class="btn btn-navy" @onclick="ApplyNextAction">@nextLabel</button>
+                        }
+                        @if (canCancel)
+                        {
+                            <button type="button" class="btn btn-outline-navy" @onclick="ApplyCancel">Cancel Order</button>
+                        }
+                    </div>
+                }
                 <label class="admin-field">
                     <span>Order Status</span>
                     <select value="@Order.Status" @onchange="OnStatusChange">
@@ -104,7 +121,7 @@
                                 <div>
                                     <strong>@item.Name</strong>
                                     <span>
-                                        @(string.IsNullOrWhiteSpace(item.Size) ? "Free Size" : item.Size)
+                                        @(string.IsNullOrWhiteSpace(item.VariantLabel) ? "Free Size" : item.VariantLabel)
                                         · Qty @item.Quantity · ₱@item.Price.ToString("N0")
                                     </span>
                                 </div>
@@ -144,6 +161,24 @@
 
         if (await OrderService.UpdateStatusAsync(Order.Id, status))
             Toast.Show($"Order status updated to {status}.");
+    }
+
+    private async Task ApplyNextAction()
+    {
+        if (Order is null) return;
+        var next = OrderFlow.NextAdminStatus(Order.Fulfillment, Order.Status);
+        if (string.IsNullOrWhiteSpace(next)) return;
+
+        if (await OrderService.UpdateStatusAsync(Order.Id, next))
+            Toast.Show($"Order status updated to {next}.");
+    }
+
+    private async Task ApplyCancel()
+    {
+        if (Order is null || !OrderFlow.CanAdminCancel(Order)) return;
+
+        if (await OrderService.UpdateStatusAsync(Order.Id, OrderFlow.Cancelled))
+            Toast.Show("Order status updated to Cancelled.");
     }
 
     public void Dispose() => OrderService.OnChange -= Refresh;

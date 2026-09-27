@@ -346,17 +346,22 @@ public sealed partial class DatabaseService : IAppDatabase
             insert.Transaction = tx;
             insert.CommandText = """
                 INSERT INTO ProductVariants (
-                    ProductId, Sku, VariantName, Size, Color, AdditionalPrice, StockQuantity,
+                    ProductId, Sku, VariantName, Size, Color, ColorHex, AdditionalPrice, StockQuantity,
                     LowStockThreshold, IsActive, CreatedAt, UpdatedAt
                 ) VALUES (
-                    $productId, $sku, $name, $size, '', $price, $stock,
+                    $productId, $sku, $name, $size, $color, $colorHex, $price, $stock,
                     20, $active, $createdAt, $updatedAt
                 );
                 """;
             insert.Parameters.AddWithValue("$productId", productId);
             insert.Parameters.AddWithValue("$sku", (object?)variant.Sku ?? DBNull.Value);
-            insert.Parameters.AddWithValue("$name", variant.Size.Trim());
-            insert.Parameters.AddWithValue("$size", variant.Size.Trim());
+            var colorName = variant.ColorName?.Trim();
+            insert.Parameters.AddWithValue("$name", string.IsNullOrWhiteSpace(colorName)
+                ? (variant.Size ?? string.Empty).Trim()
+                : $"{colorName} {variant.Size}".Trim());
+            insert.Parameters.AddWithValue("$size", variant.Size?.Trim() ?? string.Empty);
+            insert.Parameters.AddWithValue("$color", (object?)colorName ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$colorHex", (object?)ProductVariantLogic.NormalizeHex(variant.ColorHex) ?? DBNull.Value);
             insert.Parameters.AddWithValue("$price", variant.PriceAdjustment);
             insert.Parameters.AddWithValue("$stock", Math.Max(0, variant.StockQuantity));
             insert.Parameters.AddWithValue("$active",
@@ -375,7 +380,7 @@ public sealed partial class DatabaseService : IAppDatabase
         var list = new List<ProductVariant>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Id, ProductId, Sku, Size, AdditionalPrice, StockQuantity, IsActive, CreatedAt, UpdatedAt
+            SELECT Id, ProductId, Sku, Size, AdditionalPrice, StockQuantity, IsActive, CreatedAt, UpdatedAt, Color, ColorHex
             FROM ProductVariants
             WHERE ProductId = $productId
             ORDER BY Id ASC;
@@ -394,7 +399,9 @@ public sealed partial class DatabaseService : IAppDatabase
                 StockQuantity = reader.IsDBNull(5) ? 0 : reader.GetInt32(5),
                 Status = !reader.IsDBNull(6) && reader.GetInt32(6) == 0 ? "Inactive" : "Active",
                 CreatedAt = reader.IsDBNull(7) ? null : DateTime.TryParse(reader.GetString(7), out var c) ? c : null,
-                UpdatedAt = reader.IsDBNull(8) ? null : DateTime.TryParse(reader.GetString(8), out var u) ? u : null
+                UpdatedAt = reader.IsDBNull(8) ? null : DateTime.TryParse(reader.GetString(8), out var u) ? u : null,
+                ColorName = reader.FieldCount > 9 && !reader.IsDBNull(9) ? reader.GetString(9) : null,
+                ColorHex = reader.FieldCount > 10 && !reader.IsDBNull(10) ? reader.GetString(10) : null
             });
         }
 
@@ -774,8 +781,8 @@ public sealed partial class DatabaseService : IAppDatabase
             await using var insert = connection.CreateCommand();
             insert.Transaction = tx;
             insert.CommandText = """
-                INSERT INTO OrderItems (OrderId, ProductId, Name, ImageUrl, Quantity, Price)
-                VALUES ($orderId, $productId, $name, $imageUrl, $quantity, $price);
+                INSERT INTO OrderItems (OrderId, ProductId, Name, ImageUrl, Quantity, Price, VariantId, Size, ColorName, VariantSku)
+                VALUES ($orderId, $productId, $name, $imageUrl, $quantity, $price, $variantId, $size, $colorName, $variantSku);
                 """;
             insert.Parameters.AddWithValue("$orderId", order.Id);
             insert.Parameters.AddWithValue("$productId", item.ProductId);
@@ -783,6 +790,10 @@ public sealed partial class DatabaseService : IAppDatabase
             insert.Parameters.AddWithValue("$imageUrl", item.ImageUrl ?? "");
             insert.Parameters.AddWithValue("$quantity", item.Quantity);
             insert.Parameters.AddWithValue("$price", item.Price);
+            insert.Parameters.AddWithValue("$variantId", (object?)item.VariantId ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$size", (object?)item.Size ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$colorName", (object?)item.ColorName ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$variantSku", (object?)item.VariantSku ?? DBNull.Value);
             await insert.ExecuteNonQueryAsync();
         }
 
@@ -869,7 +880,10 @@ public sealed partial class DatabaseService : IAppDatabase
     {
         var items = new List<AdminOrderItem>();
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT ProductId, Name, ImageUrl, Quantity, Price FROM OrderItems WHERE OrderId = $orderId;";
+        command.CommandText = """
+            SELECT ProductId, Name, ImageUrl, Quantity, Price, VariantId, Size, ColorName, VariantSku
+            FROM OrderItems WHERE OrderId = $orderId;
+            """;
         command.Parameters.AddWithValue("$orderId", orderId);
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
@@ -880,7 +894,11 @@ public sealed partial class DatabaseService : IAppDatabase
                 Name = reader.GetString(1),
                 ImageUrl = reader.GetString(2),
                 Quantity = reader.GetInt32(3),
-                Price = reader.GetDecimal(4)
+                Price = reader.GetDecimal(4),
+                VariantId = reader.FieldCount > 5 && !reader.IsDBNull(5) ? reader.GetInt32(5) : null,
+                Size = reader.FieldCount > 6 && !reader.IsDBNull(6) ? reader.GetString(6) : null,
+                ColorName = reader.FieldCount > 7 && !reader.IsDBNull(7) ? reader.GetString(7) : null,
+                VariantSku = reader.FieldCount > 8 && !reader.IsDBNull(8) ? reader.GetString(8) : null
             });
         }
 
@@ -1722,7 +1740,9 @@ public sealed partial class DatabaseService : IAppDatabase
             ["Pending"] = "#F9C424",
             ["Ready for Pickup"] = "#A855F7",
             ["Cancelled"] = "#EF4444",
-            ["Confirmed"] = "#64748B"
+            ["Confirmed"] = "#0F766E",
+            ["Out for Delivery"] = "#0369A1",
+            ["Delivered"] = "#22C55E"
         };
 
         stats.OrderStatus = orders
@@ -1945,8 +1965,8 @@ public sealed partial class DatabaseService : IAppDatabase
                 await using var itemCmd = connection.CreateCommand();
                 itemCmd.Transaction = tx;
                 itemCmd.CommandText = """
-                    INSERT INTO OrderItems (OrderId, ProductId, Name, ImageUrl, Quantity, Price)
-                    VALUES ($orderId, $productId, $name, $imageUrl, $quantity, $price);
+                    INSERT INTO OrderItems (OrderId, ProductId, Name, ImageUrl, Quantity, Price, VariantId, Size, ColorName, VariantSku)
+                    VALUES ($orderId, $productId, $name, $imageUrl, $quantity, $price, $variantId, $size, $colorName, $variantSku);
                     """;
                 itemCmd.Parameters.AddWithValue("$orderId", order.Id);
                 itemCmd.Parameters.AddWithValue("$productId", item.ProductId);
@@ -1954,6 +1974,10 @@ public sealed partial class DatabaseService : IAppDatabase
                 itemCmd.Parameters.AddWithValue("$imageUrl", item.ImageUrl ?? "");
                 itemCmd.Parameters.AddWithValue("$quantity", item.Quantity);
                 itemCmd.Parameters.AddWithValue("$price", item.Price);
+                itemCmd.Parameters.AddWithValue("$variantId", (object?)item.VariantId ?? DBNull.Value);
+                itemCmd.Parameters.AddWithValue("$size", (object?)item.Size ?? DBNull.Value);
+                itemCmd.Parameters.AddWithValue("$colorName", (object?)item.ColorName ?? DBNull.Value);
+                itemCmd.Parameters.AddWithValue("$variantSku", (object?)item.VariantSku ?? DBNull.Value);
                 await itemCmd.ExecuteNonQueryAsync();
 
                 int previousStock;
@@ -2008,9 +2032,10 @@ public sealed partial class DatabaseService : IAppDatabase
                     await hist.ExecuteNonQueryAsync();
                 }
 
-                int? variantId = null;
-                await using (var variantCmd = connection.CreateCommand())
+                int? variantId = item.VariantId;
+                if (variantId is null)
                 {
+                    await using var variantCmd = connection.CreateCommand();
                     variantCmd.Transaction = tx;
                     variantCmd.CommandText = """
                         SELECT Id FROM ProductVariants
@@ -2021,6 +2046,42 @@ public sealed partial class DatabaseService : IAppDatabase
                     var v = await variantCmd.ExecuteScalarAsync();
                     if (v is not null and not DBNull)
                         variantId = Convert.ToInt32(v);
+                }
+
+                if (item.VariantId is int selectedVariantId)
+                {
+                    await using var deduct = connection.CreateCommand();
+                    deduct.Transaction = tx;
+                    deduct.CommandText = """
+                        UPDATE ProductVariants
+                        SET StockQuantity = StockQuantity - $qty, UpdatedAt = $updatedAt
+                        WHERE Id = $id AND StockQuantity >= $qty;
+                        """;
+                    deduct.Parameters.AddWithValue("$qty", item.Quantity);
+                    deduct.Parameters.AddWithValue("$updatedAt", nowText);
+                    deduct.Parameters.AddWithValue("$id", selectedVariantId);
+                    await deduct.ExecuteNonQueryAsync();
+
+                    await using var recap = connection.CreateCommand();
+                    recap.Transaction = tx;
+                    recap.CommandText = """
+                        UPDATE Products
+                        SET Stock = (
+                                SELECT COALESCE(SUM(StockQuantity), 0)
+                                FROM ProductVariants
+                                WHERE ProductId = $productId
+                            ),
+                            InStock = (
+                                SELECT CASE WHEN COALESCE(SUM(StockQuantity), 0) > 0 THEN 1 ELSE 0 END
+                                FROM ProductVariants
+                                WHERE ProductId = $productId
+                            ),
+                            UpdatedAt = $updatedAt
+                        WHERE Id = $productId;
+                        """;
+                    recap.Parameters.AddWithValue("$productId", item.ProductId);
+                    recap.Parameters.AddWithValue("$updatedAt", nowText);
+                    await recap.ExecuteNonQueryAsync();
                 }
 
                 await using (var move = connection.CreateCommand())

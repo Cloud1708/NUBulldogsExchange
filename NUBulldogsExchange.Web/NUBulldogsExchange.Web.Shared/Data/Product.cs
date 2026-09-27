@@ -17,7 +17,9 @@ public class Product
     public List<string> Colors { get; set; } = [];
     public List<string> Sizes { get; set; } = [];
     public List<ProductVariant> Variants { get; set; } = [];
-    public bool HasSizeVariants => Variants.Count > 0;
+    public bool HasVariants => Variants.Count > 0;
+    public bool HasSizeVariants => Variants.Any(v => !string.IsNullOrWhiteSpace(v.Size));
+    public bool HasColorVariants => Variants.Any(v => !string.IsNullOrWhiteSpace(v.ColorName));
     public string Material { get; set; } = string.Empty;
     public string Sku { get; set; } = string.Empty;
     public bool InStock { get; set; } = true;

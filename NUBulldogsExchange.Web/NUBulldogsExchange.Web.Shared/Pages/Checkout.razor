@@ -126,9 +126,9 @@ else if (_checkoutPhase == CheckoutPhaseConfirmation && _confirmedOrder is not n
                                      onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                 <div class="checkout-summary-item-meta">
                                     <strong>@item.Name</strong>
-                                    @if (!string.IsNullOrWhiteSpace(item.Size))
+                                    @if (!string.IsNullOrWhiteSpace(item.VariantLabel))
                                     {
-                                        <span>Size: @item.Size</span>
+                                        <span>@item.VariantLabel</span>
                                     }
                                     <span>Qty: @item.Quantity</span>
                                 </div>
@@ -536,6 +536,10 @@ else
                                          onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                     <div class="checkout-summary-item-meta">
                                         <strong>@item.Product.Name</strong>
+                                        @if (!string.IsNullOrWhiteSpace(item.SelectedColor))
+                                        {
+                                            <span>Color: @MockData.FormatColorName(item.SelectedColor)</span>
+                                        }
                                         @if (!string.IsNullOrWhiteSpace(item.SelectedSize))
                                         {
                                             <span>Size: @item.SelectedSize</span>
@@ -1293,6 +1297,7 @@ else
                         Price = i.Product.Price,
                         VariantId = i.VariantId,
                         Size = i.SelectedSize,
+                        ColorName = i.SelectedColor,
                         VariantSku = i.VariantId is int vid
                             ? i.Product.Variants.FirstOrDefault(v => v.Id == vid)?.Sku
                             : null

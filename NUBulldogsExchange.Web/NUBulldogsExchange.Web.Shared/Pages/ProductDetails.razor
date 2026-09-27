@@ -111,7 +111,36 @@ else
 
                     <p class="detail-desc">@_product.Description</p>
 
-                    @if (_product.Colors.Count > 0)
+                    @if (_product.HasColorVariants)
+                    {
+                        <div class="pdp-option">
+                            <div class="pdp-option-head">
+                                <span>Color</span>
+                                @if (!string.IsNullOrWhiteSpace(_selectedColor))
+                                {
+                                    <small>@MockData.FormatColorName(_selectedColor)</small>
+                                }
+                            </div>
+                            <div class="pdp-swatch-list">
+                                @foreach (var color in VisibleColors)
+                                {
+                                    var soldOut = ProductVariantLogic.ColorIsSoldOut(_product.Variants, color);
+                                    var hex = ProductVariantLogic.ColorHex(_product.Variants, color);
+                                    <button type="button"
+                                            class="pdp-swatch-option @(_selectedColor == color ? "selected" : "") @(soldOut ? "is-sold-out" : "")"
+                                            disabled="@soldOut"
+                                            title="@(soldOut ? $"{color} — Sold Out" : color)"
+                                            aria-label="@color"
+                                            @onclick="() => SelectColor(color)">
+                                        <span class="pdp-swatch pdp-swatch-hex @(IsLightHex(hex) ? "is-light" : "")"
+                                              style="background:@hex"></span>
+                                        <small>@color</small>
+                                    </button>
+                                }
+                            </div>
+                        </div>
+                    }
+                    else if (!_product.HasSizeVariants && _product.Colors.Count > 0)
                     {
                         <div class="pdp-option">
                             <div class="pdp-option-head">
@@ -146,7 +175,7 @@ else
                                 <button type="button" class="pdp-size-guide-link" @onclick="() => _showSizeGuide = true">Size Guide</button>
                             </div>
                             <div class="pdp-sizes">
-                                @foreach (var variant in _product.Variants.Where(v => v.IsActive))
+                                @foreach (var variant in VisibleSizeVariants)
                                 {
                                     var soldOut = variant.StockQuantity <= 0;
                                     <button type="button"
@@ -478,18 +507,38 @@ else
     private int _reviewRating = 5;
     private string _reviewText = string.Empty;
 
+    private IEnumerable<string> VisibleColors =>
+        _product is null
+            ? []
+            : ProductVariantLogic.DistinctColors(_product.Variants.Where(v => v.IsActive));
+
+    private IEnumerable<ProductVariant> VisibleSizeVariants
+    {
+        get
+        {
+            if (_product is null) return [];
+            var rows = _product.Variants.Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size));
+            if (_product.HasColorVariants)
+                rows = rows.Where(v => ProductVariantLogic.SameText(v.ColorName, _selectedColor));
+            return rows;
+        }
+    }
+
     private int AvailableStock
     {
         get
         {
             if (_product is null) return 0;
-            if (_product.HasSizeVariants)
+            if (_product.HasVariants)
             {
                 if (_selectedVariantId is int id)
                 {
                     var variant = _product.Variants.FirstOrDefault(v => v.Id == id);
                     return variant?.StockQuantity ?? 0;
                 }
+
+                if (_product.HasColorVariants && !_product.HasSizeVariants && !string.IsNullOrWhiteSpace(_selectedColor))
+                    return ProductVariantLogic.Find(_product.Variants, _selectedColor, null)?.StockQuantity ?? 0;
 
                 return _product.Variants.Where(v => v.IsActive).Sum(v => Math.Max(0, v.StockQuantity));
             }
@@ -542,28 +591,15 @@ else
             _gallery = [product.ImageUrl];
 
         _selectedImage = _gallery.FirstOrDefault() ?? product.ImageUrl;
-        _selectedColor = product.Colors.FirstOrDefault();
+        _selectedColor = product.HasColorVariants
+            ? ProductVariantLogic.DistinctColors(product.Variants.Where(v => v.IsActive)).FirstOrDefault()
+            : product.HasSizeVariants
+                ? null
+                : product.Colors.FirstOrDefault();
         _selectedVariantId = null;
         _selectedSize = null;
         _sizeError = null;
-
-        if (product.HasSizeVariants)
-        {
-            var firstInStock = product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity > 0);
-            if (firstInStock is not null)
-            {
-                _selectedVariantId = firstInStock.Id;
-                _selectedSize = firstInStock.Size;
-            }
-        }
-        else if (product.Sizes.Count > 0)
-        {
-            _selectedSize = product.Sizes.Count == 1
-                ? product.Sizes[0]
-                : product.Sizes.Contains("M")
-                    ? "M"
-                    : product.Sizes.FirstOrDefault();
-        }
+        ApplyVariantSelection(product);
 
         _quantity = AvailableStock > 0 ? 1 : 0;
     }
@@ -589,7 +625,69 @@ else
     }
 
     private void SelectImage(string src) => _selectedImage = src;
-    private void SelectColor(string color) => _selectedColor = color;
+
+    private void SelectColor(string color)
+    {
+        if (_product is null || ProductVariantLogic.ColorIsSoldOut(_product.Variants, color))
+            return;
+
+        _selectedColor = color;
+        if (_product.HasColorVariants)
+        {
+            _selectedVariantId = null;
+            _selectedSize = null;
+            ApplyVariantSelection(_product);
+        }
+
+        UpdateStockClass();
+    }
+
+    private void ApplyVariantSelection(Product product)
+    {
+        if (product.HasColorVariants && product.HasSizeVariants)
+        {
+            var firstInStock = VisibleSizeVariants.FirstOrDefault(v => v.StockQuantity > 0);
+            if (firstInStock is not null)
+            {
+                _selectedVariantId = firstInStock.Id;
+                _selectedSize = firstInStock.Size;
+            }
+        }
+        else if (product.HasColorVariants)
+        {
+            var colorVariant = ProductVariantLogic.Find(product.Variants, _selectedColor, null);
+            _selectedVariantId = colorVariant?.Id;
+            _selectedSize = null;
+        }
+        else if (product.HasSizeVariants)
+        {
+            var firstInStock = product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity > 0);
+            if (firstInStock is not null)
+            {
+                _selectedVariantId = firstInStock.Id;
+                _selectedSize = firstInStock.Size;
+            }
+        }
+        else if (product.Sizes.Count > 0)
+        {
+            _selectedSize = product.Sizes.Count == 1
+                ? product.Sizes[0]
+                : product.Sizes.Contains("M")
+                    ? "M"
+                    : product.Sizes.FirstOrDefault();
+        }
+    }
+
+    private static bool IsLightHex(string hex)
+    {
+        var normalized = ProductVariantLogic.NormalizeHex(hex);
+        if (normalized is not { Length: 7 })
+            return false;
+        var r = Convert.ToInt32(normalized[1..3], 16);
+        var g = Convert.ToInt32(normalized[3..5], 16);
+        var b = Convert.ToInt32(normalized[5..7], 16);
+        return ((r * 299) + (g * 587) + (b * 114)) / 1000 > 200;
+    }
 
     private void SelectSize(string size)
     {
@@ -631,7 +729,13 @@ else
             return false;
         }
 
-        if (_product.Colors.Count > 0 && string.IsNullOrWhiteSpace(_selectedColor))
+        if (_product.HasColorVariants && string.IsNullOrWhiteSpace(_selectedColor))
+        {
+            Toast.Show("Please select a color.");
+            return false;
+        }
+
+        if (!_product.HasColorVariants && _product.Colors.Count > 0 && string.IsNullOrWhiteSpace(_selectedColor))
         {
             Toast.Show("Please select a color.");
             return false;
@@ -650,6 +754,22 @@ else
             if (variant is null || variant.StockQuantity < _quantity)
             {
                 Toast.Show("Not enough stock for the selected size.");
+                return false;
+            }
+        }
+        else if (_product.HasColorVariants)
+        {
+            var variant = ProductVariantLogic.Find(_product.Variants, _selectedColor, null);
+            if (variant is null)
+            {
+                Toast.Show("Please select a color.");
+                return false;
+            }
+
+            _selectedVariantId = variant.Id;
+            if (variant.StockQuantity < _quantity)
+            {
+                Toast.Show("Not enough stock for the selected color.");
                 return false;
             }
         }

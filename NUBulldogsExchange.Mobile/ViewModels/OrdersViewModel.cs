@@ -46,42 +46,34 @@ public sealed class OrderCardModel
     public string DateAndItemsText => $"{Order.FormattedDate} • {Order.ItemCountLabel}";
     public string DateText => Order.FormattedDate;
     public string Status => Order.Status;
-    public string CustomerCategory => Order.CustomerCategory;
     public string TotalText => $"₱{Order.Total:N0}";
     public IReadOnlyList<MockOrderItem> Items => Order.Items;
 
-    public string FulfillmentBadgeText => Order.IsDelivery ? "🚚 Delivery" : "📍 Campus Pickup";
-    public string FulfillmentLocationText =>
-        string.IsNullOrWhiteSpace(Order.FulfillmentLocationLabel)
-            ? (Order.IsDelivery ? "Delivery address on file" : OrderFlow.PickupLocation)
-            : Order.FulfillmentLocationLabel;
-
-    public string PaymentMethodText => $"Payment: {(string.IsNullOrWhiteSpace(Order.PaymentMethod) ? "—" : Order.PaymentMethod)}";
-    public string PaymentStatusText => $"Payment Status: {Order.PaymentStatus}";
-
-    public Color BadgeBackground => Order.CustomerCategory switch
+    public Color BadgeBackground => Order.Status switch
     {
-        OrderFlow.ToPay => Color.FromArgb("#FEF3C7"),
-        OrderFlow.ToProcess => Color.FromArgb("#DBEAFE"),
-        OrderFlow.ReadyForPickup => Color.FromArgb("#E0F2FE"),
-        OrderFlow.ToReceive => Color.FromArgb("#EDE9FE"),
-        OrderFlow.Completed => Color.FromArgb("#DCFCE7"),
-        OrderFlow.Cancelled => Color.FromArgb("#FEE2E2"),
+        "Pending" => Color.FromArgb("#FEF3C7"),
+        "Confirmed" => Color.FromArgb("#DBEAFE"),
+        "Processing" => Color.FromArgb("#EDE9FE"),
+        "Ready for Pickup" => Color.FromArgb("#E0F2FE"),
+        "Completed" => Color.FromArgb("#DCFCE7"),
+        "Cancelled" => Color.FromArgb("#FEE2E2"),
         _ => Color.FromArgb("#F1F5F9")
     };
 
     public Color BadgeTextColor => Order.CustomerCategory switch
     {
-        OrderFlow.ToPay => Color.FromArgb("#B45309"),
-        OrderFlow.ToProcess => Color.FromArgb("#1D4ED8"),
-        OrderFlow.ReadyForPickup => Color.FromArgb("#0369A1"),
-        OrderFlow.ToReceive => Color.FromArgb("#6D28D9"),
-        OrderFlow.Completed => Color.FromArgb("#15803D"),
-        OrderFlow.Cancelled => Color.FromArgb("#B91C1C"),
+        "Pending" => Color.FromArgb("#B45309"),
+        "Confirmed" => Color.FromArgb("#1D4ED8"),
+        "Processing" => Color.FromArgb("#6D28D9"),
+        "Ready for Pickup" => Color.FromArgb("#0369A1"),
+        "Completed" => Color.FromArgb("#15803D"),
+        "Cancelled" => Color.FromArgb("#B91C1C"),
         _ => Color.FromArgb("#475569")
     };
 
-    public bool CanCancel => Order.CanCancel;
+    public bool ShowTrack => Order.Status is "Processing" or "Confirmed" or "Ready for Pickup" or "Pending";
+    public bool ShowBuyAgain => Order.Status == "Completed";
+    public bool ShowReview => Order.Status == "Completed";
     public bool ShowDetails => true;
 }
 

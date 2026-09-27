@@ -19,7 +19,7 @@ public interface IAppDatabase
     Task<List<ProductReview>> GetProductReviewsAsync(int productId);
     Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews);
 
-    // Product variants (size stock)
+    // Product variants (size and/or color sellable combinations)
     Task<List<ProductVariant>> GetProductVariantsAsync(int productId);
     Task<List<ProductVariant>> GetProductVariantsByProductIdsAsync(IEnumerable<int> productIds);
     Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants);

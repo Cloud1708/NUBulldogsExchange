@@ -53,11 +53,10 @@ public class CartService
         var colorKey = Normalize(color);
         var sizeKey = Normalize(size);
 
-        if (variantId is null && !string.IsNullOrWhiteSpace(size) && product.HasSizeVariants)
+        if (variantId is null && product.HasVariants)
         {
-            variantId = product.Variants
-                .FirstOrDefault(v => v.IsActive &&
-                                     v.Size.Equals(size, StringComparison.OrdinalIgnoreCase))
+            variantId = ProductVariantLogic
+                .Find(product.Variants, color, size)
                 ?.Id;
         }
 

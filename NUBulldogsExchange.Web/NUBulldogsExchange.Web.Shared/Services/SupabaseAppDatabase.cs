@@ -286,9 +286,6 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
     public async Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants)
     {
-        if (variants.Count == 0)
-            return;
-
         using (var delete = await SendAsync(
                    HttpMethod.Delete,
                    $"rest/v1/product_variants?product_id=eq.{productId}"))
@@ -296,25 +293,62 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             await EnsureSuccessAsync(delete);
         }
 
+        if (variants.Count == 0)
+            return;
+
         var now = DateTime.UtcNow;
-        var rows = variants.Select(v => new Dictionary<string, object?>
-        {
-            ["product_id"] = productId,
-            ["size"] = v.Size.Trim(),
-            ["sku"] = string.IsNullOrWhiteSpace(v.Sku) ? null : v.Sku.Trim(),
-            ["stock_quantity"] = Math.Max(0, v.StockQuantity),
-            ["price_adjustment"] = v.PriceAdjustment,
-            ["status"] = string.IsNullOrWhiteSpace(v.Status) ? "Active" : v.Status.Trim(),
-            ["created_at"] = v.CreatedAt ?? now,
-            ["updated_at"] = now
-        }).ToList();
+        var rows = variants.Select(v => BuildVariantRow(productId, v, now, includeColor: true)).ToList();
 
         using var insert = await SendAsync(
             HttpMethod.Post,
             "rest/v1/product_variants",
             rows,
             "return=minimal");
+        if (insert.IsSuccessStatusCode)
+            return;
+
+        var body = await insert.Content.ReadAsStringAsync();
+        if (body.Contains("color_name", StringComparison.OrdinalIgnoreCase) ||
+            body.Contains("color_hex", StringComparison.OrdinalIgnoreCase))
+        {
+            var fallback = variants.Select(v => BuildVariantRow(productId, v, now, includeColor: false)).ToList();
+            using var retry = await SendAsync(
+                HttpMethod.Post,
+                "rest/v1/product_variants",
+                fallback,
+                "return=minimal");
+            await EnsureSuccessAsync(retry);
+            return;
+        }
+
         await EnsureSuccessAsync(insert);
+    }
+
+    private static Dictionary<string, object?> BuildVariantRow(
+        int productId,
+        ProductVariant variant,
+        DateTime now,
+        bool includeColor)
+    {
+        var row = new Dictionary<string, object?>
+        {
+            ["product_id"] = productId,
+            ["size"] = string.IsNullOrWhiteSpace(variant.Size) ? string.Empty : variant.Size.Trim(),
+            ["sku"] = string.IsNullOrWhiteSpace(variant.Sku) ? null : variant.Sku.Trim(),
+            ["stock_quantity"] = Math.Max(0, variant.StockQuantity),
+            ["price_adjustment"] = variant.PriceAdjustment,
+            ["status"] = string.IsNullOrWhiteSpace(variant.Status) ? "Active" : variant.Status.Trim(),
+            ["created_at"] = variant.CreatedAt ?? now,
+            ["updated_at"] = now
+        };
+
+        if (includeColor)
+        {
+            row["color_name"] = string.IsNullOrWhiteSpace(variant.ColorName) ? null : variant.ColorName.Trim();
+            row["color_hex"] = ProductVariantLogic.NormalizeHex(variant.ColorHex);
+        }
+
+        return row;
     }
 
     // ========================================================
@@ -606,7 +640,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             {
                 ["product_id"] = i.ProductId,
                 ["quantity"] = i.Quantity,
-                ["selected_color"] = null,
+                ["selected_color"] = string.IsNullOrWhiteSpace(i.ColorName) ? null : i.ColorName.Trim(),
                 ["selected_size"] = string.IsNullOrWhiteSpace(i.Size) ? null : i.Size.Trim(),
                 ["variant_id"] = i.VariantId
             }).ToList(),
@@ -635,6 +669,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
         // Best-effort snapshot write if RPC does not yet persist these columns.
         await TryPatchOrderCheckoutSnapshotAsync(order);
+        await TryPatchOrderItemColorSnapshotsAsync(order);
 
         var persisted = await PersistCheckoutPaymentAsync(
             order.Id,
@@ -742,6 +777,35 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         catch
         {
             return null;
+        }
+    }
+
+    private async Task TryPatchOrderItemColorSnapshotsAsync(AdminOrder order)
+    {
+        if (string.IsNullOrWhiteSpace(order.Id) || order.Items.Count == 0)
+            return;
+
+        try
+        {
+            foreach (var source in order.Items)
+            {
+                if (string.IsNullOrWhiteSpace(source.ColorName))
+                    continue;
+
+                using var response = await SendAsync(
+                    HttpMethod.Patch,
+                    $"rest/v1/order_items?order_id=eq.{Esc(order.Id)}&product_id=eq.{source.ProductId}" +
+                    (source.VariantId is int vid ? $"&variant_id=eq.{vid}" : string.Empty),
+                    new Dictionary<string, object?>
+                    {
+                        ["color_name"] = source.ColorName.Trim()
+                    });
+                _ = response.IsSuccessStatusCode;
+            }
+        }
+        catch
+        {
+            // color_name may not exist until 009_product_variant_colors.sql is applied.
         }
     }
 
@@ -2078,6 +2142,13 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     private async Task<List<AdminOrderItem>> GetOrderItemsAsync(string orderId)
     {
         try
+        {
+            return await GetListAsync<AdminOrderItem>(
+                $"rest/v1/order_items?select=product_id,name,image_url,quantity,price,variant_id,size,color_name,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("color_name", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("column", StringComparison.OrdinalIgnoreCase))
         {
             return await GetListAsync<AdminOrderItem>(
                 $"rest/v1/order_items?select=product_id,name,image_url,quantity,price,variant_id,size,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");

@@ -39,7 +39,8 @@ else
             <div class="notification-list">
                 @foreach (var note in NotificationService.Items)
                 {
-                    <article class="notification-card @(note.IsRead ? "is-read" : "is-unread")">
+                    var href = string.IsNullOrWhiteSpace(note.RelatedHref) ? "/orders" : note.RelatedHref;
+                    <a href="@href" class="notification-card @(note.IsRead ? "is-read" : "is-unread")">
                         <div class="notification-icon tone-@note.Tone" aria-hidden="true">
                             <Icon Name="@note.Icon" Size="18" />
                         </div>
@@ -52,7 +53,7 @@ else
                         {
                             <span class="notification-dot" aria-label="Unread"></span>
                         }
-                    </article>
+                    </a>
                 }
             </div>
         </div>

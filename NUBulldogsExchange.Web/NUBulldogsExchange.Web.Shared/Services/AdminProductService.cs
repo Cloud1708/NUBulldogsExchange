@@ -72,13 +72,18 @@ public class AdminProductService
             var product = _products.FirstOrDefault(p => p.Id == group.Key);
             if (product is null) continue;
             product.Variants = group.Select(v => v.Clone()).ToList();
-            if (product.HasSizeVariants)
+            if (product.HasVariants)
             {
                 product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
                 product.Sizes = product.Variants
                     .Where(v => v.IsActive)
                     .Select(v => v.Size)
                     .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+                product.Colors = product.Variants
+                    .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
+                    .Select(v => v.ColorName!.Trim())
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
             }
@@ -184,18 +189,18 @@ public class AdminProductService
 
         var stored = await PersistAsync(product);
         product.Id = stored.Id;
-        if (product.HasSizeVariants)
+        try
         {
-            try
+            await _db.ReplaceProductVariantsAsync(product.Id, product.HasVariants ? product.Variants : []);
+            if (product.HasVariants)
             {
-                await _db.ReplaceProductVariantsAsync(product.Id, product.Variants);
                 product.Variants = await _db.GetProductVariantsAsync(product.Id);
                 NormalizeVariantState(product);
             }
-            catch
-            {
-                // Product row is already saved; variants can be edited later.
-            }
+        }
+        catch
+        {
+            // Product row is already saved; variants can be edited later.
         }
 
         _products.Add(product);
@@ -427,10 +432,13 @@ public class AdminProductService
     {
         product.Variants ??= [];
         product.Variants = product.Variants
-            .Where(v => !string.IsNullOrWhiteSpace(v.Size))
+            .Where(v => !string.IsNullOrWhiteSpace(v.Size) || !string.IsNullOrWhiteSpace(v.ColorName))
             .Select(v =>
             {
-                v.Size = v.Size.Trim();
+                v.Size = v.Size?.Trim() ?? string.Empty;
+                v.ColorName = string.IsNullOrWhiteSpace(v.ColorName) ? null : v.ColorName.Trim();
+                v.ColorHex = ProductVariantLogic.NormalizeHex(v.ColorHex)
+                             ?? (v.ColorName is null ? null : ProductVariantLogic.DefaultHex(v.ColorName));
                 v.Sku = string.IsNullOrWhiteSpace(v.Sku) ? null : v.Sku.Trim().ToUpperInvariant();
                 v.StockQuantity = Math.Max(0, v.StockQuantity);
                 v.Status = string.IsNullOrWhiteSpace(v.Status) ? "Active" : v.Status.Trim();
@@ -439,12 +447,17 @@ public class AdminProductService
             })
             .ToList();
 
-        if (product.HasSizeVariants)
+        if (product.HasVariants)
         {
             product.Stock = product.Variants.Sum(v => v.StockQuantity);
             product.Sizes = product.Variants
-                .Where(v => v.IsActive)
+                .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size))
                 .Select(v => v.Size)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            product.Colors = product.Variants
+                .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
+                .Select(v => v.ColorName!.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
@@ -468,10 +481,20 @@ public class AdminProductService
         FullDescription = product.Description,
         ImageUrl = product.ImageUrl,
         Images = product.Images.Count > 0 ? [.. product.Images] : [product.ImageUrl],
-        Colors = product.Colors.Count > 0 ? [.. product.Colors] : ["navy"],
+        Colors = product.HasColorVariants
+            ? product.Variants
+                .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
+                .Select(v => v.ColorName!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList()
+            : product.HasSizeVariants
+                ? []
+                : product.Colors.Count > 0 ? [.. product.Colors] : ["navy"],
         Sizes = product.HasSizeVariants
-            ? product.Variants.Where(v => v.IsActive).Select(v => v.Size).ToList()
-            : product.Sizes.Count > 0 ? [.. product.Sizes] : ["One Size"],
+            ? product.Variants.Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size)).Select(v => v.Size).ToList()
+            : product.HasColorVariants
+                ? []
+                : product.Sizes.Count > 0 ? [.. product.Sizes] : [],
         Variants = product.Variants.Select(v => v.Clone()).ToList(),
         Rating = 0,
         Reviews = 0,

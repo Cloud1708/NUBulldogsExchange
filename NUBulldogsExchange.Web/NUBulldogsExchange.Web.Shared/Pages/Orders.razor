@@ -105,6 +105,10 @@ else
                                                  onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                             <div class="order-card-item-copy">
                                                 <span class="order-card-item-name">@item.Name</span>
+                                                @if (!string.IsNullOrWhiteSpace(item.Color))
+                                                {
+                                                    <span class="order-card-item-size">Color: @item.Color</span>
+                                                }
                                                 @if (!string.IsNullOrWhiteSpace(item.Size) && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
                                                 {
                                                     <span class="order-card-item-size">Size: @item.Size</span>

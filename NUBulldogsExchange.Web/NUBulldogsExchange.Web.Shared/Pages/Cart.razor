@@ -78,20 +78,17 @@ else
                                         <small>@item.Product.Category</small>
                                         <a href="/product/@item.Product.Id"><h3>@item.Product.Name</h3></a>
                                         <p class="cart-item-variant">
-                                            @if (!string.IsNullOrWhiteSpace(item.SelectedSize))
+                                            @if (!string.IsNullOrWhiteSpace(item.SelectedColor))
                                             {
-                                                <span>Size: @item.SelectedSize</span>
+                                                <span>Color: @MockData.FormatColorName(item.SelectedColor)</span>
                                             }
                                             @if (!string.IsNullOrWhiteSpace(item.SelectedSize) && !string.IsNullOrWhiteSpace(item.SelectedColor))
                                             {
                                                 <span>·</span>
                                             }
-                                            @if (!string.IsNullOrWhiteSpace(item.SelectedColor))
+                                            @if (!string.IsNullOrWhiteSpace(item.SelectedSize))
                                             {
-                                                <span class="cart-item-color">
-                                                    Color:
-                                                    <span class="dot @item.SelectedColor" title="@MockData.FormatColorName(item.SelectedColor)"></span>
-                                                </span>
+                                                <span>Size: @item.SelectedSize</span>
                                             }
                                         </p>
                                     </div>

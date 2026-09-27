@@ -302,6 +302,8 @@
 
                 <ProductSizeVariantEditor HasSizeVariants="_hasSizeVariants"
                                           HasSizeVariantsChanged="OnHasSizeVariantsChanged"
+                                          HasColorVariants="_hasColorVariants"
+                                          HasColorVariantsChanged="OnHasColorVariantsChanged"
                                           Variants="_formVariants"
                                           VariantsChanged="OnVariantsChanged"
                                           StockText="_formStockText"
@@ -310,7 +312,7 @@
                                           VariantsError="@(_formErrors.GetValueOrDefault("variants"))"
                                           BaseSku="@_formSku" />
 
-                @if (_isEditMode)
+                @if (_isEditMode && !_hasSizeVariants && !_hasColorVariants)
                 {
                     <label class="admin-field">
                         <span>Colors</span>
@@ -515,6 +517,7 @@
     private string _formStockText = string.Empty;
     private string _formColors = string.Empty;
     private bool _hasSizeVariants;
+    private bool _hasColorVariants;
     private List<ProductVariant> _formVariants = [];
     private readonly List<ImagePreview> _previewImages = [];
     private readonly Dictionary<string, string> _formErrors = new(StringComparer.Ordinal);
@@ -730,6 +733,7 @@
         _formSold = product.Sold;
         _formColors = string.Join(", ", product.Colors ?? []);
         _hasSizeVariants = product.HasSizeVariants;
+        _hasColorVariants = product.HasColorVariants;
         _formVariants = product.Variants.Select(v => v.Clone()).ToList();
         _skuTouched = true;
 
@@ -867,6 +871,7 @@
         _formStockText = string.Empty;
         _formColors = string.Empty;
         _hasSizeVariants = false;
+        _hasColorVariants = false;
         _formVariants = [];
         _previewImages.Clear();
         _formErrors.Clear();
@@ -946,6 +951,15 @@
     private Task OnHasSizeVariantsChanged(bool value)
     {
         _hasSizeVariants = value;
+        MarkDirty();
+        _formErrors.Remove("stock");
+        _formErrors.Remove("variants");
+        return Task.CompletedTask;
+    }
+
+    private Task OnHasColorVariantsChanged(bool value)
+    {
+        _hasColorVariants = value;
         MarkDirty();
         _formErrors.Remove("stock");
         _formErrors.Remove("variants");
@@ -1066,9 +1080,9 @@
         else if (ProductService.SkuExists(_formSku, _editProductId))
             _formErrors["sku"] = "This SKU already exists.";
 
-        if (_hasSizeVariants)
+        if (_hasSizeVariants || _hasColorVariants)
         {
-            var variantError = ProductSizeVariantEditor.Validate(true, _formVariants);
+            var variantError = ProductSizeVariantEditor.Validate(_hasSizeVariants, _hasColorVariants, _formVariants);
             if (variantError is not null)
                 _formErrors["variants"] = variantError;
         }
@@ -1180,7 +1194,7 @@
         if (string.IsNullOrWhiteSpace(_formStockText))
             _formStockText = "0";
 
-        if (!_hasSizeVariants)
+        if (!_hasSizeVariants && !_hasColorVariants)
         {
             if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
             {
@@ -1198,7 +1212,7 @@
         }
         else
         {
-            var variantError = ProductSizeVariantEditor.Validate(true, _formVariants);
+            var variantError = ProductSizeVariantEditor.Validate(_hasSizeVariants, _hasColorVariants, _formVariants);
             if (variantError is not null)
             {
                 _formErrors.Clear();
@@ -1228,11 +1242,12 @@
         price = Math.Max(0, price);
         stock = Math.Max(0, stock);
 
-        var variants = _hasSizeVariants
+        var hasVariants = _hasSizeVariants || _hasColorVariants;
+        var variants = hasVariants
             ? _formVariants.Select(v => v.Clone()).ToList()
             : [];
 
-        if (_hasSizeVariants)
+        if (hasVariants)
             stock = variants.Sum(v => Math.Max(0, v.StockQuantity));
 
         var sku = string.IsNullOrWhiteSpace(_formSku)
@@ -1244,9 +1259,7 @@
             if (string.IsNullOrWhiteSpace(variant.Sku)
                 || variant.Sku.Contains("_formSku", StringComparison.Ordinal))
             {
-                variant.Sku = string.IsNullOrWhiteSpace(variant.Size)
-                    ? sku
-                    : $"{sku}-{variant.Size.Trim().ToUpperInvariant()}";
+                variant.Sku = ProductVariantLogic.SuggestSku(sku, variant.ColorName, variant.Size) ?? sku;
             }
         }
 
@@ -1267,9 +1280,16 @@
             Sold = _isEditMode ? _formSold : 0,
             Images = images,
             ImageUrl = images.Count > 0 ? images[0]! : MockData.PlaceholderImage,
-            Colors = SplitColors(_formColors),
+            Colors = hasVariants
+                ? variants
+                    .Select(v => v.ColorName)
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .Select(c => c!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : SplitColors(_formColors),
             Sizes = _hasSizeVariants
-                ? variants.Select(v => v.Size).ToList()
+                ? variants.Select(v => v.Size).Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
                 : [],
             Variants = variants,
             CreatedAt = DateTime.Now

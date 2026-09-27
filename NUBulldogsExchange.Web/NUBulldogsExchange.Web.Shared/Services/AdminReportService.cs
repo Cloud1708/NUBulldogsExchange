@@ -274,18 +274,17 @@ public class AdminReportService
         _ => "Other"
     };
 
-    private static string NormalizeStatus(string status) => status switch
-    {
-        "Confirmed" => "Pending",
-        _ => status
-    };
+    private static string NormalizeStatus(string status) => status;
 
     private static Dictionary<string, string> ColorMap() => new(StringComparer.OrdinalIgnoreCase)
     {
         ["Completed"] = "#22C55E",
+        ["Delivered"] = "#22C55E",
         ["Processing"] = "#3B82F6",
         ["Pending"] = "#F9C424",
+        ["Confirmed"] = "#0F766E",
         ["Ready for Pickup"] = "#A855F7",
+        ["Out for Delivery"] = "#0369A1",
         ["Cancelled"] = "#EF4444"
     };
 
