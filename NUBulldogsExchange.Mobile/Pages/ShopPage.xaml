@@ -12,221 +12,414 @@
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False">
 
-    <Grid RowDefinitions="*,Auto"
-          HorizontalOptions="Fill"
-          VerticalOptions="Fill">
-
-        <Grid Grid.Row="0"
-              RowDefinitions="Auto,Auto,Auto,Auto,*"
-              Padding="14,10,14,0"
-              RowSpacing="10"
+    <Grid HorizontalOptions="Fill" VerticalOptions="Fill">
+        <!-- Main Shop Layout -->
+        <Grid RowDefinitions="*,Auto"
               HorizontalOptions="Fill"
               VerticalOptions="Fill">
 
-            <!-- Header -->
-            <Grid ColumnDefinitions="*,Auto">
-                <Label Text="Shop"
-                       FontSize="20"
-                       FontAttributes="Bold"
-                       TextColor="{StaticResource NuNavy}"
-                       VerticalOptions="Center" />
-                <Grid Grid.Column="1" WidthRequest="40" HeightRequest="40">
-                    <Grid.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding OpenCartCommand}" />
-                    </Grid.GestureRecognizers>
-                    <Label Text="🛒"
-                           FontSize="18"
-                           HorizontalOptions="Center"
-                           VerticalOptions="Center"
-                           TextColor="#94A3B8" />
-                    <Border IsVisible="{Binding HasCartItems}"
-                            BackgroundColor="{StaticResource NuNavy}"
-                            WidthRequest="16"
-                            HeightRequest="16"
-                            StrokeThickness="0"
-                            HorizontalOptions="End"
-                            VerticalOptions="Start"
-                            Margin="0,0,-2,0">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="8" />
-                        </Border.StrokeShape>
-                        <Label Text="{Binding CartCount}"
-                               TextColor="White"
-                               FontSize="8"
-                               FontAttributes="Bold"
+            <Grid Grid.Row="0"
+                  RowDefinitions="Auto,Auto,Auto,Auto,*"
+                  Padding="14,10,14,0"
+                  RowSpacing="10"
+                  HorizontalOptions="Fill"
+                  VerticalOptions="Fill">
+
+                <!-- Header -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <Label Text="Shop"
+                           FontSize="20"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}"
+                           VerticalOptions="Center" />
+                    <Grid Grid.Column="1" WidthRequest="40" HeightRequest="40">
+                        <Grid.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenCartCommand}" />
+                        </Grid.GestureRecognizers>
+                        <Label Text="🛒"
+                               FontSize="18"
                                HorizontalOptions="Center"
+                               VerticalOptions="Center"
+                               TextColor="#94A3B8" />
+                        <Border IsVisible="{Binding HasCartItems}"
+                                BackgroundColor="{StaticResource NuNavy}"
+                                WidthRequest="16"
+                                HeightRequest="16"
+                                StrokeThickness="0"
+                                HorizontalOptions="End"
+                                VerticalOptions="Start"
+                                Margin="0,0,-2,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="8" />
+                            </Border.StrokeShape>
+                            <Label Text="{Binding CartCount}"
+                                   TextColor="White"
+                                   FontSize="8"
+                                   FontAttributes="Bold"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+                </Grid>
+
+                <!-- Search -->
+                <Border Grid.Row="1"
+                        BackgroundColor="#F1F5F9"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1"
+                        HeightRequest="46"
+                        Padding="12,0"
+                        HorizontalOptions="Fill">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14" />
+                    </Border.StrokeShape>
+                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
+                        <Label Text="🔍" FontSize="14" VerticalOptions="Center" />
+                        <Entry Grid.Column="1"
+                               Placeholder="Search NU merchandise..."
+                               Text="{Binding SearchQuery}"
+                               BackgroundColor="Transparent"
+                               FontSize="13"
                                VerticalOptions="Center" />
+                    </Grid>
+                </Border>
+
+                <!-- Count + Filter / Sort -->
+                <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
+                    <Label Text="{Binding ProductCountLabel}"
+                           FontSize="12"
+                           TextColor="{StaticResource MutedText}"
+                           VerticalOptions="Center" />
+
+                    <Border Grid.Column="1"
+                            BackgroundColor="White"
+                            Stroke="#E2E8F0"
+                            StrokeThickness="1"
+                            Padding="10,6"
+                            HeightRequest="32"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenFilterCommand}" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                            <Label Text="⚙" FontSize="11" TextColor="#7C3AED" VerticalOptions="Center" />
+                            <Label Text="Filter" FontSize="11" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <Border Grid.Column="2"
+                            BackgroundColor="White"
+                            Stroke="#E2E8F0"
+                            StrokeThickness="1"
+                            Padding="10,6"
+                            HeightRequest="32"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="16" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenSortCommand}" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                            <Label Text="⇅" FontSize="11" TextColor="#2563EB" VerticalOptions="Center" />
+                            <Label Text="Sort" FontSize="11" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                        </HorizontalStackLayout>
                     </Border>
                 </Grid>
-            </Grid>
 
-            <!-- Search -->
-            <Border Grid.Row="1"
-                    BackgroundColor="#F1F5F9"
-                    Stroke="#E2E8F0"
-                    StrokeThickness="1"
-                    HeightRequest="46"
-                    Padding="12,0"
-                    HorizontalOptions="Fill">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="14" />
-                </Border.StrokeShape>
-                <Grid ColumnDefinitions="Auto,*" ColumnSpacing="8">
-                    <Label Text="🔍" FontSize="14" VerticalOptions="Center" />
-                    <Entry Grid.Column="1"
-                           Placeholder="Search NU merchandise..."
-                           Text="{Binding SearchQuery}"
-                           BackgroundColor="Transparent"
-                           FontSize="13"
-                           VerticalOptions="Center" />
-                </Grid>
-            </Border>
-
-            <!-- Count + Filter / Sort -->
-            <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8">
-                <Label Text="{Binding ProductCountLabel}"
-                       FontSize="12"
-                       TextColor="{StaticResource MutedText}"
-                       VerticalOptions="Center" />
-
-                <Border Grid.Column="1"
-                        BackgroundColor="White"
-                        Stroke="#E2E8F0"
-                        StrokeThickness="1"
-                        Padding="10,6"
-                        HeightRequest="32"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="16" />
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding OpenFilterCommand}" />
-                    </Border.GestureRecognizers>
-                    <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
-                        <Label Text="⚙" FontSize="11" TextColor="#7C3AED" VerticalOptions="Center" />
-                        <Label Text="Filter" FontSize="11" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                    </HorizontalStackLayout>
-                </Border>
-
-                <Border Grid.Column="2"
-                        BackgroundColor="White"
-                        Stroke="#E2E8F0"
-                        StrokeThickness="1"
-                        Padding="10,6"
-                        HeightRequest="32"
-                        VerticalOptions="Center">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="16" />
-                    </Border.StrokeShape>
-                    <Border.GestureRecognizers>
-                        <TapGestureRecognizer Command="{Binding OpenSortCommand}" />
-                    </Border.GestureRecognizers>
-                    <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
-                        <Label Text="⇅" FontSize="11" TextColor="#2563EB" VerticalOptions="Center" />
-                        <Label Text="Sort" FontSize="11" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                    </HorizontalStackLayout>
-                </Border>
-            </Grid>
-
-            <!-- Category chips -->
-            <CollectionView Grid.Row="3"
-                            ItemsSource="{Binding Categories}"
-                            HeightRequest="40"
-                            ItemsLayout="HorizontalList"
-                            HorizontalScrollBarVisibility="Never"
-                            SelectionMode="None">
-                <CollectionView.ItemTemplate>
-                    <DataTemplate x:DataType="vm:ShopCategoryItem">
-                        <Border BackgroundColor="{Binding BackgroundColor}"
-                                StrokeThickness="0"
-                                Padding="14,0"
-                                HeightRequest="34"
-                                Margin="0,0,8,0"
-                                VerticalOptions="Center">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="17" />
-                            </Border.StrokeShape>
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer
-                                    Command="{Binding BindingContext.SelectCategoryCommand, Source={x:Reference ShopRoot}}"
-                                    CommandParameter="{Binding .}" />
-                            </Border.GestureRecognizers>
-                            <Label Text="{Binding DisplayText}"
-                                   TextColor="{Binding TextColor}"
-                                   FontSize="12"
-                                   FontAttributes="Bold"
-                                   VerticalOptions="Center"
-                                   HorizontalOptions="Center" />
-                        </Border>
-                    </DataTemplate>
-                </CollectionView.ItemTemplate>
-            </CollectionView>
-
-            <!-- Products 2-column grid -->
-            <Grid Grid.Row="4">
-                <CollectionView ItemsSource="{Binding Products}"
-                                IsVisible="{Binding HasProducts}"
-                                SelectionMode="None"
-                                Margin="0,4,0,8">
-                    <CollectionView.ItemsLayout>
-                        <GridItemsLayout Orientation="Vertical"
-                                         Span="2"
-                                         HorizontalItemSpacing="10"
-                                         VerticalItemSpacing="10" />
-                    </CollectionView.ItemsLayout>
+                <!-- Category chips -->
+                <CollectionView Grid.Row="3"
+                                ItemsSource="{Binding Categories}"
+                                HeightRequest="40"
+                                ItemsLayout="HorizontalList"
+                                HorizontalScrollBarVisibility="Never"
+                                SelectionMode="None">
                     <CollectionView.ItemTemplate>
-                        <DataTemplate x:DataType="data:Product">
-                            <controls:ProductCardView
-                                Product="{Binding .}"
-                                ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference ShopRoot}}"
-                                AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference ShopRoot}}"
-                                OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference ShopRoot}}" />
+                        <DataTemplate x:DataType="vm:ShopCategoryItem">
+                            <Border BackgroundColor="{Binding BackgroundColor}"
+                                    StrokeThickness="0"
+                                    Padding="14,0"
+                                    HeightRequest="34"
+                                    Margin="0,0,8,0"
+                                    VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="17" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Command="{Binding BindingContext.SelectCategoryCommand, Source={x:Reference ShopRoot}}"
+                                        CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="{Binding DisplayText}"
+                                       TextColor="{Binding TextColor}"
+                                       FontSize="12"
+                                       FontAttributes="Bold"
+                                       VerticalOptions="Center"
+                                       HorizontalOptions="Center" />
+                            </Border>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
                 </CollectionView>
 
-                <VerticalStackLayout IsVisible="{Binding ShowEmpty}"
-                                     VerticalOptions="Center"
-                                     HorizontalOptions="Center"
-                                     Spacing="8"
-                                     Padding="24">
-                    <Label Text="No products found"
-                           FontSize="16"
-                           FontAttributes="Bold"
-                           TextColor="{StaticResource NuNavy}"
-                           HorizontalTextAlignment="Center" />
-                    <Label Text="Try changing your search or filters."
-                           FontSize="12"
-                           TextColor="{StaticResource MutedText}"
-                           HorizontalTextAlignment="Center" />
-                    <Border BackgroundColor="{StaticResource NuNavy}"
-                            Padding="16,10"
-                            HorizontalOptions="Center"
-                            Margin="0,8,0,0"
-                            StrokeThickness="0">
-                        <Border.StrokeShape>
-                            <RoundRectangle CornerRadius="12" />
-                        </Border.StrokeShape>
-                        <Border.GestureRecognizers>
-                            <TapGestureRecognizer Command="{Binding ClearFiltersCommand}" />
-                        </Border.GestureRecognizers>
-                        <Label Text="Clear Filters"
-                               TextColor="White"
-                               FontAttributes="Bold"
-                               FontSize="12" />
-                    </Border>
-                </VerticalStackLayout>
+                <!-- Products 2-column grid -->
+                <Grid Grid.Row="4">
+                    <CollectionView ItemsSource="{Binding Products}"
+                                    IsVisible="{Binding HasProducts}"
+                                    SelectionMode="None"
+                                    Margin="0,4,0,8">
+                        <CollectionView.ItemsLayout>
+                            <GridItemsLayout Orientation="Vertical"
+                                             Span="2"
+                                             HorizontalItemSpacing="10"
+                                             VerticalItemSpacing="10" />
+                        </CollectionView.ItemsLayout>
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate x:DataType="data:Product">
+                                <controls:ProductCardView
+                                    Product="{Binding .}"
+                                    ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference ShopRoot}}"
+                                    AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference ShopRoot}}"
+                                    OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference ShopRoot}}" />
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+                    </CollectionView>
 
-                <ActivityIndicator IsRunning="{Binding IsBusy}"
-                                   IsVisible="{Binding IsBusy}"
-                                   Color="{StaticResource NuNavy}"
-                                   VerticalOptions="Center"
-                                   HorizontalOptions="Center" />
+                    <VerticalStackLayout IsVisible="{Binding ShowEmpty}"
+                                         VerticalOptions="Center"
+                                         HorizontalOptions="Center"
+                                         Spacing="8"
+                                         Padding="24">
+                        <Label Text="No products found"
+                               FontSize="16"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}"
+                               HorizontalTextAlignment="Center" />
+                        <Label Text="Try changing your search or filters."
+                               FontSize="12"
+                               TextColor="{StaticResource MutedText}"
+                               HorizontalTextAlignment="Center" />
+                        <Border BackgroundColor="{StaticResource NuNavy}"
+                                Padding="16,10"
+                                HorizontalOptions="Center"
+                                Margin="0,8,0,0"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ClearFiltersCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Clear Filters"
+                                   TextColor="White"
+                                   FontAttributes="Bold"
+                                   FontSize="12" />
+                        </Border>
+                    </VerticalStackLayout>
+
+                    <ActivityIndicator IsRunning="{Binding IsBusy}"
+                                       IsVisible="{Binding IsBusy}"
+                                       Color="{StaticResource NuNavy}"
+                                       VerticalOptions="Center"
+                                       HorizontalOptions="Center" />
+                </Grid>
             </Grid>
+
+            <controls:BottomNavBar Grid.Row="1"
+                                   ActiveTab="shop"
+                                   HorizontalOptions="Fill" />
         </Grid>
 
-        <controls:BottomNavBar Grid.Row="1"
-                               ActiveTab="shop"
-                               HorizontalOptions="Fill" />
+        <!-- Filter Bottom Sheet Modal Overlay -->
+        <Grid IsVisible="{Binding IsFilterSheetVisible}"
+              HorizontalOptions="Fill"
+              VerticalOptions="Fill">
+
+            <!-- Dimmed Backdrop -->
+            <BoxView Color="#80000000"
+                     HorizontalOptions="Fill"
+                     VerticalOptions="Fill">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CloseFilterSheetCommand}" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <!-- Bottom Sheet Card -->
+            <Border BackgroundColor="White"
+                    StrokeThickness="0"
+                    VerticalOptions="End"
+                    HorizontalOptions="Fill"
+                    Padding="20,18,20,24">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="24,24,0,0" />
+                </Border.StrokeShape>
+                <Border.Shadow>
+                    <Shadow Brush="#60000000" Offset="0,-4" Radius="20" Opacity="0.3" />
+                </Border.Shadow>
+
+                <ScrollView MaximumHeightRequest="560">
+                    <VerticalStackLayout Spacing="14">
+                        <!-- Modal Header -->
+                        <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
+                            <Label Text="Filter"
+                                   FontSize="18"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   VerticalOptions="Center" />
+
+                            <Label Grid.Column="1"
+                                   Text="Clear All"
+                                   FontSize="13"
+                                   FontAttributes="Bold"
+                                   TextColor="#EF4444"
+                                   VerticalOptions="Center">
+                                <Label.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ClearFiltersCommand}" />
+                                </Label.GestureRecognizers>
+                            </Label>
+                        </Grid>
+
+                        <BoxView Color="#F1F5F9" HeightRequest="1" Margin="0,2,0,4" />
+
+                        <!-- Category Section -->
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="Category"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="#0F172A" />
+
+                            <FlexLayout BindableLayout.ItemsSource="{Binding FilterCategories}"
+                                        Wrap="Wrap"
+                                        Direction="Row"
+                                        JustifyContent="Start"
+                                        AlignItems="Center">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:FilterOptionItem">
+                                        <Border BackgroundColor="{Binding BackgroundColor}"
+                                                Stroke="{Binding BorderColor}"
+                                                StrokeThickness="1"
+                                                Padding="14,7"
+                                                Margin="0,0,8,8"
+                                                VerticalOptions="Center">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="16" />
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding BindingContext.ToggleFilterCategoryCommand, Source={x:Reference ShopRoot}}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <Label Text="{Binding Name}"
+                                                   TextColor="{Binding TextColor}"
+                                                   FontSize="12"
+                                                   FontAttributes="Bold"
+                                                   VerticalOptions="Center"
+                                                   HorizontalOptions="Center" />
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </FlexLayout>
+                        </VerticalStackLayout>
+
+                        <!-- Price Range Section -->
+                        <VerticalStackLayout Spacing="6" Margin="0,4,0,0">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <Label Text="Price Range"
+                                       FontSize="14"
+                                       FontAttributes="Bold"
+                                       TextColor="#0F172A"
+                                       VerticalOptions="Center" />
+                                <Label Grid.Column="1"
+                                       Text="{Binding PriceRangeLabel}"
+                                       FontSize="14"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}"
+                                       VerticalOptions="Center" />
+                            </Grid>
+
+                            <Slider Minimum="100"
+                                    Maximum="1500"
+                                    Value="{Binding SelectedMaxPrice}"
+                                    MinimumTrackColor="{StaticResource NuNavy}"
+                                    MaximumTrackColor="#CBD5E1"
+                                    ThumbColor="{StaticResource NuNavy}" />
+
+                            <Grid ColumnDefinitions="*,Auto" Margin="2,-4,2,0">
+                                <Label Text="₱100"
+                                       FontSize="11"
+                                       TextColor="#94A3B8" />
+                                <Label Grid.Column="1"
+                                       Text="₱1,500"
+                                       FontSize="11"
+                                       TextColor="#94A3B8" />
+                            </Grid>
+                        </VerticalStackLayout>
+
+                        <!-- Size Section -->
+                        <VerticalStackLayout Spacing="8" Margin="0,4,0,10">
+                            <Label Text="Size"
+                                   FontSize="14"
+                                   FontAttributes="Bold"
+                                   TextColor="#0F172A" />
+
+                            <FlexLayout BindableLayout.ItemsSource="{Binding FilterSizes}"
+                                        Wrap="Wrap"
+                                        Direction="Row"
+                                        JustifyContent="Start"
+                                        AlignItems="Center">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:FilterOptionItem">
+                                        <Border BackgroundColor="{Binding BackgroundColor}"
+                                                Stroke="{Binding BorderColor}"
+                                                StrokeThickness="1"
+                                                Padding="16,8"
+                                                Margin="0,0,8,8"
+                                                VerticalOptions="Center">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="12" />
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding BindingContext.ToggleFilterSizeCommand, Source={x:Reference ShopRoot}}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <Label Text="{Binding Name}"
+                                                   TextColor="{Binding TextColor}"
+                                                   FontSize="12"
+                                                   FontAttributes="Bold"
+                                                   VerticalOptions="Center"
+                                                   HorizontalOptions="Center" />
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </FlexLayout>
+                        </VerticalStackLayout>
+
+                        <!-- Apply Filters Button -->
+                        <Border BackgroundColor="{StaticResource NuNavy}"
+                                HeightRequest="48"
+                                StrokeThickness="0"
+                                HorizontalOptions="Fill"
+                                VerticalOptions="Center"
+                                Margin="0,4,0,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="24" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ApplyFilterSheetCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Apply Filters"
+                                   TextColor="White"
+                                   FontSize="15"
+                                   FontAttributes="Bold"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+        </Grid>
     </Grid>
 </ContentPage>

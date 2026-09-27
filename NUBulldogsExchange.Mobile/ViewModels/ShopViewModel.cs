@@ -42,6 +42,42 @@ public sealed class ShopCategoryItem : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
+public sealed class FilterOptionItem : INotifyPropertyChanged
+{
+    private bool _isSelected;
+
+    public string Name { get; init; } = string.Empty;
+    public string Value { get; init; } = string.Empty;
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BackgroundColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BorderColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TextColor)));
+        }
+    }
+
+    public Color BackgroundColor => IsSelected
+        ? Color.FromArgb("#00205B")
+        : Colors.White;
+
+    public Color BorderColor => IsSelected
+        ? Color.FromArgb("#00205B")
+        : Color.FromArgb("#E2E8F0");
+
+    public Color TextColor => IsSelected
+        ? Colors.White
+        : Color.FromArgb("#334155");
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
 [QueryProperty(nameof(CategoryId), "categoryId")]
 [QueryProperty(nameof(CategoryId), "category")]
 [QueryProperty(nameof(CategoryId), "id")]
@@ -65,6 +101,9 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
     private string _productCountLabel = "0 products";
     private bool _hasProducts = true;
 
+    private bool _isFilterSheetVisible;
+    private double _selectedMaxPrice = 1500;
+
     public ShopViewModel(
         ProductCatalogService catalog,
         CartService cart,
@@ -86,7 +125,11 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
 
         SelectCategoryCommand = new Command<ShopCategoryItem>(OnSelectCategory);
         OpenCartCommand = new Command(async () => await GoAsync("cart"));
-        OpenFilterCommand = new Command(async () => await ShowFilterAsync());
+        OpenFilterCommand = new Command(ShowFilterSheet);
+        CloseFilterSheetCommand = new Command(CloseFilterSheet);
+        ApplyFilterSheetCommand = new Command(ApplyFilterSheet);
+        ToggleFilterCategoryCommand = new Command<FilterOptionItem>(OnToggleFilterCategory);
+        ToggleFilterSizeCommand = new Command<FilterOptionItem>(OnToggleFilterSize);
         OpenSortCommand = new Command(async () => await ShowSortAsync());
         ClearFiltersCommand = new Command(ClearFilters);
         ToggleWishlistCommand = new Command<Product>(async p => await OnToggleWishlistAsync(p));
@@ -97,6 +140,8 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         _adminCategories.OnChange += OnCategoriesChanged;
         _cart.OnChange += OnCartChanged;
         _wishlist.OnChange += () => MainThread.BeginInvokeOnMainThread(ApplyFilters);
+
+        BuildFilterOptions();
     }
 
     /// <summary>Set by the page so ActionSheets can be shown.</summary>
@@ -106,12 +151,32 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
 
     public ObservableCollection<Product> Products { get; } = [];
     public ObservableCollection<ShopCategoryItem> Categories { get; } = [];
+    public ObservableCollection<FilterOptionItem> FilterCategories { get; } = [];
+    public ObservableCollection<FilterOptionItem> FilterSizes { get; } = [];
 
     public string CategoryId
     {
         get => _selectedCategoryKey;
         set => SetSelectedCategory(value);
     }
+
+    public bool IsFilterSheetVisible
+    {
+        get => _isFilterSheetVisible;
+        set => SetField(ref _isFilterSheetVisible, value);
+    }
+
+    public double SelectedMaxPrice
+    {
+        get => _selectedMaxPrice;
+        set
+        {
+            if (SetField(ref _selectedMaxPrice, value))
+                OnPropertyChanged(nameof(PriceRangeLabel));
+        }
+    }
+
+    public string PriceRangeLabel => $"up to ₱{Math.Round(SelectedMaxPrice):N0}";
 
     public void ApplyQueryAttributes(IDictionary<string, object> query)
     {
@@ -140,6 +205,14 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
             cat.IsSelected = string.Equals(cat.Key, categoryKeyOrId, StringComparison.OrdinalIgnoreCase) ||
                              string.Equals(cat.Label, categoryKeyOrId, StringComparison.OrdinalIgnoreCase);
         }
+
+        // Sync modal categories
+        foreach (var fc in FilterCategories)
+        {
+            fc.IsSelected = string.Equals(fc.Name, categoryKeyOrId, StringComparison.OrdinalIgnoreCase) ||
+                            string.Equals(fc.Value, categoryKeyOrId, StringComparison.OrdinalIgnoreCase);
+        }
+
         ApplyFilters();
     }
 
@@ -188,6 +261,10 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
     public ICommand SelectCategoryCommand { get; }
     public ICommand OpenCartCommand { get; }
     public ICommand OpenFilterCommand { get; }
+    public ICommand CloseFilterSheetCommand { get; }
+    public ICommand ApplyFilterSheetCommand { get; }
+    public ICommand ToggleFilterCategoryCommand { get; }
+    public ICommand ToggleFilterSizeCommand { get; }
     public ICommand OpenSortCommand { get; }
     public ICommand ClearFiltersCommand { get; }
     public ICommand ToggleWishlistCommand { get; }
@@ -205,6 +282,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
             await MobileCatalogSeeder.EnsureSampleProductsAsync(_db, _catalog);
             await _cart.RestoreAsync(_auth.Email);
             BuildCategories();
+            BuildFilterOptions();
             ApplyFilters();
             CartCount = _cart.TotalCount;
         }
@@ -230,6 +308,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         MainThread.BeginInvokeOnMainThread(() =>
         {
             BuildCategories();
+            BuildFilterOptions();
             ApplyFilters();
         });
 
@@ -237,6 +316,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         MainThread.BeginInvokeOnMainThread(() =>
         {
             BuildCategories();
+            BuildFilterOptions();
             ApplyFilters();
         });
 
@@ -268,10 +348,120 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         }
     }
 
+    private void BuildFilterOptions()
+    {
+        FilterCategories.Clear();
+
+        var dbCategories = _adminCategories.All
+            .Where(c => c.IsActive && !string.IsNullOrWhiteSpace(c.Name))
+            .ToList();
+
+        if (dbCategories.Count > 0)
+        {
+            foreach (var cat in dbCategories)
+            {
+                if (!FilterCategories.Any(fc => fc.Name.Equals(cat.Name, StringComparison.OrdinalIgnoreCase)))
+                {
+                    FilterCategories.Add(new FilterOptionItem
+                    {
+                        Name = cat.Name,
+                        Value = cat.Id,
+                        IsSelected = string.Equals(_selectedCategoryKey, cat.Id, StringComparison.OrdinalIgnoreCase) ||
+                                     string.Equals(_selectedCategoryKey, cat.Name, StringComparison.OrdinalIgnoreCase)
+                    });
+                }
+            }
+        }
+        else
+        {
+            var catalogCategories = _catalog.Products
+                .Select(p => p.Category)
+                .Where(c => !string.IsNullOrWhiteSpace(c))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+
+            foreach (var catName in catalogCategories)
+            {
+                FilterCategories.Add(new FilterOptionItem
+                {
+                    Name = catName,
+                    Value = catName,
+                    IsSelected = string.Equals(_selectedCategoryKey, catName, StringComparison.OrdinalIgnoreCase)
+                });
+            }
+        }
+
+        var sizes = new[] { "XS", "S", "M", "L", "XL", "XXL" };
+        FilterSizes.Clear();
+        foreach (var sz in sizes)
+        {
+            FilterSizes.Add(new FilterOptionItem
+            {
+                Name = sz,
+                Value = sz,
+                IsSelected = false
+            });
+        }
+    }
+
     private void OnSelectCategory(ShopCategoryItem? item)
     {
         if (item is null) return;
         SetSelectedCategory(item.Key);
+    }
+
+    private void ShowFilterSheet()
+    {
+        // Sync filter sheet category selections with currently active category
+        if (!string.Equals(_selectedCategoryKey, "All", StringComparison.OrdinalIgnoreCase))
+        {
+            foreach (var fc in FilterCategories)
+            {
+                fc.IsSelected = string.Equals(fc.Name, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase) ||
+                                string.Equals(fc.Value, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        IsFilterSheetVisible = true;
+    }
+
+    private void CloseFilterSheet() => IsFilterSheetVisible = false;
+
+    private void OnToggleFilterCategory(FilterOptionItem? item)
+    {
+        if (item is null) return;
+        item.IsSelected = !item.IsSelected;
+    }
+
+    private void OnToggleFilterSize(FilterOptionItem? item)
+    {
+        if (item is null) return;
+        item.IsSelected = !item.IsSelected;
+    }
+
+    private void ApplyFilterSheet()
+    {
+        IsFilterSheetVisible = false;
+
+        // If exactly 1 category selected, sync to horizontal chips
+        var selectedCategories = FilterCategories.Where(c => c.IsSelected).ToList();
+        if (selectedCategories.Count == 1)
+        {
+            _selectedCategoryKey = selectedCategories[0].Name;
+            foreach (var cat in Categories)
+            {
+                cat.IsSelected = string.Equals(cat.Key, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase) ||
+                                 string.Equals(cat.Label, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+        else if (selectedCategories.Count == 0)
+        {
+            _selectedCategoryKey = "All";
+            foreach (var cat in Categories)
+                cat.IsSelected = cat.Key == "All";
+        }
+
+        ApplyFilters();
     }
 
     private void ApplyFilters()
@@ -281,7 +471,15 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         if (!string.IsNullOrWhiteSpace(_searchQuery))
             query = _catalog.Search(query, _searchQuery);
 
-        if (!string.Equals(_selectedCategoryKey, "All", StringComparison.OrdinalIgnoreCase))
+        // Modal selected categories
+        var selectedModalCategories = FilterCategories.Where(c => c.IsSelected).Select(c => c.Name).ToList();
+        if (selectedModalCategories.Count > 0)
+        {
+            query = query.Where(p => selectedModalCategories.Any(cName =>
+                p.Category.Equals(cName, StringComparison.OrdinalIgnoreCase) ||
+                p.Name.Contains(cName, StringComparison.OrdinalIgnoreCase)));
+        }
+        else if (!string.Equals(_selectedCategoryKey, "All", StringComparison.OrdinalIgnoreCase))
         {
             var matchedCategory = _adminCategories.All.FirstOrDefault(c =>
                 c.Id.Equals(_selectedCategoryKey, StringComparison.OrdinalIgnoreCase) ||
@@ -295,7 +493,24 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
             query = query.Where(p =>
                 p.Category.Equals(targetName, StringComparison.OrdinalIgnoreCase) ||
                 p.Category.Equals(targetId, StringComparison.OrdinalIgnoreCase) ||
-                p.Category.Equals(targetSlug, StringComparison.OrdinalIgnoreCase));
+                p.Category.Equals(targetSlug, StringComparison.OrdinalIgnoreCase) ||
+                p.Name.Contains(targetName, StringComparison.OrdinalIgnoreCase));
+        }
+
+        // Price filter: up to SelectedMaxPrice
+        if (SelectedMaxPrice >= 100 && SelectedMaxPrice < 1500)
+        {
+            query = query.Where(p => (double)p.Price <= SelectedMaxPrice);
+        }
+
+        // Size filter
+        var selectedSizes = FilterSizes.Where(s => s.IsSelected).Select(s => s.Name).ToList();
+        if (selectedSizes.Count > 0)
+        {
+            query = query.Where(p =>
+                (p.Sizes != null && p.Sizes.Any(sz => selectedSizes.Any(s => sz.Equals(s, StringComparison.OrdinalIgnoreCase))))
+                || (p.Variants != null && p.Variants.Any(v => selectedSizes.Any(s => string.Equals(v.Size, s, StringComparison.OrdinalIgnoreCase))))
+                || (!p.HasSizeVariants && (p.Sizes == null || p.Sizes.Count == 0)));
         }
 
         query = _filterMode switch
@@ -331,25 +546,6 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         OnPropertyChanged(nameof(ShowEmpty));
     }
 
-    private async Task ShowFilterAsync()
-    {
-        var page = HostPage ?? Shell.Current;
-        var choice = await page.DisplayActionSheetAsync(
-            "Filter products",
-            "Cancel",
-            null,
-            "All",
-            "In Stock",
-            "On Sale",
-            "Best Sellers");
-
-        if (string.IsNullOrWhiteSpace(choice) || choice == "Cancel")
-            return;
-
-        _filterMode = choice;
-        ApplyFilters();
-    }
-
     private async Task ShowSortAsync()
     {
         var page = HostPage ?? Shell.Current;
@@ -377,9 +573,18 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         _selectedCategoryKey = "All";
         _filterMode = "All";
         _sortMode = "Default";
+        SelectedMaxPrice = 1500;
+
+        foreach (var fc in FilterCategories)
+            fc.IsSelected = false;
+
+        foreach (var fs in FilterSizes)
+            fs.IsSelected = false;
+
         OnPropertyChanged(nameof(SearchQuery));
         foreach (var cat in Categories)
             cat.IsSelected = cat.Key == "All";
+
         ApplyFilters();
     }
 

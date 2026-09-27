@@ -8,6 +8,21 @@ using NUBulldogsExchange.Web.Shared.Services;
 
 namespace NUBulldogsExchange.Mobile.ViewModels;
 
+public sealed class ConfirmedOrderItemViewModel
+{
+    public int ProductId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string ImageUrl { get; set; } = string.Empty;
+    public int Quantity { get; set; } = 1;
+    public decimal Price { get; set; }
+    public string? Size { get; set; }
+    public decimal ItemTotal => Price * Quantity;
+    public string FormattedPrice => $"₱{ItemTotal:N0}";
+    public string QuantityLabel => $"Qty: {Quantity}";
+    public bool HasSize => !string.IsNullOrWhiteSpace(Size);
+    public string SizeLabel => HasSize ? $"Size: {Size}" : string.Empty;
+}
+
 public sealed class CheckoutViewModel : INotifyPropertyChanged
 {
     public static readonly string CampusPickup = "Campus Pickup";
@@ -94,6 +109,7 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
         GoCartCommand = new Command(async () => await GoBackAsync());
         GoShopCommand = new Command(async () => await GoAsync("//shop"));
         GoOrdersCommand = new Command(async () => await GoAsync("//orders"));
+        TrackOrderCommand = new Command(async () => await GoAsync("//orders"));
         GoLoginCommand = new Command(async () => await GoLoginAsync());
         GoRegisterCommand = new Command(async () => await GoRegisterAsync());
         SelectPickupCommand = new Command(() => SetFulfillment(CampusPickup));
@@ -112,6 +128,7 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     }
 
     public ObservableCollection<CartItem> CartItems { get; } = [];
+    public ObservableCollection<ConfirmedOrderItemViewModel> ConfirmedItems { get; } = [];
 
     public IReadOnlyList<string> Provinces { get; } =
     [
@@ -406,23 +423,67 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
             if (SetField(ref _confirmedOrder, value))
             {
                 OnPropertyChanged(nameof(ConfirmedOrderId));
+                OnPropertyChanged(nameof(ConfirmedOrderDate));
                 OnPropertyChanged(nameof(ConfirmedOrderTotal));
                 OnPropertyChanged(nameof(ConfirmedOrderPayment));
+                OnPropertyChanged(nameof(ConfirmedOrderPaymentStatus));
                 OnPropertyChanged(nameof(ConfirmedOrderFulfillment));
-                OnPropertyChanged(nameof(ConfirmedOrderAddress));
-                OnPropertyChanged(nameof(HasConfirmedOrderAddress));
+                OnPropertyChanged(nameof(IsConfirmedDelivery));
+                OnPropertyChanged(nameof(IsConfirmedCampusPickup));
+                OnPropertyChanged(nameof(IsPaymentPaid));
+                OnPropertyChanged(nameof(PaymentBadgeBg));
+                OnPropertyChanged(nameof(PaymentBadgeTextColor));
+                OnPropertyChanged(nameof(ConfirmedRecipientName));
+                OnPropertyChanged(nameof(ConfirmedPhone));
+                OnPropertyChanged(nameof(ConfirmedAddress));
             }
         }
     }
 
-    public string ConfirmedOrderId => ConfirmedOrder is not null ? $"#{ConfirmedOrder.Id}" : string.Empty;
-    public string ConfirmedOrderTotal => ConfirmedOrder is not null ? $"₱{ConfirmedOrder.Total:N0}" : "₱0";
-    public string ConfirmedOrderPayment => ConfirmedOrder?.PaymentMethod ?? string.Empty;
-    public string ConfirmedOrderFulfillment => ConfirmedOrder?.Fulfillment ?? string.Empty;
-    public string ConfirmedOrderAddress => ConfirmedOrder is not null && !string.IsNullOrWhiteSpace(ConfirmedOrder.ShippingAddressLine)
-        ? $"{ConfirmedOrder.ShippingAddressLine}, {ConfirmedOrder.ShippingBarangay}, {ConfirmedOrder.ShippingCity}, {ConfirmedOrder.ShippingProvince}"
-        : "NU Lipa Campus Merchandise Desk";
-    public bool HasConfirmedOrderAddress => ConfirmedOrder is not null;
+    public string ConfirmedOrderId => ConfirmedOrder is not null ? ConfirmedOrder.Id : string.Empty;
+    public string ConfirmedOrderDate => ConfirmedOrder?.Date.ToString("MMMM d, yyyy") ?? DateTime.Now.ToString("MMMM d, yyyy");
+    public string ConfirmedOrderTotal => ConfirmedOrder is not null ? $"₱{ConfirmedOrder.Total:N0}" : $"₱{GrandTotal:N0}";
+    public string ConfirmedOrderPayment => !string.IsNullOrWhiteSpace(ConfirmedOrder?.PaymentMethod) ? ConfirmedOrder.PaymentMethod : PaymentMethod;
+    public string ConfirmedOrderPaymentStatus => ConfirmedOrder?.PaymentStatus ?? "Pending";
+    public string ConfirmedOrderFulfillment => ConfirmedOrder?.Fulfillment ?? Fulfillment;
+
+    public bool IsConfirmedDelivery => string.Equals(ConfirmedOrderFulfillment, DeliveryMethod, StringComparison.OrdinalIgnoreCase);
+    public bool IsConfirmedCampusPickup => !IsConfirmedDelivery;
+
+    public bool IsPaymentPaid => string.Equals(ConfirmedOrderPaymentStatus, "Paid", StringComparison.OrdinalIgnoreCase);
+    public Color PaymentBadgeBg => IsPaymentPaid ? Color.FromArgb("#DCFCE7") : Color.FromArgb("#FEF3C7");
+    public Color PaymentBadgeTextColor => IsPaymentPaid ? Color.FromArgb("#15803D") : Color.FromArgb("#D97706");
+
+    public string ConfirmedRecipientName => ConfirmedOrder?.ShippingRecipientName ?? (string.IsNullOrWhiteSpace(ShipRecipient) ? FullName : ShipRecipient);
+    public string ConfirmedPhone => ConfirmedOrder?.ShippingPhone ?? (string.IsNullOrWhiteSpace(ShipPhone) ? ContactPhone : ShipPhone);
+
+    public string ConfirmedAddress
+    {
+        get
+        {
+            if (ConfirmedOrder is not null)
+            {
+                var parts = new[]
+                {
+                    ConfirmedOrder.ShippingAddressLine,
+                    ConfirmedOrder.ShippingBarangay,
+                    string.Join(" ", new[] { ConfirmedOrder.ShippingCity, ConfirmedOrder.ShippingProvince, ConfirmedOrder.ShippingPostalCode }.Where(v => !string.IsNullOrWhiteSpace(v)))
+                };
+                var formatted = string.Join(", ", parts.Where(v => !string.IsNullOrWhiteSpace(v)));
+                if (!string.IsNullOrWhiteSpace(formatted))
+                    return formatted;
+            }
+
+            var fallback = new[]
+            {
+                ShipAddressLine,
+                ShipBarangay,
+                string.Join(" ", new[] { ShipCity, ShipProvince, ShipPostal }.Where(v => !string.IsNullOrWhiteSpace(v)))
+            };
+            var result = string.Join(", ", fallback.Where(v => !string.IsNullOrWhiteSpace(v)));
+            return string.IsNullOrWhiteSpace(result) ? "NU Lipa Campus Merchandise Desk" : result;
+        }
+    }
 
     // Commands
     public ICommand PlaceOrderCommand { get; }
@@ -430,6 +491,7 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     public ICommand GoCartCommand { get; }
     public ICommand GoShopCommand { get; }
     public ICommand GoOrdersCommand { get; }
+    public ICommand TrackOrderCommand { get; }
     public ICommand GoLoginCommand { get; }
     public ICommand GoRegisterCommand { get; }
     public ICommand SelectPickupCommand { get; }
@@ -442,6 +504,7 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     {
         IsConfirmation = false;
         ConfirmedOrder = null;
+        ConfirmedItems.Clear();
 
         if (_auth.IsLoggedIn)
         {
@@ -580,6 +643,41 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
         await GoAsync("register");
     }
 
+    private void PopulateConfirmedItems(AdminOrder order)
+    {
+        ConfirmedItems.Clear();
+        if (order.Items != null && order.Items.Count > 0)
+        {
+            foreach (var item in order.Items)
+            {
+                ConfirmedItems.Add(new ConfirmedOrderItemViewModel
+                {
+                    ProductId = item.ProductId,
+                    Name = item.Name,
+                    ImageUrl = item.ImageUrl,
+                    Quantity = item.Quantity,
+                    Price = item.Price,
+                    Size = item.Size
+                });
+            }
+        }
+        else
+        {
+            foreach (var cartItem in _cart.Items)
+            {
+                ConfirmedItems.Add(new ConfirmedOrderItemViewModel
+                {
+                    ProductId = cartItem.Product.Id,
+                    Name = cartItem.Product.Name,
+                    ImageUrl = cartItem.Product.ImageUrl,
+                    Quantity = cartItem.Quantity,
+                    Price = cartItem.Product.Price,
+                    Size = cartItem.SelectedSize
+                });
+            }
+        }
+    }
+
     private async Task PlaceOrderAsync()
     {
         if (!_auth.IsLoggedIn)
@@ -631,16 +729,21 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
             await _customers.EnsureLoadedAsync();
 
             var user = _auth.CurrentUser;
-            var customer = _customers.EnsureCustomer(user.Name, user.Email, ContactPhone, user.UserId);
+            var customer = _customers.EnsureCustomer(
+                string.IsNullOrWhiteSpace(FullName) ? user.Name : FullName.Trim(),
+                string.IsNullOrWhiteSpace(Email) ? user.Email : Email.Trim(),
+                ContactPhone.Trim(),
+                user.UserId);
             var promoCode = _cart.AppliedPromoCode;
+            var isDelivery = IsDelivery;
 
-            var order = new AdminOrder
+            var draft = new AdminOrder
             {
                 Id = string.Empty,
-                CustomerId = user.UserId > 0 ? user.UserId.ToString() : customer.Id,
-                CustomerName = user.Name,
-                CustomerEmail = user.Email,
-                CustomerPhone = ContactPhone,
+                CustomerId = user.UserId > 0 ? user.UserId.ToString() : (customer?.Id ?? user.UserId.ToString()),
+                CustomerName = string.IsNullOrWhiteSpace(FullName) ? user.Name : FullName.Trim(),
+                CustomerEmail = string.IsNullOrWhiteSpace(Email) ? user.Email : Email.Trim(),
+                CustomerPhone = ContactPhone.Trim(),
                 Date = DateTime.Now,
                 Subtotal = Subtotal,
                 DiscountAmount = Discount,
@@ -652,13 +755,13 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
                 Fulfillment = Fulfillment,
                 Status = "Pending",
                 OrderNotes = string.IsNullOrWhiteSpace(OrderNotes) ? null : OrderNotes.Trim(),
-                ShippingRecipientName = IsDelivery ? ShipRecipient : null,
-                ShippingPhone = IsDelivery ? ShipPhone : null,
-                ShippingAddressLine = IsDelivery ? ShipAddressLine : null,
-                ShippingBarangay = IsDelivery ? ShipBarangay : null,
-                ShippingCity = IsDelivery ? ShipCity : null,
-                ShippingProvince = IsDelivery ? ShipProvince : null,
-                ShippingPostalCode = IsDelivery ? ShipPostal : null,
+                ShippingRecipientName = isDelivery ? (string.IsNullOrWhiteSpace(ShipRecipient) ? FullName.Trim() : ShipRecipient.Trim()) : null,
+                ShippingPhone = isDelivery ? (string.IsNullOrWhiteSpace(ShipPhone) ? ContactPhone.Trim() : ShipPhone.Trim()) : null,
+                ShippingAddressLine = isDelivery ? ShipAddressLine?.Trim() : null,
+                ShippingBarangay = isDelivery ? ShipBarangay?.Trim() : null,
+                ShippingCity = isDelivery ? ShipCity?.Trim() : null,
+                ShippingProvince = isDelivery ? ShipProvince?.Trim() : null,
+                ShippingPostalCode = isDelivery ? ShipPostal?.Trim() : null,
                 Items = _cart.Items.Select(i => new AdminOrderItem
                 {
                     ProductId = i.Product.Id,
@@ -674,39 +777,66 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
                 }).ToList()
             };
 
-            order = await _adminOrders.AddAsync(order, promoCode, Discount);
-            _orders.PlaceOrder(order);
-            _catalog.ApplyPurchase(order.Items);
-
-            await _notifications.AddAsync(new MockNotification
+            AdminOrder order;
+            try
             {
-                Title = "Order Confirmed",
-                Message = $"Your order #{order.Id} has been placed and is being processed.",
-                TimeAgo = "Just now",
-                Icon = "check-circle",
-                Tone = "green",
-                IsRead = false
-            });
-
-            await _adminNotifications.AddAsync(new AdminNotificationItem
+                order = await _adminOrders.AddAsync(draft, promoCode, Discount);
+            }
+            catch (Exception ex)
             {
-                Type = "order",
-                Title = "New Order Received",
-                Message = $"Order #{order.Id} placed by {order.CustomerName} — ₱{order.Total:N0}.",
-                RelatedId = order.Id,
-                RelatedLabel = order.Id,
-                RelatedHref = $"/admin/orders/{order.Id}",
-                Timestamp = DateTime.Now,
-                Read = false
-            });
+                System.Diagnostics.Debug.WriteLine($"Error during AddAsync: {ex}");
+                throw;
+            }
 
-            _toast.Show($"Order {order.Id} placed successfully!");
-            _cart.Clear();
-            await _cart.PersistAsync(user.Email);
-            MobileCheckoutIntent.Clear();
-
+            // Confirmed state
             ConfirmedOrder = order;
+            PopulateConfirmedItems(order);
             IsConfirmation = true;
+
+            // Secondary tasks (isolated so checkout confirmation is never blocked)
+            try { _orders.PlaceOrder(order); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+
+            try { _catalog.ApplyPurchase(order.Items); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine(ex); }
+
+            try
+            {
+                await _notifications.AddAsync(new MockNotification
+                {
+                    Title = "Order Confirmed",
+                    Message = $"Your order #{order.Id} has been placed and is being processed.",
+                    TimeAgo = "Just now",
+                    Icon = "check-circle",
+                    Tone = "green",
+                    IsRead = false
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
+
+            try
+            {
+                _toast.Show($"Order {order.Id} placed successfully!");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
+
+            try
+            {
+                _cart.Clear();
+                await _cart.PersistAsync(user.Email);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+            }
+
+            MobileCheckoutIntent.Clear();
         }
         catch (InvalidOperationException ex)
         {
@@ -758,3 +888,4 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
 }
+

@@ -16,7 +16,6 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
     private string _lastName = string.Empty;
     private string _email = string.Empty;
     private string _phoneNumber = string.Empty;
-    private string _studentId = string.Empty;
     private string _password = string.Empty;
     private string _confirmPassword = string.Empty;
     private bool _hasAcceptedTerms;
@@ -67,12 +66,6 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
     {
         get => _phoneNumber;
         set => SetField(ref _phoneNumber, value);
-    }
-
-    public string StudentId
-    {
-        get => _studentId;
-        set => SetField(ref _studentId, value);
     }
 
     public string Password
@@ -168,6 +161,12 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
         if (!AuthValidation.IsValidEmail(Email))
         {
             ErrorMessage = "Enter a valid email address.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(PhoneNumber))
+        {
+            ErrorMessage = "Contact number is required.";
             return;
         }
 

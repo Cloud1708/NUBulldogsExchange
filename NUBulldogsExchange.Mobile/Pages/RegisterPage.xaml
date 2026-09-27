@@ -157,29 +157,6 @@
                            VerticalOptions="Center" />
                 </Border>
 
-                <!-- Student / Employee ID (Optional) -->
-                <Label Text="Student / Employee ID (Optional)"
-                       FontSize="12"
-                       FontAttributes="Bold"
-                       TextColor="#475569"
-                       Margin="2,0,0,6" />
-                <Border BackgroundColor="White"
-                        Stroke="#E2E8F0"
-                        StrokeThickness="1"
-                        HeightRequest="46"
-                        Padding="14,0"
-                        Margin="0,0,0,14">
-                    <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="12" />
-                    </Border.StrokeShape>
-                    <Entry Placeholder="N-XXXXXX"
-                           Text="{Binding StudentId}"
-                           ReturnType="Next"
-                           BackgroundColor="Transparent"
-                           FontSize="14"
-                           VerticalOptions="Center" />
-                </Border>
-
                 <!-- Password -->
                 <Label Text="Password"
                        FontSize="12"

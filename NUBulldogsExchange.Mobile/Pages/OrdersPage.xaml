@@ -75,6 +75,8 @@
                     <DataTemplate x:DataType="vm:OrderCardModel">
                         <controls:OrderCardView
                             BindingContext="{Binding .}"
+                            ViewOrderCommand="{Binding BindingContext.ViewOrderCommand, Source={x:Reference OrdersRoot}}"
+                            CancelOrderCommand="{Binding BindingContext.CancelOrderCommand, Source={x:Reference OrdersRoot}}"
                             DetailsCommand="{Binding BindingContext.DetailsCommand, Source={x:Reference OrdersRoot}}"
                             TrackCommand="{Binding BindingContext.TrackCommand, Source={x:Reference OrdersRoot}}"
                             BuyAgainCommand="{Binding BindingContext.BuyAgainCommand, Source={x:Reference OrdersRoot}}"

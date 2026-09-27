@@ -33,46 +33,55 @@ public sealed class OrderStatusChip : INotifyPropertyChanged
 
     public Color TextColor => IsSelected
         ? Colors.White
-        : Color.FromArgb("#64748B");
+        : Color.FromArgb("#475569");
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }
 
-/// <summary>UI projection for an order card with status colors and action flags.</summary>
+/// <summary>UI projection for an order card matching customer order design.</summary>
 public sealed class OrderCardModel
 {
     public required MockOrder Order { get; init; }
-    public string DisplayId => Order.Id.StartsWith('#') ? Order.Id : $"#{Order.Id}";
+    public string DisplayId => Order.Id.TrimStart('#');
+    public string DateAndItemsText => $"{Order.FormattedDate} • {Order.ItemCountLabel}";
     public string DateText => Order.FormattedDate;
     public string Status => Order.Status;
+    public string CustomerCategory => Order.CustomerCategory;
     public string TotalText => $"₱{Order.Total:N0}";
     public IReadOnlyList<MockOrderItem> Items => Order.Items;
 
-    public Color BadgeBackground => Order.Status switch
+    public string FulfillmentBadgeText => Order.IsDelivery ? "🚚 Delivery" : "📍 Campus Pickup";
+    public string FulfillmentLocationText =>
+        string.IsNullOrWhiteSpace(Order.FulfillmentLocationLabel)
+            ? (Order.IsDelivery ? "Delivery address on file" : OrderFlow.PickupLocation)
+            : Order.FulfillmentLocationLabel;
+
+    public string PaymentMethodText => $"Payment: {(string.IsNullOrWhiteSpace(Order.PaymentMethod) ? "—" : Order.PaymentMethod)}";
+    public string PaymentStatusText => $"Payment Status: {Order.PaymentStatus}";
+
+    public Color BadgeBackground => Order.CustomerCategory switch
     {
-        "Pending" => Color.FromArgb("#FEF3C7"),
-        "Confirmed" => Color.FromArgb("#DBEAFE"),
-        "Processing" => Color.FromArgb("#EDE9FE"),
-        "Ready for Pickup" => Color.FromArgb("#E0F2FE"),
-        "Completed" => Color.FromArgb("#DCFCE7"),
-        "Cancelled" => Color.FromArgb("#FEE2E2"),
+        OrderFlow.ToPay => Color.FromArgb("#FEF3C7"),
+        OrderFlow.ToProcess => Color.FromArgb("#DBEAFE"),
+        OrderFlow.ReadyForPickup => Color.FromArgb("#E0F2FE"),
+        OrderFlow.ToReceive => Color.FromArgb("#EDE9FE"),
+        OrderFlow.Completed => Color.FromArgb("#DCFCE7"),
+        OrderFlow.Cancelled => Color.FromArgb("#FEE2E2"),
         _ => Color.FromArgb("#F1F5F9")
     };
 
-    public Color BadgeTextColor => Order.Status switch
+    public Color BadgeTextColor => Order.CustomerCategory switch
     {
-        "Pending" => Color.FromArgb("#B45309"),
-        "Confirmed" => Color.FromArgb("#1D4ED8"),
-        "Processing" => Color.FromArgb("#6D28D9"),
-        "Ready for Pickup" => Color.FromArgb("#0369A1"),
-        "Completed" => Color.FromArgb("#15803D"),
-        "Cancelled" => Color.FromArgb("#B91C1C"),
+        OrderFlow.ToPay => Color.FromArgb("#B45309"),
+        OrderFlow.ToProcess => Color.FromArgb("#1D4ED8"),
+        OrderFlow.ReadyForPickup => Color.FromArgb("#0369A1"),
+        OrderFlow.ToReceive => Color.FromArgb("#6D28D9"),
+        OrderFlow.Completed => Color.FromArgb("#15803D"),
+        OrderFlow.Cancelled => Color.FromArgb("#B91C1C"),
         _ => Color.FromArgb("#475569")
     };
 
-    public bool ShowTrack => Order.Status is "Processing" or "Confirmed" or "Ready for Pickup" or "Pending";
-    public bool ShowBuyAgain => Order.Status == "Completed";
-    public bool ShowReview => Order.Status == "Completed";
+    public bool CanCancel => Order.CanCancel;
     public bool ShowDetails => true;
 }
 
@@ -104,7 +113,9 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
 
         SelectStatusCommand = new Command<OrderStatusChip>(OnSelectStatus);
         StartShoppingCommand = new Command(async () => await GoAsync("//shop"));
-        DetailsCommand = new Command<OrderCardModel>(async o => await OnDetailsAsync(o));
+        ViewOrderCommand = new Command<OrderCardModel>(async o => await OnViewOrderAsync(o));
+        CancelOrderCommand = new Command<OrderCardModel>(async o => await OnCancelOrderAsync(o));
+        DetailsCommand = new Command<OrderCardModel>(async o => await OnViewOrderAsync(o));
         TrackCommand = new Command<OrderCardModel>(async o => await OnTrackAsync(o));
         BuyAgainCommand = new Command<OrderCardModel>(async o => await OnBuyAgainAsync(o));
         ReviewCommand = new Command<OrderCardModel>(async o => await OnReviewAsync(o));
@@ -144,6 +155,8 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
 
     public ICommand SelectStatusCommand { get; }
     public ICommand StartShoppingCommand { get; }
+    public ICommand ViewOrderCommand { get; }
+    public ICommand CancelOrderCommand { get; }
     public ICommand DetailsCommand { get; }
     public ICommand TrackCommand { get; }
     public ICommand BuyAgainCommand { get; }
@@ -171,27 +184,15 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
 
     private async Task ForceReloadAsync()
     {
-        // OrderService caches by email; call EnsureLoadedAsync which reloads when email changes.
-        // For same email, still refresh by reading Filter after EnsureLoaded.
         await _orders.EnsureLoadedAsync(_auth.Email);
 
-        // If still empty and guest, load all orders for preview (Windows/dev).
         if (_orders.Orders.Count == 0 && string.IsNullOrWhiteSpace(_auth.Email))
             await _orders.EnsureLoadedAsync(null);
     }
 
     private void BuildStatusChips()
     {
-        var statuses = new[]
-        {
-            "All",
-            "Pending",
-            "Confirmed",
-            "Processing",
-            "Ready for Pickup",
-            "Completed",
-            "Cancelled"
-        };
+        var statuses = OrderFlow.CustomerTabs;
 
         StatusChips.Clear();
         foreach (var status in statuses)
@@ -227,16 +228,64 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
         HasOrders = FilteredOrders.Count > 0;
     }
 
-    private async Task OnDetailsAsync(OrderCardModel? card)
+    private async Task OnViewOrderAsync(OrderCardModel? card)
     {
         if (card is null) return;
         var page = HostPage ?? Shell.Current;
-        var lines = string.Join("\n", card.Items.Select(i =>
-            $"• {i.Name} (Size: {i.Size} · Qty: {i.Quantity})"));
+        var order = card.Order;
+
+        var itemsSummary = string.Join("\n", order.Items.Select(i =>
+        {
+            var sizeStr = !string.IsNullOrWhiteSpace(i.Size) && !i.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase)
+                ? $" (Size: {i.Size})"
+                : "";
+            return $"• {i.Name}{sizeStr}\n  Qty: {i.Quantity} × ₱{i.Price:N0} = ₱{i.Price * i.Quantity:N0}";
+        }));
+
+        var fulfillmentText = order.IsDelivery
+            ? $"🚚 Delivery\nRecipient: {order.RecipientName}\nPhone: {(string.IsNullOrWhiteSpace(order.RecipientPhone) ? "—" : order.RecipientPhone)}\nAddress: {(string.IsNullOrWhiteSpace(order.ShippingAddressLabel) ? "Address on file" : order.ShippingAddressLabel)}"
+            : $"📍 Campus Pickup\nLocation: {OrderFlow.PickupLocation}\nSchedule: {OrderFlow.PickupHoursDays} ({OrderFlow.PickupHoursTime})";
+
+        var paymentText = $"Payment: {(string.IsNullOrWhiteSpace(order.PaymentMethod) ? "—" : order.PaymentMethod)}\nStatus: {order.PaymentStatus} ({OrderFlow.PaymentDetail(order.PaymentMethod, order.PaymentStatus)})";
+
+        var itemSubtotal = order.Items.Count > 0
+            ? order.Items.Sum(i => i.Price * i.Quantity)
+            : order.Subtotal;
+        var feeLabel = order.IsDelivery ? "Delivery Fee" : "Fulfillment Fee";
+        var discountLine = order.DiscountAmount > 0 ? $"\nDiscount: -₱{order.DiscountAmount:N0}" : "";
+        var feeLine = order.ShippingFee > 0 ? $"₱{order.ShippingFee:N0}" : "Free";
+
+        var summaryText = $"Subtotal: ₱{itemSubtotal:N0}{discountLine}\n{feeLabel}: {feeLine}\nTotal: ₱{order.Total:N0}";
+
+        var panel = OrderFlow.StatusPanel(order);
+
         await page.DisplayAlertAsync(
             $"Order {card.DisplayId}",
-            $"Status: {card.Status}\nDate: {card.DateText}\nTotal: {card.TotalText}\n\nItems:\n{lines}",
-            "OK");
+            $"Status: {card.CustomerCategory}\nDate: {order.FormattedDate}\n\n" +
+            $"📦 ITEMS\n{itemsSummary}\n\n" +
+            $"📍 FULFILLMENT\n{fulfillmentText}\n\n" +
+            $"💳 PAYMENT\n{paymentText}\n\n" +
+            $"💰 SUMMARY\n{summaryText}\n\n" +
+            $"ℹ️ {panel.Title}\n{panel.Message}",
+            "Close");
+    }
+
+    private async Task OnCancelOrderAsync(OrderCardModel? card)
+    {
+        if (card is null) return;
+        var page = HostPage ?? Shell.Current;
+        bool confirm = await page.DisplayAlertAsync(
+            "Cancel Order",
+            $"Are you sure you want to cancel order {card.DisplayId}?",
+            "Yes, Cancel",
+            "No");
+
+        if (confirm)
+        {
+            _orders.Cancel(card.Order.Id);
+            _toast.Show($"Order {card.DisplayId} cancelled.");
+            ApplyFilter();
+        }
     }
 
     private async Task OnTrackAsync(OrderCardModel? card)
@@ -245,7 +294,7 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
         var page = HostPage ?? Shell.Current;
         await page.DisplayAlertAsync(
             "Track Order",
-            $"{card.DisplayId} is currently: {card.Status}.",
+            $"{card.DisplayId} is currently: {card.CustomerCategory} ({card.Status}).",
             "OK");
     }
 

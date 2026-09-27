@@ -862,85 +862,358 @@
                 </VerticalStackLayout>
 
                 <!-- ==================== ORDER CONFIRMATION ==================== -->
-                <VerticalStackLayout IsVisible="{Binding IsConfirmation}" Spacing="16" Padding="4,10,4,20">
+                <VerticalStackLayout IsVisible="{Binding IsConfirmation}" Spacing="14" Padding="2,0,2,24">
+
+                    <!-- Breadcrumbs -->
+                    <HorizontalStackLayout Spacing="6" Margin="4,4,4,0" VerticalOptions="Center">
+                        <Label Text="Home" FontSize="11" TextColor="#64748B">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoShopCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                        <Label Text="›" FontSize="11" TextColor="#94A3B8" />
+                        <Label Text="My Shopping Cart" FontSize="11" TextColor="#64748B">
+                            <Label.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding GoCartCommand}" />
+                            </Label.GestureRecognizers>
+                        </Label>
+                        <Label Text="›" FontSize="11" TextColor="#94A3B8" />
+                        <Label Text="Checkout" FontSize="11" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
+                    </HorizontalStackLayout>
+
+                    <!-- Page Title & Subtitle -->
+                    <VerticalStackLayout Spacing="2" Margin="4,0,4,4">
+                        <Label Text="Checkout"
+                               FontSize="22"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}" />
+                        <Label Text="Complete your order in a few easy steps."
+                               FontSize="12"
+                               TextColor="{StaticResource MutedText}" />
+                    </VerticalStackLayout>
+
+                    <!-- 4-Step Progress Indicator (Completed) -->
                     <Border BackgroundColor="White"
                             Stroke="#E2E8F0"
                             StrokeThickness="1"
-                            Padding="20,24">
+                            Padding="12,10">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12" />
+                        </Border.StrokeShape>
+                        <Grid ColumnDefinitions="Auto,*,Auto,*,Auto,*,Auto" VerticalOptions="Center">
+                            <!-- Step 1: Cart (Done) -->
+                            <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                <Border BackgroundColor="#22C55E" WidthRequest="18" HeightRequest="18" StrokeThickness="0">
+                                    <Border.StrokeShape><RoundRectangle CornerRadius="9" /></Border.StrokeShape>
+                                    <Label Text="✓" TextColor="White" FontSize="10" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="Cart" FontSize="10" FontAttributes="Bold" TextColor="#22C55E" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+
+                            <!-- Line 1 -->
+                            <BoxView Grid.Column="1" HeightRequest="2" Color="#22C55E" Margin="4,0" VerticalOptions="Center" />
+
+                            <!-- Step 2: Information (Done) -->
+                            <HorizontalStackLayout Grid.Column="2" Spacing="4" VerticalOptions="Center">
+                                <Border BackgroundColor="#22C55E" WidthRequest="18" HeightRequest="18" StrokeThickness="0">
+                                    <Border.StrokeShape><RoundRectangle CornerRadius="9" /></Border.StrokeShape>
+                                    <Label Text="✓" TextColor="White" FontSize="10" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="Info" FontSize="10" FontAttributes="Bold" TextColor="#22C55E" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+
+                            <!-- Line 2 -->
+                            <BoxView Grid.Column="3" HeightRequest="2" Color="#22C55E" Margin="4,0" VerticalOptions="Center" />
+
+                            <!-- Step 3: Payment (Done) -->
+                            <HorizontalStackLayout Grid.Column="4" Spacing="4" VerticalOptions="Center">
+                                <Border BackgroundColor="#22C55E" WidthRequest="18" HeightRequest="18" StrokeThickness="0">
+                                    <Border.StrokeShape><RoundRectangle CornerRadius="9" /></Border.StrokeShape>
+                                    <Label Text="✓" TextColor="White" FontSize="10" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="Payment" FontSize="10" FontAttributes="Bold" TextColor="#22C55E" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+
+                            <!-- Line 3 -->
+                            <BoxView Grid.Column="5" HeightRequest="2" Color="#22C55E" Margin="4,0" VerticalOptions="Center" />
+
+                            <!-- Step 4: Confirmation (Active) -->
+                            <HorizontalStackLayout Grid.Column="6" Spacing="4" VerticalOptions="Center">
+                                <Border BackgroundColor="{StaticResource NuNavy}" WidthRequest="18" HeightRequest="18" StrokeThickness="0">
+                                    <Border.StrokeShape><RoundRectangle CornerRadius="9" /></Border.StrokeShape>
+                                    <Label Text="✓" TextColor="White" FontSize="10" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                                </Border>
+                                <Label Text="Confirmation" FontSize="10" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </Border>
+
+                    <!-- Main Confirmation Card -->
+                    <Border BackgroundColor="White"
+                            Stroke="#E2E8F0"
+                            StrokeThickness="1"
+                            Padding="18,22">
                         <Border.StrokeShape>
                             <RoundRectangle CornerRadius="16" />
                         </Border.StrokeShape>
-                        <VerticalStackLayout Spacing="14" HorizontalOptions="Center">
-                            <Border WidthRequest="72"
-                                    HeightRequest="72"
-                                    BackgroundColor="#F0FDF4"
-                                    Stroke="#BBF7D0"
+                        <VerticalStackLayout Spacing="16">
+
+                            <!-- Success Icon Badge -->
+                            <Border WidthRequest="60"
+                                    HeightRequest="60"
+                                    BackgroundColor="#ECFDF5"
+                                    Stroke="#A7F3D0"
                                     StrokeThickness="2"
                                     HorizontalOptions="Center">
-                                <Border.StrokeShape><RoundRectangle CornerRadius="36" /></Border.StrokeShape>
-                                <Label Text="✓" FontSize="36" TextColor="#16A34A" FontAttributes="Bold" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="30" />
+                                </Border.StrokeShape>
+                                <Label Text="✓"
+                                       FontSize="28"
+                                       TextColor="#10B981"
+                                       FontAttributes="Bold"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
                             </Border>
 
-                            <Label Text="Order Placed Successfully!"
-                                   FontSize="20"
-                                   FontAttributes="Bold"
-                                   TextColor="{StaticResource NuNavy}"
-                                   HorizontalTextAlignment="Center" />
+                            <!-- Header Titles -->
+                            <VerticalStackLayout Spacing="4" HorizontalOptions="Center">
+                                <Label Text="Order Confirmed!"
+                                       FontSize="22"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}"
+                                       HorizontalTextAlignment="Center" />
 
-                            <Label Text="Thank you! Your order has been received and is being processed by the merchandise team."
-                                   FontSize="13"
-                                   TextColor="{StaticResource MutedText}"
-                                   HorizontalTextAlignment="Center"
-                                   LineBreakMode="WordWrap" />
-
-                            <BoxView HeightRequest="1" Color="#E2E8F0" Margin="0,4" />
-
-                            <!-- Confirmation Details Table -->
-                            <VerticalStackLayout Spacing="8">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Label Text="Order Number" FontSize="13" TextColor="#64748B" />
-                                    <Label Grid.Column="1" Text="{Binding ConfirmedOrderId}" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
-                                </Grid>
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Label Text="Customer" FontSize="13" TextColor="#64748B" />
-                                    <Label Grid.Column="1" Text="{Binding FullName}" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
-                                </Grid>
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Label Text="Payment Method" FontSize="13" TextColor="#64748B" />
-                                    <Label Grid.Column="1" Text="{Binding ConfirmedOrderPayment}" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
-                                </Grid>
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Label Text="Fulfillment" FontSize="13" TextColor="#64748B" />
-                                    <Label Grid.Column="1" Text="{Binding ConfirmedOrderFulfillment}" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
-                                </Grid>
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <Label Text="Total Amount" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
-                                    <Label Grid.Column="1" Text="{Binding ConfirmedOrderTotal}" FontSize="15" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
-                                </Grid>
+                                <Label Text="Thank you for supporting NU Bulldogs Exchange. Your order has been placed successfully."
+                                       FontSize="12"
+                                       TextColor="{StaticResource MutedText}"
+                                       HorizontalTextAlignment="Center"
+                                       LineBreakMode="WordWrap"
+                                       Margin="8,2,8,0" />
                             </VerticalStackLayout>
 
-                            <!-- Actions -->
-                            <Border BackgroundColor="{StaticResource NuNavy}"
-                                    HeightRequest="48"
-                                    Margin="0,12,0,0"
-                                    StrokeThickness="0">
-                                <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding GoOrdersCommand}" />
-                                </Border.GestureRecognizers>
-                                <Label Text="View My Orders" TextColor="White" FontSize="14" FontAttributes="Bold" InputTransparent="True" HorizontalOptions="Center" VerticalOptions="Center" />
+                            <!-- Confirmation Details Table -->
+                            <Border BackgroundColor="#F8FAFC"
+                                    Stroke="#E2E8F0"
+                                    StrokeThickness="1"
+                                    Padding="14,12">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <VerticalStackLayout Spacing="10">
+                                    <!-- Order Number -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label Text="Order Number" FontSize="12" TextColor="#64748B" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding ConfirmedOrderId}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                                    </Grid>
+
+                                    <!-- Order Date -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label Text="Order Date" FontSize="12" TextColor="#64748B" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding ConfirmedOrderDate}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                                    </Grid>
+
+                                    <!-- Payment Method -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label Text="Payment Method" FontSize="12" TextColor="#64748B" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding ConfirmedOrderPayment}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                                    </Grid>
+
+                                    <!-- Payment Status Badge -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label Text="Payment Status" FontSize="12" TextColor="#64748B" VerticalOptions="Center" />
+                                        <Border Grid.Column="1"
+                                                BackgroundColor="{Binding PaymentBadgeBg}"
+                                                StrokeThickness="0"
+                                                Padding="10,2"
+                                                VerticalOptions="Center">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="10" />
+                                            </Border.StrokeShape>
+                                            <Label Text="{Binding ConfirmedOrderPaymentStatus}"
+                                                   TextColor="{Binding PaymentBadgeTextColor}"
+                                                   FontSize="11"
+                                                   FontAttributes="Bold"
+                                                   VerticalOptions="Center"
+                                                   HorizontalOptions="Center" />
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Fulfillment Method -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label Text="Fulfillment Method" FontSize="12" TextColor="#64748B" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding ConfirmedOrderFulfillment}" FontSize="12" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                                    </Grid>
+
+                                    <!-- Total Amount -->
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <Label Text="Total Amount" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                                        <Label Grid.Column="1" Text="{Binding ConfirmedOrderTotal}" FontSize="15" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                                    </Grid>
+                                </VerticalStackLayout>
                             </Border>
 
+                            <!-- Fulfillment Callout Box -->
+                            <!-- Campus Pickup Information -->
+                            <Border IsVisible="{Binding IsConfirmedCampusPickup}"
+                                    BackgroundColor="#EFF6FF"
+                                    Stroke="#BFDBFE"
+                                    StrokeThickness="1"
+                                    Padding="14,12">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <VerticalStackLayout Spacing="4">
+                                    <Label Text="Campus Pickup Information"
+                                           FontSize="13"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource NuNavy}" />
+                                    <Label Text="Your order will be ready within 1–3 business days."
+                                           FontSize="11.5"
+                                           TextColor="#334155" />
+                                    <Label Text="Pick up your order at the NU Lipa Campus pickup location."
+                                           FontSize="11.5"
+                                           TextColor="#334155" />
+                                    <Label Text="You'll receive a notification when your order is ready."
+                                           FontSize="11.5"
+                                           TextColor="#334155" />
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <!-- Delivery Information -->
+                            <Border IsVisible="{Binding IsConfirmedDelivery}"
+                                    BackgroundColor="#EFF6FF"
+                                    Stroke="#BFDBFE"
+                                    StrokeThickness="1"
+                                    Padding="14,12">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <VerticalStackLayout Spacing="4">
+                                    <Label Text="Delivery Information"
+                                           FontSize="13"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource NuNavy}" />
+                                    <Label Text="{Binding ConfirmedRecipientName, StringFormat='Recipient: {0}'}"
+                                           FontSize="11.5"
+                                           TextColor="#334155" />
+                                    <Label Text="{Binding ConfirmedAddress, StringFormat='Shipping Address: {0}'}"
+                                           FontSize="11.5"
+                                           TextColor="#334155" />
+                                    <Label Text="{Binding ConfirmedPhone, StringFormat='Contact Number: {0}'}"
+                                           FontSize="11.5"
+                                           TextColor="#334155" />
+                                    <Label Text="Estimated Delivery: 3–7 business days"
+                                           FontSize="11.5"
+                                           TextColor="#334155" />
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <!-- Itemized Product List -->
+                            <VerticalStackLayout Spacing="8">
+                                <Label Text="Ordered Items" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
+                                <VerticalStackLayout BindableLayout.ItemsSource="{Binding ConfirmedItems}" Spacing="8">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ConfirmedOrderItemViewModel">
+                                            <Grid ColumnDefinitions="48,*,Auto" ColumnSpacing="10" Padding="0,2">
+                                                <Border WidthRequest="48" HeightRequest="48" StrokeThickness="0" BackgroundColor="#F1F5F9">
+                                                    <Border.StrokeShape><RoundRectangle CornerRadius="8" /></Border.StrokeShape>
+                                                    <Image Source="{Binding ImageUrl, Converter={StaticResource ProductImageConverter}}"
+                                                           Aspect="AspectFill" />
+                                                </Border>
+
+                                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                                    <Label Text="{Binding Name}"
+                                                           FontSize="12.5"
+                                                           FontAttributes="Bold"
+                                                           TextColor="{StaticResource NuNavy}"
+                                                           LineBreakMode="TailTruncation"
+                                                           MaxLines="1" />
+                                                    <HorizontalStackLayout Spacing="6">
+                                                        <Label Text="{Binding SizeLabel}"
+                                                               FontSize="11"
+                                                               TextColor="#64748B"
+                                                               IsVisible="{Binding HasSize}" />
+                                                        <Label Text="{Binding QuantityLabel}"
+                                                               FontSize="11"
+                                                               TextColor="#64748B" />
+                                                    </HorizontalStackLayout>
+                                                </VerticalStackLayout>
+
+                                                <Label Grid.Column="2"
+                                                       Text="{Binding FormattedPrice}"
+                                                       FontSize="13.5"
+                                                       FontAttributes="Bold"
+                                                       TextColor="{StaticResource NuNavy}"
+                                                       VerticalOptions="Center" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+
+                            <!-- Action Buttons -->
+                            <Grid ColumnDefinitions="*,*" ColumnSpacing="10" Margin="0,4,0,0">
+                                <!-- Track Order (Solid Navy) -->
+                                <Border BackgroundColor="{StaticResource NuNavy}"
+                                        HeightRequest="46"
+                                        StrokeThickness="0">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10" />
+                                    </Border.StrokeShape>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding TrackOrderCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="Track Order"
+                                           TextColor="White"
+                                           FontSize="13"
+                                           FontAttributes="Bold"
+                                           InputTransparent="True"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                                </Border>
+
+                                <!-- View My Orders (Outlined Navy) -->
+                                <Border BackgroundColor="White"
+                                        HeightRequest="46"
+                                        Stroke="{StaticResource NuNavy}"
+                                        StrokeThickness="1.5">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10" />
+                                    </Border.StrokeShape>
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding GoOrdersCommand}" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="View My Orders"
+                                           TextColor="{StaticResource NuNavy}"
+                                           FontSize="13"
+                                           FontAttributes="Bold"
+                                           InputTransparent="True"
+                                           HorizontalOptions="Center"
+                                           VerticalOptions="Center" />
+                                </Border>
+                            </Grid>
+
+                            <!-- Continue Shopping Link Button -->
                             <Border BackgroundColor="White"
-                                    HeightRequest="48"
-                                    Stroke="{StaticResource NuNavy}"
-                                    StrokeThickness="1.5">
-                                <Border.StrokeShape><RoundRectangle CornerRadius="12" /></Border.StrokeShape>
+                                    HeightRequest="44"
+                                    Stroke="#CBD5E1"
+                                    StrokeThickness="1">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
                                 <Border.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding GoShopCommand}" />
                                 </Border.GestureRecognizers>
-                                <Label Text="Continue Shopping" TextColor="{StaticResource NuNavy}" FontSize="14" FontAttributes="Bold" InputTransparent="True" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="Continue Shopping →"
+                                       TextColor="{StaticResource NuNavy}"
+                                       FontSize="13"
+                                       FontAttributes="Bold"
+                                       InputTransparent="True"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
                             </Border>
+
                         </VerticalStackLayout>
                     </Border>
                 </VerticalStackLayout>

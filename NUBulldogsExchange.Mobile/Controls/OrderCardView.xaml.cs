@@ -5,6 +5,12 @@ namespace NUBulldogsExchange.Mobile.Controls;
 
 public partial class OrderCardView : ContentView
 {
+    public static readonly BindableProperty ViewOrderCommandProperty =
+        BindableProperty.Create(nameof(ViewOrderCommand), typeof(ICommand), typeof(OrderCardView));
+
+    public static readonly BindableProperty CancelOrderCommandProperty =
+        BindableProperty.Create(nameof(CancelOrderCommand), typeof(ICommand), typeof(OrderCardView));
+
     public static readonly BindableProperty DetailsCommandProperty =
         BindableProperty.Create(nameof(DetailsCommand), typeof(ICommand), typeof(OrderCardView));
 
@@ -20,6 +26,18 @@ public partial class OrderCardView : ContentView
     public OrderCardView()
     {
         InitializeComponent();
+    }
+
+    public ICommand? ViewOrderCommand
+    {
+        get => (ICommand?)GetValue(ViewOrderCommandProperty);
+        set => SetValue(ViewOrderCommandProperty, value);
+    }
+
+    public ICommand? CancelOrderCommand
+    {
+        get => (ICommand?)GetValue(CancelOrderCommandProperty);
+        set => SetValue(CancelOrderCommandProperty, value);
     }
 
     public ICommand? DetailsCommand
