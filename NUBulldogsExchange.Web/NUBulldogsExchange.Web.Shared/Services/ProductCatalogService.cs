@@ -99,7 +99,7 @@ public class ProductCatalogService
                 }
 
                 product.Variants = variants;
-                if (product.HasSizeVariants)
+                if (product.HasVariants)
                 {
                     product.Sizes = product.Variants
                         .Where(v => v.IsActive)
@@ -107,6 +107,14 @@ public class ProductCatalogService
                         .Where(s => !string.IsNullOrWhiteSpace(s))
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
+                    if (product.HasColorVariants)
+                    {
+                        product.Colors = product.Variants
+                            .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
+                            .Select(v => v.ColorName!.Trim())
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                    }
                     product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
                     product.InStock = product.Stock > 0;
                 }
@@ -268,7 +276,7 @@ public class ProductCatalogService
     {
         product.Variants ??= [];
 
-        if (product.HasSizeVariants)
+        if (product.HasVariants)
         {
             product.Sizes = product.Variants
                 .Where(v => v.IsActive)
@@ -276,6 +284,14 @@ public class ProductCatalogService
                 .Where(s => !string.IsNullOrWhiteSpace(s))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            if (product.HasColorVariants)
+            {
+                product.Colors = product.Variants
+                    .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
+                    .Select(v => v.ColorName!.Trim())
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+            }
             product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
         }
         else if (product.Sizes.Count == 0)

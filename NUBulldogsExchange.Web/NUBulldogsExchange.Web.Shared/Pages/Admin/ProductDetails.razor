@@ -46,6 +46,26 @@
                     <div><dt>Status</dt><dd><span class="admin-product-status @(Product.IsActive ? "is-active" : "is-inactive")">@Product.Status</span></dd></div>
                     <div><dt>Colors</dt><dd>@(Product.Colors.Count == 0 ? "—" : string.Join(", ", Product.Colors))</dd></div>
                     <div><dt>Sizes</dt><dd>@(Product.Sizes.Count == 0 ? "—" : string.Join(", ", Product.Sizes))</dd></div>
+                    @if (Product.HasVariants)
+                    {
+                        <div>
+                            <dt>Variants</dt>
+                            <dd>
+                                @foreach (var variant in Product.Variants)
+                                {
+                                    <div>
+                                        @(string.IsNullOrWhiteSpace(variant.ColorName) ? "" : variant.ColorName)
+                                        @(string.IsNullOrWhiteSpace(variant.Size) ? "" : variant.Size)
+                                        · @variant.StockQuantity
+                                        @if (!string.IsNullOrWhiteSpace(variant.Sku))
+                                        {
+                                            <text> · @variant.Sku</text>
+                                        }
+                                    </div>
+                                }
+                            </dd>
+                        </div>
+                    }
                 </dl>
                 <p>@(string.IsNullOrWhiteSpace(Product.Description) ? "No description provided." : Product.Description)</p>
             </div>

@@ -54,6 +54,10 @@
                                      onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                 <div class="od-item-copy">
                                     <strong>@item.Name</strong>
+                                    @if (!string.IsNullOrWhiteSpace(item.Color))
+                                    {
+                                        <span>Color: @item.Color</span>
+                                    }
                                     @if (!string.IsNullOrWhiteSpace(item.Size)
                                         && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
                                     {

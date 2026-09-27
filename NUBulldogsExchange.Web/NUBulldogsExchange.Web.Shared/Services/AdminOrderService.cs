@@ -197,7 +197,7 @@ public class AdminOrderService
         }
 
         if (notifyCustomer && statusChanged)
-            await TryNotifyCustomerAsync(order, status);
+            await TryNotifyCustomerAsync(order, status, remarksValue);
 
         OnChange?.Invoke();
         return true;
@@ -228,7 +228,7 @@ public class AdminOrderService
             // History is best-effort; status change still stands.
         }
 
-        await TryNotifyCustomerAsync(order, status);
+        await TryNotifyCustomerAsync(order, status, null);
         OnChange?.Invoke();
         return true;
     }
@@ -259,10 +259,10 @@ public class AdminOrderService
         return saved;
     }
 
-    private async Task TryNotifyCustomerAsync(AdminOrder order, string newStatus)
+    private async Task TryNotifyCustomerAsync(AdminOrder order, string newStatus, string? remarks)
     {
         var title = OrderFlow.CustomerNotificationTitle(order.Fulfillment, newStatus);
-        var message = OrderFlow.CustomerNotificationMessage(order.Id, order.Fulfillment, newStatus);
+        var message = OrderFlow.CustomerNotificationMessage(order.Id, order.Fulfillment, newStatus, remarks);
         if (title is null || message is null)
             return;
 
@@ -278,8 +278,9 @@ public class AdminOrderService
                     Message = message,
                     TimeAgo = "Just now",
                     Icon = "package",
-                    Tone = "blue",
-                    IsRead = false
+                    Tone = NotificationTone(newStatus),
+                    IsRead = false,
+                    RelatedHref = "/orders"
                 });
         }
         catch
@@ -287,4 +288,7 @@ public class AdminOrderService
             // Existing notification system is best-effort.
         }
     }
+
+    private static string NotificationTone(string newStatus) =>
+        newStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase) ? "gold" : "blue";
 }

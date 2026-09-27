@@ -9,7 +9,10 @@ public class AdminOrderItem
     public decimal Price { get; set; }
     public int? VariantId { get; set; }
     public string? Size { get; set; }
+    public string? ColorName { get; set; }
     public string? VariantSku { get; set; }
+
+    public string VariantLabel => ProductVariantLogic.FormatVariantLabel(ColorName, Size);
 }
 
 public class AdminOrder

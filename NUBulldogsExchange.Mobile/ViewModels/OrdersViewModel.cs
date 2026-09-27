@@ -44,35 +44,35 @@ public sealed class OrderCardModel
     public required MockOrder Order { get; init; }
     public string DisplayId => Order.Id.StartsWith('#') ? Order.Id : $"#{Order.Id}";
     public string DateText => Order.FormattedDate;
-    public string Status => Order.Status;
+    public string Status => Order.CustomerCategory;
     public string TotalText => $"₱{Order.Total:N0}";
     public IReadOnlyList<MockOrderItem> Items => Order.Items;
 
-    public Color BadgeBackground => Order.Status switch
+    public Color BadgeBackground => Order.CustomerCategory switch
     {
-        "Pending" => Color.FromArgb("#FEF3C7"),
-        "Confirmed" => Color.FromArgb("#DBEAFE"),
-        "Processing" => Color.FromArgb("#EDE9FE"),
-        "Ready for Pickup" => Color.FromArgb("#E0F2FE"),
-        "Completed" => Color.FromArgb("#DCFCE7"),
-        "Cancelled" => Color.FromArgb("#FEE2E2"),
+        OrderFlow.ToPay => Color.FromArgb("#FEF3C7"),
+        OrderFlow.ToProcess => Color.FromArgb("#DBEAFE"),
+        OrderFlow.ReadyForPickup => Color.FromArgb("#E0F2FE"),
+        OrderFlow.ToReceive => Color.FromArgb("#E0F2FE"),
+        OrderFlow.Completed => Color.FromArgb("#DCFCE7"),
+        OrderFlow.Cancelled => Color.FromArgb("#FEE2E2"),
         _ => Color.FromArgb("#F1F5F9")
     };
 
-    public Color BadgeTextColor => Order.Status switch
+    public Color BadgeTextColor => Order.CustomerCategory switch
     {
-        "Pending" => Color.FromArgb("#B45309"),
-        "Confirmed" => Color.FromArgb("#1D4ED8"),
-        "Processing" => Color.FromArgb("#6D28D9"),
-        "Ready for Pickup" => Color.FromArgb("#0369A1"),
-        "Completed" => Color.FromArgb("#15803D"),
-        "Cancelled" => Color.FromArgb("#B91C1C"),
+        OrderFlow.ToPay => Color.FromArgb("#B45309"),
+        OrderFlow.ToProcess => Color.FromArgb("#2563EB"),
+        OrderFlow.ReadyForPickup => Color.FromArgb("#0369A1"),
+        OrderFlow.ToReceive => Color.FromArgb("#0369A1"),
+        OrderFlow.Completed => Color.FromArgb("#15803D"),
+        OrderFlow.Cancelled => Color.FromArgb("#B91C1C"),
         _ => Color.FromArgb("#475569")
     };
 
-    public bool ShowTrack => Order.Status is "Processing" or "Confirmed" or "Ready for Pickup" or "Pending";
-    public bool ShowBuyAgain => Order.Status == "Completed";
-    public bool ShowReview => Order.Status == "Completed";
+    public bool ShowTrack => Order.IsActive;
+    public bool ShowBuyAgain => Order.CustomerCategory == OrderFlow.Completed;
+    public bool ShowReview => Order.CustomerCategory == OrderFlow.Completed;
     public bool ShowDetails => true;
 }
 
@@ -182,16 +182,7 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
 
     private void BuildStatusChips()
     {
-        var statuses = new[]
-        {
-            "All",
-            "Pending",
-            "Confirmed",
-            "Processing",
-            "Ready for Pickup",
-            "Completed",
-            "Cancelled"
-        };
+        var statuses = OrderFlow.CustomerTabs;
 
         StatusChips.Clear();
         foreach (var status in statuses)

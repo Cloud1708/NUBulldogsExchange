@@ -8,6 +8,7 @@ public class MockOrderItem
     public int Quantity { get; set; } = 1;
     public decimal Price { get; set; }
     public string Size { get; set; } = "Free Size";
+    public string? Color { get; set; }
 }
 
 public class MockOrder
@@ -83,7 +84,8 @@ public class MockOrder
             ImageUrl = i.ImageUrl,
             Quantity = i.Quantity,
             Price = i.Price,
-            Size = string.IsNullOrWhiteSpace(i.Size) ? "Free Size" : i.Size
+            Size = string.IsNullOrWhiteSpace(i.Size) ? "Free Size" : i.Size,
+            Color = i.ColorName
         }).ToList()
     };
 }
@@ -97,6 +99,7 @@ public class MockNotification
     public string Icon { get; set; } = "bell";
     public string Tone { get; set; } = "blue";
     public bool IsRead { get; set; }
+    public string? RelatedHref { get; set; }
 }
 
 public record AdminStatCard(

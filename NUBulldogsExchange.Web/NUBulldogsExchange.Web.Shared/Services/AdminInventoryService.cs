@@ -143,6 +143,7 @@ public class AdminInventoryService
         ImageUrl = product.ImageUrl,
         Available = product.Stock,
         Reserved = _reserved.GetValueOrDefault(product.Id),
-        LowStockLevel = _lowStockLevels.GetValueOrDefault(product.Id, _settings.LowStockThreshold)
+        LowStockLevel = _lowStockLevels.GetValueOrDefault(product.Id, _settings.LowStockThreshold),
+        Variants = product.Variants.Select(v => v.Clone()).ToList()
     };
 }

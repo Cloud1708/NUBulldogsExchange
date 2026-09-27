@@ -33,6 +33,7 @@ public static class OrderFlow
     public static readonly string[] PickupAdminStatuses =
     [
         "Pending",
+        "Confirmed",
         "Processing",
         ReadyForPickup,
         Completed,
@@ -42,6 +43,7 @@ public static class OrderFlow
     public static readonly string[] DeliveryAdminStatuses =
     [
         "Pending",
+        "Confirmed",
         "Processing",
         "Out for Delivery",
         "Delivered",
@@ -52,6 +54,7 @@ public static class OrderFlow
     [
         "All Statuses",
         "Pending",
+        "Confirmed",
         "Processing",
         ReadyForPickup,
         "Out for Delivery",
@@ -171,8 +174,59 @@ public static class OrderFlow
     public static bool CanCustomerCancel(AdminOrder order) =>
         CanCustomerCancel(order.Fulfillment, order.Status);
 
+    public static bool CanAdminCancel(string? fulfillment, string? status) =>
+        CanCustomerCancel(fulfillment, status);
+
+    public static bool CanAdminCancel(AdminOrder order) =>
+        CanAdminCancel(order.Fulfillment, order.Status);
+
     public static string[] AllowedAdminStatuses(string? fulfillment) =>
         IsDelivery(fulfillment) ? DeliveryAdminStatuses : PickupAdminStatuses;
+
+    public static string? NextAdminStatus(string? fulfillment, string? status)
+    {
+        if (EqualsStatus(status, Cancelled)
+            || EqualsStatus(status, Completed)
+            || EqualsStatus(status, "Delivered"))
+        {
+            return null;
+        }
+
+        if (IsDelivery(fulfillment))
+        {
+            if (EqualsStatus(status, "Pending"))
+                return "Confirmed";
+            if (EqualsStatus(status, "Confirmed"))
+                return "Processing";
+            if (EqualsStatus(status, "Processing") || EqualsStatus(status, "Preparing"))
+                return "Out for Delivery";
+            if (EqualsStatus(status, "Out for Delivery") || EqualsStatus(status, "Shipped"))
+                return "Delivered";
+            return null;
+        }
+
+        if (EqualsStatus(status, "Pending"))
+            return "Confirmed";
+        if (EqualsStatus(status, "Confirmed"))
+            return "Processing";
+        if (EqualsStatus(status, "Processing") || EqualsStatus(status, "Preparing"))
+            return ReadyForPickup;
+        if (EqualsStatus(status, ReadyForPickup))
+            return Completed;
+        return null;
+    }
+
+    public static string? NextAdminActionLabel(string? fulfillment, string? status) =>
+        NextAdminStatus(fulfillment, status) switch
+        {
+            "Confirmed" => "Confirm Order",
+            "Processing" => "Start Processing",
+            ReadyForPickup => "Mark Ready for Pickup",
+            Completed => "Complete Order",
+            "Out for Delivery" => "Mark Out for Delivery",
+            "Delivered" => "Mark Delivered",
+            _ => null
+        };
 
     public static IEnumerable<string> AdminStatusOptions(string? fulfillment, string? currentStatus)
     {
@@ -220,9 +274,8 @@ public static class OrderFlow
             : ["Pending", "Confirmed", "Processing", "Ready for Pickup", "Completed"];
 
     /// <summary>
-    /// 0 = Pending, 1 = Confirmed (visual), 2 = Processing,
+    /// 0 = Pending, 1 = Confirmed, 2 = Processing,
     /// 3 = Ready/Out, 4 = Completed/Delivered, -1 = cancelled.
-    /// Confirmed is a UI step only when the stored status is still Pending/Confirmed.
     /// </summary>
     public static int TimelineProgress(string? fulfillment, string? status)
     {
@@ -286,9 +339,10 @@ public static class OrderFlow
             if (EqualsStatus(order.Status, "Delivered") || EqualsStatus(order.Status, Completed))
                 return ("Delivered", "Your order has been successfully delivered.");
 
-            if (EqualsStatus(order.Status, "Processing")
-                || EqualsStatus(order.Status, "Confirmed")
-                || EqualsStatus(order.Status, "Preparing"))
+            if (EqualsStatus(order.Status, "Confirmed"))
+                return ("Order Confirmed", $"Your order {order.Id} has been confirmed and will be processed soon.");
+
+            if (EqualsStatus(order.Status, "Processing") || EqualsStatus(order.Status, "Preparing"))
                 return ("Order is being prepared", "Your order is currently being prepared for delivery.");
 
             return ("Order Placed", "We've received your order and will begin preparing it for delivery.");
@@ -302,9 +356,10 @@ public static class OrderFlow
         if (EqualsStatus(order.Status, Completed))
             return ("Order Completed", "This pickup order has already been claimed.");
 
-        if (EqualsStatus(order.Status, "Processing")
-            || EqualsStatus(order.Status, "Confirmed")
-            || EqualsStatus(order.Status, "Preparing"))
+        if (EqualsStatus(order.Status, "Confirmed"))
+            return ("Order Confirmed", $"Your order {order.Id} has been confirmed and will be processed soon.");
+
+        if (EqualsStatus(order.Status, "Processing") || EqualsStatus(order.Status, "Preparing"))
             return ("Order is being prepared", "Your order is currently being prepared for pickup.");
 
         return ("Order Placed", "We've received your order and will notify you when it's ready for pickup.");
@@ -314,41 +369,59 @@ public static class OrderFlow
     {
         if (EqualsStatus(newStatus, Cancelled))
             return "Order Cancelled";
+        if (EqualsStatus(newStatus, "Confirmed"))
+            return "Order Confirmed";
+        if (EqualsStatus(newStatus, "Processing") || EqualsStatus(newStatus, "Preparing"))
+            return "Order Processing";
 
         if (IsDelivery(fulfillment))
         {
             if (EqualsStatus(newStatus, "Out for Delivery") || EqualsStatus(newStatus, "Shipped"))
                 return "Order Out for Delivery";
-            if (EqualsStatus(newStatus, "Delivered"))
+            if (EqualsStatus(newStatus, "Delivered") || EqualsStatus(newStatus, Completed))
                 return "Order Delivered";
             return null;
         }
 
         if (EqualsStatus(newStatus, ReadyForPickup))
-            return "Order Ready for Pickup";
+            return "Ready for Pickup";
         if (EqualsStatus(newStatus, Completed))
             return "Order Completed";
         return null;
     }
 
-    public static string? CustomerNotificationMessage(string orderId, string? fulfillment, string newStatus)
+    public static string? CustomerNotificationMessage(
+        string orderId,
+        string? fulfillment,
+        string newStatus,
+        string? remarks = null)
     {
         if (EqualsStatus(newStatus, Cancelled))
-            return $"Your order {orderId} has been cancelled.";
+        {
+            var message = $"Your order {orderId} has been cancelled.";
+            if (!string.IsNullOrWhiteSpace(remarks))
+                message += $" {remarks.Trim()}";
+            return message;
+        }
+
+        if (EqualsStatus(newStatus, "Confirmed"))
+            return $"Your order {orderId} has been confirmed and will be processed soon.";
+        if (EqualsStatus(newStatus, "Processing") || EqualsStatus(newStatus, "Preparing"))
+            return $"Your order {orderId} is now being prepared.";
 
         if (IsDelivery(fulfillment))
         {
             if (EqualsStatus(newStatus, "Out for Delivery") || EqualsStatus(newStatus, "Shipped"))
                 return $"Your order {orderId} is now out for delivery.";
-            if (EqualsStatus(newStatus, "Delivered"))
-                return $"Your order {orderId} has been delivered.";
+            if (EqualsStatus(newStatus, "Delivered") || EqualsStatus(newStatus, Completed))
+                return $"Your order {orderId} has been delivered successfully.";
             return null;
         }
 
         if (EqualsStatus(newStatus, ReadyForPickup))
             return $"Your order {orderId} is ready for pickup at {PickupLocation}.";
         if (EqualsStatus(newStatus, Completed))
-            return $"Your order {orderId} has been completed.";
+            return $"Your pickup order {orderId} has been completed. Thank you for shopping with NU Bulldogs Exchange.";
         return null;
     }
 

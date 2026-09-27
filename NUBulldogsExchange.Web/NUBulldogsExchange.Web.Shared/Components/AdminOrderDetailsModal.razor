@@ -45,8 +45,22 @@
                     <div class="aod-content-scroll">
                         @if (_section == "details")
                         {
+                            var steps = OrderFlow.DetailTimelineSteps(Order.Fulfillment);
+                            var progress = OrderFlow.TimelineProgress(Order.Fulfillment, Order.Status);
                             <section>
                                 <h3>Order Details</h3>
+                                <ol class="od-progress aod-progress @(progress < 0 ? "is-cancelled" : "")">
+                                    @for (var i = 0; i < steps.Length; i++)
+                                    {
+                                        var state = progress < 0
+                                            ? "is-idle"
+                                            : i < progress ? "is-done" : i == progress ? "is-current" : "is-idle";
+                                        <li class="@state">
+                                            <span class="od-progress-dot"></span>
+                                            <span class="od-progress-label">@steps[i]</span>
+                                        </li>
+                                    }
+                                </ol>
                                 <dl class="aod-dl">
                                     <div><dt>Order Number</dt><dd>@Order.Id</dd></div>
                                     <div><dt>Order Date</dt><dd>@Order.DateLabel</dd></div>
@@ -94,10 +108,9 @@
                                                  onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                             <div>
                                                 <strong>@item.Name</strong>
-                                                @if (!string.IsNullOrWhiteSpace(item.Size)
-                                                    && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
+                                                @if (!string.IsNullOrWhiteSpace(item.VariantLabel))
                                                 {
-                                                    <span>Size: @item.Size</span>
+                                                    <span>@item.VariantLabel</span>
                                                 }
                                                 <span>Qty: @item.Quantity × ₱@item.Price.ToString("N0")</span>
                                             </div>
@@ -159,6 +172,33 @@
 
                     <footer class="aod-update">
                         <h3 class="aod-update-title">Update Order</h3>
+                        @{
+                            var nextLabel = OrderFlow.NextAdminActionLabel(Order.Fulfillment, Order.Status);
+                            var canCancel = OrderFlow.CanAdminCancel(Order);
+                        }
+                        @if (!string.IsNullOrWhiteSpace(nextLabel) || canCancel)
+                        {
+                            <div class="aod-next-actions">
+                                @if (!string.IsNullOrWhiteSpace(nextLabel))
+                                {
+                                    <button type="button"
+                                            class="btn btn-navy"
+                                            disabled="@_saving"
+                                            @onclick="ApplyNextAction">
+                                        @(_saving ? "Saving..." : nextLabel)
+                                    </button>
+                                }
+                                @if (canCancel)
+                                {
+                                    <button type="button"
+                                            class="btn btn-outline-navy"
+                                            disabled="@_saving"
+                                            @onclick="ApplyCancel">
+                                        Cancel Order
+                                    </button>
+                                }
+                            </div>
+                        }
                         <div class="aod-update-row">
                             <label>
                                 <span>Order Status</span>
@@ -192,6 +232,7 @@
                         <div class="aod-update-actions">
                             <button type="button"
                                     class="btn btn-navy"
+                                    disabled="@_saving"
                                     @onclick="SaveChanges">
                                 @(_saving ? "Saving..." : "Save Changes")
                             </button>
@@ -254,6 +295,26 @@
     }
 
     private Task Close() => OnClose.InvokeAsync();
+
+    private Task ApplyNextAction()
+    {
+        if (Order is null) return Task.CompletedTask;
+        var next = OrderFlow.NextAdminStatus(Order.Fulfillment, Order.Status);
+        if (string.IsNullOrWhiteSpace(next))
+            return Task.CompletedTask;
+
+        _draftStatus = next;
+        return SaveChanges();
+    }
+
+    private Task ApplyCancel()
+    {
+        if (Order is null || !OrderFlow.CanAdminCancel(Order))
+            return Task.CompletedTask;
+
+        _draftStatus = OrderFlow.Cancelled;
+        return SaveChanges();
+    }
 
     private bool HasPendingChanges =>
         Order is not null

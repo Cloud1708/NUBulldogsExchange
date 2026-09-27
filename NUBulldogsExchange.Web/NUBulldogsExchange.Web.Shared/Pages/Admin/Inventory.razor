@@ -78,7 +78,26 @@
                                          alt="@row.Name"
                                          loading="lazy"
                                          onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                                    <strong title="@row.Name">@row.Name</strong>
+                                    <div>
+                                        <strong title="@row.Name">@row.Name</strong>
+                                        @if (row.HasVariants)
+                                        {
+                                            <div class="admin-inventory-variants">
+                                                <small>Total: @row.Available</small>
+                                                @foreach (var colorGroup in row.Variants.GroupBy(v => string.IsNullOrWhiteSpace(v.ColorName) ? string.Empty : v.ColorName!, StringComparer.OrdinalIgnoreCase))
+                                                {
+                                                    @if (!string.IsNullOrWhiteSpace(colorGroup.Key))
+                                                    {
+                                                        <small>@colorGroup.Key</small>
+                                                    }
+                                                    @foreach (var variant in colorGroup)
+                                                    {
+                                                        <small>@(string.IsNullOrWhiteSpace(variant.Size) ? "Stock" : variant.Size) @variant.StockQuantity</small>
+                                                    }
+                                                }
+                                            </div>
+                                        }
+                                    </div>
                                 </div>
                             </td>
                             <td><code>@row.Sku</code></td>

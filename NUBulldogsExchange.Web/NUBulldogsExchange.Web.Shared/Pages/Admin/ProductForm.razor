@@ -97,6 +97,8 @@
                 <div class="admin-field-full">
                     <ProductSizeVariantEditor HasSizeVariants="_hasSizeVariants"
                                               HasSizeVariantsChanged="OnHasSizeVariantsChanged"
+                                              HasColorVariants="_hasColorVariants"
+                                              HasColorVariantsChanged="OnHasColorVariantsChanged"
                                               Variants="_variants"
                                               VariantsChanged="OnVariantsChanged"
                                               StockText="@_stock.ToString()"
@@ -106,10 +108,13 @@
                                               BaseSku="_sku" />
                 </div>
 
-                <label class="admin-field admin-field-full">
-                    <span>Colors (comma-separated)</span>
-                    <input type="text" @bind="_colors" @bind:event="oninput" placeholder="navy, gold, white" />
-                </label>
+                @if (!_hasSizeVariants && !_hasColorVariants)
+                {
+                    <label class="admin-field admin-field-full">
+                        <span>Colors (comma-separated)</span>
+                        <input type="text" @bind="_colors" @bind:event="oninput" placeholder="navy, gold, white" />
+                    </label>
+                }
 
                 <div class="admin-field admin-field-full admin-product-image-section">
                     <span>Product Image</span>
@@ -176,6 +181,7 @@
     private string _description = string.Empty;
     private string _colors = string.Empty;
     private bool _hasSizeVariants;
+    private bool _hasColorVariants;
     private List<ProductVariant> _variants = [];
     private int _sold;
     private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
@@ -211,6 +217,7 @@
             _description = string.Empty;
             _colors = string.Empty;
             _hasSizeVariants = false;
+            _hasColorVariants = false;
             _variants = [];
             return;
         }
@@ -234,12 +241,21 @@
         _description = product.Description;
         _colors = string.Join(", ", product.Colors);
         _hasSizeVariants = product.HasSizeVariants;
+        _hasColorVariants = product.HasColorVariants;
         _variants = product.Variants.Select(v => v.Clone()).ToList();
     }
 
     private Task OnHasSizeVariantsChanged(bool value)
     {
         _hasSizeVariants = value;
+        _errors.Remove(nameof(_stock));
+        _errors.Remove("variants");
+        return Task.CompletedTask;
+    }
+
+    private Task OnHasColorVariantsChanged(bool value)
+    {
+        _hasColorVariants = value;
         _errors.Remove(nameof(_stock));
         _errors.Remove("variants");
         return Task.CompletedTask;
@@ -320,9 +336,9 @@
         if (_price <= 0)
             _errors[nameof(_price)] = "Price must be greater than 0.";
 
-        if (_hasSizeVariants)
+        if (_hasSizeVariants || _hasColorVariants)
         {
-            var variantError = ProductSizeVariantEditor.Validate(true, _variants);
+            var variantError = ProductSizeVariantEditor.Validate(_hasSizeVariants, _hasColorVariants, _variants);
             if (variantError is not null)
                 _errors["variants"] = variantError;
         }
@@ -338,7 +354,8 @@
     {
         if (!Validate()) return;
 
-        var variants = _hasSizeVariants
+        var hasVariants = _hasSizeVariants || _hasColorVariants;
+        var variants = hasVariants
             ? _variants.Select(v => v.Clone()).ToList()
             : [];
 
@@ -350,13 +367,22 @@
             Category = _category,
             Status = _status,
             Price = _price,
-            Stock = _hasSizeVariants ? variants.Sum(v => Math.Max(0, v.StockQuantity)) : _stock,
+            Stock = hasVariants ? variants.Sum(v => Math.Max(0, v.StockQuantity)) : _stock,
             Sold = _sold,
             ImageUrl = string.IsNullOrWhiteSpace(_imageUrl) ? MockData.PlaceholderImage : _imageUrl.Trim(),
             Images = string.IsNullOrWhiteSpace(_imageUrl) ? [] : [_imageUrl.Trim()],
             Description = _description.Trim(),
-            Colors = SplitList(_colors),
-            Sizes = _hasSizeVariants ? variants.Select(v => v.Size).ToList() : [],
+            Colors = hasVariants
+                ? variants
+                    .Select(v => v.ColorName)
+                    .Where(c => !string.IsNullOrWhiteSpace(c))
+                    .Select(c => c!)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList()
+                : SplitList(_colors),
+            Sizes = _hasSizeVariants
+                ? variants.Select(v => v.Size).Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
+                : [],
             Variants = variants
         };
 

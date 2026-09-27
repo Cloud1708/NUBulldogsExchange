@@ -25,6 +25,8 @@ public static class DatabaseInitializer
         }
 
         await MigrateProductsAsync(connection);
+        await MigrateProductVariantsAsync(connection);
+        await MigrateOrderItemsAsync(connection);
         await MigrateCategoriesAsync(connection);
         await MigrateOrdersAsync(connection);
         await MigratePromotionsAsync(connection);
@@ -52,6 +54,21 @@ public static class DatabaseInitializer
         await AddColumnIfMissingAsync(connection, "Products", columns, "UpdatedAt", "TEXT");
         await AddColumnIfMissingAsync(connection, "Products", columns, "PublishedAt", "TEXT");
         await AddColumnIfMissingAsync(connection, "Products", columns, "CreatedBy", "TEXT");
+    }
+
+    private static async Task MigrateProductVariantsAsync(SqliteConnection connection)
+    {
+        var columns = await GetColumnNamesAsync(connection, "ProductVariants");
+        await AddColumnIfMissingAsync(connection, "ProductVariants", columns, "ColorHex", "TEXT");
+    }
+
+    private static async Task MigrateOrderItemsAsync(SqliteConnection connection)
+    {
+        var columns = await GetColumnNamesAsync(connection, "OrderItems");
+        await AddColumnIfMissingAsync(connection, "OrderItems", columns, "VariantId", "INTEGER");
+        await AddColumnIfMissingAsync(connection, "OrderItems", columns, "Size", "TEXT");
+        await AddColumnIfMissingAsync(connection, "OrderItems", columns, "ColorName", "TEXT");
+        await AddColumnIfMissingAsync(connection, "OrderItems", columns, "VariantSku", "TEXT");
     }
 
     private static async Task MigrateCategoriesAsync(SqliteConnection connection)
