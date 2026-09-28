@@ -47,11 +47,57 @@ public class Product
 
 public class ProductReview
 {
+    public long Id { get; set; }
+    public int ProductId { get; set; }
     public string Author { get; set; } = string.Empty;
     public string Initials { get; set; } = string.Empty;
     public int Rating { get; set; } = 5;
     public DateTime Date { get; set; }
+    public string? Title { get; set; }
     public string Comment { get; set; } = string.Empty;
+    public string? OrderId { get; set; }
+    public long OrderItemId { get; set; }
+    public string? AuthUserId { get; set; }
+
+    public bool IsVerifiedPurchase => OrderItemId > 0 && !string.IsNullOrWhiteSpace(OrderId);
+
+    /// <summary>Public display name. Never shows an email address.</summary>
+    public string PublicAuthor
+    {
+        get
+        {
+            var source = Author?.Trim() ?? string.Empty;
+            var at = source.IndexOf('@');
+            if (at > 0)
+                source = source[..at].Trim();
+            return string.IsNullOrWhiteSpace(source) ? "Customer" : source;
+        }
+    }
+}
+
+public static class ProductReviewStats
+{
+    public const int MinCommentLength = 5;
+
+    public static void Apply(Product product, IReadOnlyList<ProductReview> reviews)
+    {
+        product.ProductReviews = reviews.ToList();
+        product.Reviews = reviews.Count;
+        product.Rating = reviews.Count == 0
+            ? 0
+            : Math.Round(reviews.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero);
+
+        var counts = new int[5];
+        foreach (var review in reviews)
+        {
+            if (review.Rating is >= 1 and <= 5)
+                counts[5 - review.Rating]++;
+        }
+
+        product.RatingBreakdown = reviews.Count == 0
+            ? [0, 0, 0, 0, 0]
+            : counts.Select(c => (int)Math.Round(100.0 * c / reviews.Count, MidpointRounding.AwayFromZero)).ToArray();
+    }
 }
 
 public class CategoryItem

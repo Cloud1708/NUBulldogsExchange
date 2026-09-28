@@ -105,11 +105,11 @@ else
                                                  onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                             <div class="order-card-item-copy">
                                                 <span class="order-card-item-name">@item.Name</span>
-                                                @if (!string.IsNullOrWhiteSpace(item.Color))
+                                                @if (item.HasDisplayColor)
                                                 {
                                                     <span class="order-card-item-size">Color: @item.Color</span>
                                                 }
-                                                @if (!string.IsNullOrWhiteSpace(item.Size) && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
+                                                @if (item.HasDisplaySize)
                                                 {
                                                     <span class="order-card-item-size">Size: @item.Size</span>
                                                 }
@@ -122,11 +122,36 @@ else
                                 <div class="order-card-footer">
                                     <strong>₱@order.Total.ToString("N0")</strong>
                                     <div class="order-card-actions">
+                                        @if (order.CanConfirmReceived)
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-navy btn-order-received"
+                                                    @onclick="() => AskReceived(order)">
+                                                Order Received
+                                            </button>
+                                        }
                                         @if (order.CanCancel)
                                         {
                                             <button type="button" class="btn btn-cancel-order" @onclick="() => Cancel(order.Id)">
                                                 Cancel Order
                                             </button>
+                                        }
+                                        @if (order.CanWriteReview && order.Items.Count > 0)
+                                        {
+                                            @if (order.HasUnreviewedItems)
+                                            {
+                                                <button type="button"
+                                                        class="btn btn-navy btn-write-review"
+                                                        @onclick="() => OpenReview(order)">
+                                                    Write Review
+                                                </button>
+                                            }
+                                            else
+                                            {
+                                                <button type="button" class="btn btn-reviewed" disabled>
+                                                    Reviewed ✓
+                                                </button>
+                                            }
                                         }
                                         <button type="button" class="btn btn-navy btn-view-order" @onclick="() => ViewOrder(order)">
                                             View Order
@@ -140,13 +165,28 @@ else
             </div>
         </AccountShell>
 
-        <CustomerOrderDetailsModal Order="_selectedOrder" OnClose="CloseDetails" />
+        <CustomerOrderDetailsModal Order="_selectedOrder"
+                                   OnClose="CloseDetails"
+                                   OnRequestReceived="AskReceived"
+                                   OnWriteReview="OpenReviewFromDetails" />
+        <ConfirmOrderReceivedModal Order="_pendingReceived"
+                                   Saving="_savingReceived"
+                                   OnCancel="CloseReceivedConfirm"
+                                   OnConfirm="ConfirmReceived" />
+        <WriteReviewModal Order="_reviewOrder"
+                          SelectedItem="_reviewItem"
+                          OnClose="CloseReview"
+                          OnSubmitted="OnReviewSubmitted" />
     }
 }
 
 @code {
     private string _filter = "All";
     private MockOrder? _selectedOrder;
+    private MockOrder? _pendingReceived;
+    private MockOrder? _reviewOrder;
+    private MockOrderItem? _reviewItem;
+    private bool _savingReceived;
 
     protected override async Task OnInitializedAsync()
     {
@@ -166,6 +206,83 @@ else
     private void ViewOrder(MockOrder order) => _selectedOrder = order;
 
     private void CloseDetails() => _selectedOrder = null;
+
+    private void OpenReview(MockOrder order, MockOrderItem? item = null)
+    {
+        if (!order.CanWriteReview)
+            return;
+        _reviewOrder = order;
+        _reviewItem = item;
+    }
+
+    private void OpenReviewFromDetails(MockOrderItem item)
+    {
+        if (_selectedOrder is null)
+            return;
+        OpenReview(_selectedOrder, item);
+    }
+
+    private void CloseReview()
+    {
+        _reviewOrder = null;
+        _reviewItem = null;
+    }
+
+    private void OnReviewSubmitted()
+    {
+        if (_selectedOrder is not null)
+        {
+            _selectedOrder = OrderService.Orders.FirstOrDefault(o => o.Id == _selectedOrder.Id)
+                ?? _selectedOrder;
+        }
+
+        if (_reviewOrder is not null)
+        {
+            _reviewOrder = OrderService.Orders.FirstOrDefault(o => o.Id == _reviewOrder.Id)
+                ?? _reviewOrder;
+        }
+    }
+
+    private void AskReceived(MockOrder order)
+    {
+        if (!order.CanConfirmReceived)
+            return;
+        _pendingReceived = order;
+    }
+
+    private void CloseReceivedConfirm()
+    {
+        if (_savingReceived) return;
+        _pendingReceived = null;
+    }
+
+    private async Task ConfirmReceived()
+    {
+        if (_pendingReceived is null || _savingReceived)
+            return;
+
+        _savingReceived = true;
+        try
+        {
+            var updated = await OrderService.ConfirmReceivedAsync(_pendingReceived.Id);
+            _pendingReceived = null;
+            if (_selectedOrder?.Id.Equals(updated.Id, StringComparison.OrdinalIgnoreCase) == true)
+                _selectedOrder = updated;
+            if (_filter == OrderFlow.ToReceive)
+                _filter = OrderFlow.Completed;
+            Toast.Show("Order marked as received.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message)
+                ? "Unable to confirm this order."
+                : ex.Message);
+        }
+        finally
+        {
+            _savingReceived = false;
+        }
+    }
 
     private void Cancel(string orderId)
     {

@@ -98,6 +98,26 @@ public class AdminProductService
     public AdminProduct? GetById(int id) =>
         _products.FirstOrDefault(p => p.Id == id);
 
+    public void ApplyPurchase(IEnumerable<AdminOrderItem> items) =>
+        ApplyOrderStock(items, restore: false);
+
+    public void ApplyCancellation(IEnumerable<AdminOrderItem> items) =>
+        ApplyOrderStock(items, restore: true);
+
+    private void ApplyOrderStock(IEnumerable<AdminOrderItem> items, bool restore)
+    {
+        if (!_loaded) return;
+
+        foreach (var item in items)
+        {
+            var product = GetById(item.ProductId);
+            if (product is null) continue;
+            ProductVariantLogic.ApplyOrderItemStock(product, item, restore);
+        }
+
+        OnChange?.Invoke();
+    }
+
     public bool SkuExists(string sku, int? excludeId = null)
     {
         if (string.IsNullOrWhiteSpace(sku)) return false;
@@ -422,8 +442,8 @@ public class AdminProductService
             : product.Description;
         target.ImageUrl = product.ImageUrl;
         target.Images = product.Images.Count > 0 ? [.. product.Images] : [product.ImageUrl];
-        if (product.Colors.Count > 0) target.Colors = [.. product.Colors];
-        if (product.Sizes.Count > 0) target.Sizes = [.. product.Sizes];
+        target.Colors = [.. product.Colors];
+        target.Sizes = [.. product.Sizes];
         target.Variants = product.Variants.Select(v => v.Clone()).ToList();
         target.Section = ResolveSection(product.Category);
     }
@@ -487,14 +507,10 @@ public class AdminProductService
                 .Select(v => v.ColorName!.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList()
-            : product.HasSizeVariants
-                ? []
-                : product.Colors.Count > 0 ? [.. product.Colors] : ["navy"],
+            : [],
         Sizes = product.HasSizeVariants
             ? product.Variants.Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size)).Select(v => v.Size).ToList()
-            : product.HasColorVariants
-                ? []
-                : product.Sizes.Count > 0 ? [.. product.Sizes] : [],
+            : [],
         Variants = product.Variants.Select(v => v.Clone()).ToList(),
         Rating = 0,
         Reviews = 0,

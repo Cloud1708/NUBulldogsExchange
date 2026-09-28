@@ -804,12 +804,14 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
             {
                 await _notifications.AddAsync(new MockNotification
                 {
-                    Title = "Order Confirmed",
-                    Message = $"Your order #{order.Id} has been placed and is being processed.",
-                    TimeAgo = "Just now",
+                    Title = "Order Placed",
+                    Message = $"Your order {order.Id} has been placed and will be confirmed soon.",
+                    TimeAgo = OrderFlow.FormatNotificationTime(DateTime.Now),
                     Icon = "check-circle",
                     Tone = "green",
-                    IsRead = false
+                    IsRead = false,
+                    RelatedId = order.Id,
+                    RelatedHref = "/orders"
                 });
             }
             catch (Exception ex)

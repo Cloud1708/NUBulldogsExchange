@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace NUBulldogsExchange.Web.Shared.Data;
 
 /// <summary>
@@ -120,9 +122,6 @@ public static class OrderFlow
         if (EqualsStatus(status, Cancelled))
             return Cancelled;
 
-        if (IsOnlinePaymentMethod(paymentMethod) && IsPaymentPending(paymentStatus))
-            return ToPay;
-
         if (IsDelivery(fulfillment))
         {
             if (EqualsStatus(status, "Out for Delivery") || EqualsStatus(status, "Shipped"))
@@ -130,15 +129,18 @@ public static class OrderFlow
 
             if (EqualsStatus(status, "Delivered") || EqualsStatus(status, Completed))
                 return Completed;
+        }
+        else
+        {
+            if (EqualsStatus(status, ReadyForPickup))
+                return ReadyForPickup;
 
-            return ToProcess;
+            if (EqualsStatus(status, Completed))
+                return Completed;
         }
 
-        if (EqualsStatus(status, ReadyForPickup))
-            return ReadyForPickup;
-
-        if (EqualsStatus(status, Completed))
-            return Completed;
+        if (IsOnlinePaymentMethod(paymentMethod) && IsPaymentPending(paymentStatus))
+            return ToPay;
 
         return ToProcess;
     }
@@ -173,6 +175,44 @@ public static class OrderFlow
 
     public static bool CanCustomerCancel(AdminOrder order) =>
         CanCustomerCancel(order.Fulfillment, order.Status);
+
+    public static bool CanCustomerConfirmReceived(string? fulfillment, string? status) =>
+        IsDelivery(fulfillment)
+        && (EqualsStatus(status, "Out for Delivery") || EqualsStatus(status, "Shipped"));
+
+    public static bool CanCustomerConfirmReceived(MockOrder order) =>
+        CanCustomerConfirmReceived(order.Fulfillment, order.Status);
+
+    public static bool CanCustomerConfirmReceived(AdminOrder order) =>
+        CanCustomerConfirmReceived(order.Fulfillment, order.Status);
+
+    public static bool CanWriteReview(string? fulfillment, string? status)
+    {
+        if (string.IsNullOrWhiteSpace(status) || EqualsStatus(status, Cancelled))
+            return false;
+
+        if (IsDelivery(fulfillment))
+            return EqualsStatus(status, "Delivered");
+
+        return EqualsStatus(status, Completed);
+    }
+
+    public static bool CanWriteReview(MockOrder order) =>
+        CanWriteReview(order.Fulfillment, order.Status);
+
+    public static bool CanWriteReview(AdminOrder order) =>
+        CanWriteReview(order.Fulfillment, order.Status);
+
+    public static bool HasDisplayColor(string? color) =>
+        !string.IsNullOrWhiteSpace(color)
+        && color.Trim() != "—"
+        && !color.Equals("n/a", StringComparison.OrdinalIgnoreCase);
+
+    public static bool HasDisplaySize(string? size) =>
+        !string.IsNullOrWhiteSpace(size)
+        && size.Trim() != "—"
+        && !size.Equals("Free Size", StringComparison.OrdinalIgnoreCase)
+        && !size.Equals("n/a", StringComparison.OrdinalIgnoreCase);
 
     public static bool CanAdminCancel(string? fulfillment, string? status) =>
         CanCustomerCancel(fulfillment, status);
@@ -334,7 +374,7 @@ public static class OrderFlow
         if (IsDelivery(order.Fulfillment))
         {
             if (EqualsStatus(order.Status, "Out for Delivery") || EqualsStatus(order.Status, "Shipped"))
-                return ("Out for Delivery", "Your order is already on the way and will be delivered soon.");
+                return ("Out for Delivery", "Your order is on the way. Confirm Order Received once it arrives.");
 
             if (EqualsStatus(order.Status, "Delivered") || EqualsStatus(order.Status, Completed))
                 return ("Delivered", "Your order has been successfully delivered.");
@@ -423,6 +463,20 @@ public static class OrderFlow
         if (EqualsStatus(newStatus, Completed))
             return $"Your pickup order {orderId} has been completed. Thank you for shopping with NU Bulldogs Exchange.";
         return null;
+    }
+
+    public static string FormatNotificationTime(DateTime? createdAt, string? fallback = null)
+    {
+        if (createdAt is DateTime when && when != default)
+        {
+            var local = when.Kind == DateTimeKind.Utc ? when.ToLocalTime() : when;
+            return local.ToString("MMM d, yyyy • h:mm tt", CultureInfo.GetCultureInfo("en-US"));
+        }
+
+        if (!string.IsNullOrWhiteSpace(fallback))
+            return fallback;
+
+        return DateTime.Now.ToString("MMM d, yyyy • h:mm tt", CultureInfo.GetCultureInfo("en-US"));
     }
 
     public static IEnumerable<string> PaymentStatusChoices(string? current)

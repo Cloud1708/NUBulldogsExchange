@@ -48,24 +48,42 @@
                     <div class="od-item-list">
                         @foreach (var item in Order.Items)
                         {
-                            <article class="od-item">
+                            <article class="od-item @(Order.CanWriteReview ? "has-review" : "")">
                                 <img src="@item.ImageUrl"
                                      alt="@item.Name"
                                      onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                 <div class="od-item-copy">
                                     <strong>@item.Name</strong>
-                                    @if (!string.IsNullOrWhiteSpace(item.Color))
+                                    @if (item.HasDisplayColor)
                                     {
                                         <span>Color: @item.Color</span>
                                     }
-                                    @if (!string.IsNullOrWhiteSpace(item.Size)
-                                        && !item.Size.Equals("Free Size", StringComparison.OrdinalIgnoreCase))
+                                    @if (item.HasDisplaySize)
                                     {
                                         <span>Size: @item.Size</span>
                                     }
                                     <span>Qty: @item.Quantity × ₱@item.Price.ToString("N0")</span>
                                 </div>
-                                <strong class="od-item-total">₱@((item.Price * item.Quantity).ToString("N0"))</strong>
+                                <div class="od-item-aside">
+                                    <strong class="od-item-total">₱@((item.Price * item.Quantity).ToString("N0"))</strong>
+                                    @if (Order.CanWriteReview && OnWriteReview.HasDelegate)
+                                    {
+                                        @if (item.IsReviewed)
+                                        {
+                                            <button type="button" class="btn btn-reviewed btn-reviewed-sm" disabled>
+                                                Reviewed ✓
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button"
+                                                    class="btn btn-navy btn-write-review-sm"
+                                                    @onclick="() => RequestWriteReview(item)">
+                                                Write Review
+                                            </button>
+                                        }
+                                    }
+                                </div>
                             </article>
                         }
                     </div>
@@ -143,6 +161,15 @@
                         <p>@panel.Message</p>
                     </div>
                 </aside>
+
+                @if (Order.CanConfirmReceived && OnRequestReceived.HasDelegate)
+                {
+                    <div class="od-actions">
+                        <button type="button" class="btn btn-navy btn-order-received" @onclick="RequestReceived">
+                            Order Received
+                        </button>
+                    </div>
+                }
             </div>
         </div>
     </div>
@@ -151,6 +178,14 @@
 @code {
     [Parameter] public MockOrder? Order { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback<MockOrder> OnRequestReceived { get; set; }
+    [Parameter] public EventCallback<MockOrderItem> OnWriteReview { get; set; }
 
     private Task Close() => OnClose.InvokeAsync();
+
+    private Task RequestReceived() =>
+        Order is null ? Task.CompletedTask : OnRequestReceived.InvokeAsync(Order);
+
+    private Task RequestWriteReview(MockOrderItem item) =>
+        OnWriteReview.InvokeAsync(item);
 }

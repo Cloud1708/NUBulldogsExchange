@@ -18,6 +18,13 @@ public interface IAppDatabase
     Task<bool> DeleteProductAsync(int id);
     Task<List<ProductReview>> GetProductReviewsAsync(int productId);
     Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews);
+    Task<List<long>> GetReviewedOrderItemIdsAsync(IReadOnlyCollection<string> orderIds);
+    Task<ProductReview> SubmitProductReviewAsync(
+        string orderId,
+        long orderItemId,
+        int rating,
+        string? title,
+        string comment);
 
     // Product variants (size and/or color sellable combinations)
     Task<List<ProductVariant>> GetProductVariantsAsync(int productId);
@@ -35,6 +42,7 @@ public interface IAppDatabase
     Task<AdminOrder?> GetOrderByIdAsync(string id);
     Task<AdminOrder> UpsertOrderAsync(AdminOrder order);
     Task UpdateOrderStatusAsync(string orderId, string status);
+    Task<AdminOrder> ConfirmOrderReceivedAsync(string orderId);
     Task UpdateAdminOrderAsync(string orderId, string status, string paymentStatus, string? adminRemarks);
     Task<bool> DeleteOrderAsync(string id);
     Task PlaceCheckoutOrderAsync(AdminOrder order, string? promoCode, decimal discountAmount, string userEmail);

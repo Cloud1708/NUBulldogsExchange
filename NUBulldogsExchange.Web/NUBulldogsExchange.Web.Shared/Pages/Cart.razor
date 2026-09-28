@@ -56,7 +56,7 @@ else
                     @foreach (var item in CartService.Items)
                     {
                         var selected = _selected.Contains(item.Key);
-                        var maxStock = item.Product.Stock > 0 ? item.Product.Stock : int.MaxValue;
+                        var maxStock = item.AvailableStock;
                         var lineTotal = item.Product.Price * item.Quantity;
 
                         <article class="cart-item @(selected ? "selected" : "")">

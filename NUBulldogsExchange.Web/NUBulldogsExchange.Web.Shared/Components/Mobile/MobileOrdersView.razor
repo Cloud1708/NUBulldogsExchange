@@ -110,11 +110,17 @@
                         </div>
 
                         <div class="mobile-order-actions-row">
-                            @if (order.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
-                                || order.Status.Equals("Delivered", StringComparison.OrdinalIgnoreCase))
+                            @if (order.CanWriteReview)
                             {
                                 <button type="button" class="mobile-order-action-btn btn-outline" @onclick="() => BuyAgain(order)">Buy Again</button>
-                                <button type="button" class="mobile-order-action-btn btn-gold" @onclick="() => OpenReview(order)">Review</button>
+                                @if (order.HasUnreviewedItems)
+                                {
+                                    <button type="button" class="mobile-order-action-btn btn-navy" @onclick="() => OpenReview(order)">Write Review</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="mobile-order-action-btn btn-outline" disabled>Reviewed ✓</button>
+                                }
                                 <button type="button" class="mobile-order-action-btn btn-outline" @onclick="() => OpenDetails(order)">Details</button>
                             }
                             else if (order.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
@@ -123,6 +129,10 @@
                             }
                             else
                             {
+                                @if (order.CanConfirmReceived)
+                                {
+                                    <button type="button" class="mobile-order-action-btn btn-navy" @onclick="() => AskReceived(order)">Order Received</button>
+                                }
                                 <button type="button" class="mobile-order-action-btn btn-outline" @onclick="() => OpenDetails(order)">Details</button>
                                 <button type="button" class="mobile-order-action-btn btn-navy" @onclick="() => TrackOrder(order)">Track</button>
                             }
@@ -134,7 +144,18 @@
     }
 </div>
 
-<CustomerOrderDetailsModal Order="_selectedOrder" OnClose="CloseDetails" />
+<CustomerOrderDetailsModal Order="_selectedOrder"
+                           OnClose="CloseDetails"
+                           OnRequestReceived="AskReceived"
+                           OnWriteReview="OpenReviewFromDetails" />
+<ConfirmOrderReceivedModal Order="_pendingReceived"
+                           Saving="_savingReceived"
+                           OnCancel="CloseReceivedConfirm"
+                           OnConfirm="ConfirmReceived" />
+<WriteReviewModal Order="_reviewOrder"
+                  SelectedItem="_reviewItem"
+                  OnClose="CloseReview"
+                  OnSubmitted="OnReviewSubmitted" />
 
 @* Track Order Sheet *@
 @if (_trackingOrder is not null)
@@ -181,47 +202,6 @@
     </div>
 }
 
-@* Review Order Sheet *@
-@if (_reviewOrder is not null)
-{
-    <div class="mobile-modal-backdrop" @onclick="CloseReview">
-        <div class="mobile-modal-sheet" @onclick:stopPropagation="true">
-            <div class="mobile-modal-header">
-                <div>
-                    <h3 class="mobile-modal-title">Review Order #@_reviewOrder.Id</h3>
-                    <span class="mobile-order-date">Share your feedback on your Bulldogs gear</span>
-                </div>
-                <button type="button" class="mobile-modal-close-btn" @onclick="CloseReview" aria-label="Close">
-                    <Icon Name="x" Size="18" />
-                </button>
-            </div>
-
-            <div style="text-align: center; margin: 16px 0;">
-                <div style="font-size: 13px; font-weight: 700; color: #14366A; margin-bottom: 8px;">Rate your experience</div>
-                <div style="font-size: 28px; display: flex; justify-content: center; gap: 6px; cursor: pointer;">
-                    @for (int i = 1; i <= 5; i++)
-                    {
-                        var starIndex = i;
-                        <span @onclick="() => _ratingScore = starIndex">@(_ratingScore >= starIndex ? "⭐" : "☆")</span>
-                    }
-                </div>
-            </div>
-
-            <div style="margin-bottom: 16px;">
-                <label style="font-size: 12px; font-weight: 700; color: #475569; display: block; margin-bottom: 6px;">Your Comments</label>
-                <textarea rows="3"
-                          style="width: 100%; border: 1px solid #CBD5E1; border-radius: 12px; padding: 10px; font-family: inherit; font-size: 13px; outline: none; resize: none; box-sizing: border-box;"
-                          placeholder="Tell us about the fabric quality, fitting, and pickup experience..."
-                          @bind="_reviewComment"></textarea>
-            </div>
-
-            <button type="button" class="mobile-order-action-btn btn-navy" style="width: 100%; padding: 10px;" @onclick="SubmitReview">
-                Submit Review
-            </button>
-        </div>
-    </div>
-}
-
 @code {
     private static readonly string[] Filters = OrderFlow.CustomerTabs;
 
@@ -229,8 +209,9 @@
     private MockOrder? _selectedOrder;
     private MockOrder? _trackingOrder;
     private MockOrder? _reviewOrder;
-    private int _ratingScore = 5;
-    private string _reviewComment = string.Empty;
+    private MockOrder? _pendingReceived;
+    private bool _savingReceived;
+    private MockOrderItem? _reviewItem;
 
     private IEnumerable<MockOrder> FilteredOrders => OrderService.Filter(_filter);
 
@@ -257,24 +238,84 @@
     private void OpenDetails(MockOrder order) => _selectedOrder = order;
     private void CloseDetails() => _selectedOrder = null;
 
+    private void AskReceived(MockOrder order)
+    {
+        if (!order.CanConfirmReceived)
+            return;
+        _pendingReceived = order;
+    }
+
+    private void CloseReceivedConfirm()
+    {
+        if (_savingReceived) return;
+        _pendingReceived = null;
+    }
+
+    private async Task ConfirmReceived()
+    {
+        if (_pendingReceived is null || _savingReceived)
+            return;
+
+        _savingReceived = true;
+        try
+        {
+            var updated = await OrderService.ConfirmReceivedAsync(_pendingReceived.Id);
+            _pendingReceived = null;
+            if (_selectedOrder?.Id.Equals(updated.Id, StringComparison.OrdinalIgnoreCase) == true)
+                _selectedOrder = updated;
+            if (_filter == OrderFlow.ToReceive)
+                _filter = OrderFlow.Completed;
+            Toast.Show("Order marked as received.");
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message)
+                ? "Unable to confirm this order."
+                : ex.Message);
+        }
+        finally
+        {
+            _savingReceived = false;
+        }
+    }
+
     private void TrackOrder(MockOrder order) => _trackingOrder = order;
     private void CloseTracking() => _trackingOrder = null;
 
-    private void OpenReview(MockOrder order)
+    private void OpenReview(MockOrder order, MockOrderItem? item = null)
     {
+        if (!order.CanWriteReview)
+            return;
         _reviewOrder = order;
-        _ratingScore = 5;
-        _reviewComment = string.Empty;
+        _reviewItem = item;
     }
-    private void CloseReview() => _reviewOrder = null;
 
-    private void SubmitReview()
+    private void OpenReviewFromDetails(MockOrderItem item)
     {
+        if (_selectedOrder is null)
+            return;
+        OpenReview(_selectedOrder, item);
+    }
+
+    private void CloseReview()
+    {
+        _reviewOrder = null;
+        _reviewItem = null;
+    }
+
+    private void OnReviewSubmitted()
+    {
+        if (_selectedOrder is not null)
+        {
+            _selectedOrder = OrderService.Orders.FirstOrDefault(o => o.Id == _selectedOrder.Id)
+                ?? _selectedOrder;
+        }
+
         if (_reviewOrder is not null)
         {
-            Toast.Show($"Thank you for rating Order #{_reviewOrder.Id} {_ratingScore} stars!");
+            _reviewOrder = OrderService.Orders.FirstOrDefault(o => o.Id == _reviewOrder.Id)
+                ?? _reviewOrder;
         }
-        _reviewOrder = null;
     }
 
     private async Task BuyAgain(MockOrder order)

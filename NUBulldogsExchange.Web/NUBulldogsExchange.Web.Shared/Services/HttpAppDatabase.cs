@@ -72,6 +72,42 @@ public sealed class HttpAppDatabase : IAppDatabase
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task<List<long>> GetReviewedOrderItemIdsAsync(IReadOnlyCollection<string> orderIds)
+    {
+        if (orderIds.Count == 0)
+            return [];
+
+        var qs = string.Join(",", orderIds.Select(Uri.EscapeDataString));
+        try
+        {
+            return await _http.GetFromJsonAsync<List<long>>($"api/reviews/items?orders={qs}") ?? [];
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    public async Task<ProductReview> SubmitProductReviewAsync(
+        string orderId,
+        long orderItemId,
+        int rating,
+        string? title,
+        string comment)
+    {
+        var response = await _http.PostAsJsonAsync("api/reviews", new
+        {
+            orderId,
+            orderItemId,
+            rating,
+            title,
+            comment
+        });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ProductReview>())
+            ?? throw new InvalidOperationException("Review could not be saved.");
+    }
+
     public async Task<List<AdminCategory>> GetCategoriesAsync() =>
         await _http.GetFromJsonAsync<List<AdminCategory>>("api/categories") ?? [];
 
@@ -133,6 +169,17 @@ public sealed class HttpAppDatabase : IAppDatabase
             ?? throw new InvalidOperationException("Order not found.");
         order.Status = status;
         await UpsertOrderAsync(order);
+    }
+
+    public async Task<AdminOrder> ConfirmOrderReceivedAsync(string orderId)
+    {
+        var order = await GetOrderByIdAsync(orderId)
+            ?? throw new InvalidOperationException("Order not found.");
+        if (!OrderFlow.CanCustomerConfirmReceived(order.Fulfillment, order.Status))
+            throw new InvalidOperationException("This order cannot be marked as received.");
+
+        order.Status = "Delivered";
+        return await UpsertOrderAsync(order);
     }
 
     public async Task UpdateAdminOrderAsync(

@@ -27,8 +27,10 @@ public static class DatabaseInitializer
         await MigrateProductsAsync(connection);
         await MigrateProductVariantsAsync(connection);
         await MigrateOrderItemsAsync(connection);
+        await MigrateProductReviewsAsync(connection);
         await MigrateCategoriesAsync(connection);
         await MigrateOrdersAsync(connection);
+        await MigrateNotificationsAsync(connection);
         await MigratePromotionsAsync(connection);
         await MigratePromotionUsagesAsync(connection);
 
@@ -71,6 +73,23 @@ public static class DatabaseInitializer
         await AddColumnIfMissingAsync(connection, "OrderItems", columns, "VariantSku", "TEXT");
     }
 
+    private static async Task MigrateProductReviewsAsync(SqliteConnection connection)
+    {
+        var columns = await GetColumnNamesAsync(connection, "ProductReviews");
+        await AddColumnIfMissingAsync(connection, "ProductReviews", columns, "Title", "TEXT");
+        await AddColumnIfMissingAsync(connection, "ProductReviews", columns, "OrderId", "TEXT");
+        await AddColumnIfMissingAsync(connection, "ProductReviews", columns, "OrderItemId", "INTEGER");
+        await AddColumnIfMissingAsync(connection, "ProductReviews", columns, "AuthUserId", "TEXT");
+
+        await using var index = connection.CreateCommand();
+        index.CommandText = """
+            CREATE UNIQUE INDEX IF NOT EXISTS IX_ProductReviews_UserItem
+            ON ProductReviews(AuthUserId, OrderItemId)
+            WHERE AuthUserId IS NOT NULL AND OrderItemId IS NOT NULL;
+            """;
+        await index.ExecuteNonQueryAsync();
+    }
+
     private static async Task MigrateCategoriesAsync(SqliteConnection connection)
     {
         var columns = await GetColumnNamesAsync(connection, "Categories");
@@ -95,6 +114,18 @@ public static class DatabaseInitializer
         await AddColumnIfMissingAsync(connection, "Orders", columns, "UserId", "INTEGER");
         await AddColumnIfMissingAsync(connection, "Orders", columns, "PromotionId", "TEXT");
         await AddColumnIfMissingAsync(connection, "Orders", columns, "PromotionCode", "TEXT");
+        await AddColumnIfMissingAsync(connection, "Orders", columns, "PaymentMethod", "TEXT");
+        await AddColumnIfMissingAsync(connection, "Orders", columns, "CustomerPhone", "TEXT");
+        await AddColumnIfMissingAsync(connection, "Orders", columns, "AdminRemarks", "TEXT");
+        await AddColumnIfMissingAsync(connection, "Orders", columns, "OrderNotes", "TEXT");
+    }
+
+    private static async Task MigrateNotificationsAsync(SqliteConnection connection)
+    {
+        var columns = await GetColumnNamesAsync(connection, "Notifications");
+        await AddColumnIfMissingAsync(connection, "Notifications", columns, "RelatedId", "TEXT");
+        await AddColumnIfMissingAsync(connection, "Notifications", columns, "RelatedHref", "TEXT");
+        await AddColumnIfMissingAsync(connection, "Notifications", columns, "CreatedAt", "TEXT");
     }
 
     private static async Task MigratePromotionsAsync(SqliteConnection connection)

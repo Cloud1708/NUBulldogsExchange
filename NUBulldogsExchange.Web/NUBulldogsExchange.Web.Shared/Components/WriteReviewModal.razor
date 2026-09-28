@@ -1,0 +1,252 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject OrderService OrderService
+@inject ToastService Toast
+
+@if (Order is not null)
+{
+    <div class="wr-backdrop" @onclick="Close">
+        <div class="wr-modal" role="dialog" aria-modal="true" aria-labelledby="wr-title" @onclick:stopPropagation="true">
+            <header class="wr-header">
+                <h2 id="wr-title">Write a Review</h2>
+                <button type="button" class="wr-close" @onclick="Close" aria-label="Close">
+                    <Icon Name="x" Size="16" />
+                </button>
+            </header>
+
+            <div class="wr-body">
+                @if (_selected is null)
+                {
+                    <p class="wr-lead">Choose a product to review</p>
+                    <div class="wr-item-list">
+                        @foreach (var item in Order.Items)
+                        {
+                            <article class="wr-item">
+                                <img src="@item.ImageUrl"
+                                     alt="@item.Name"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="wr-item-copy">
+                                    <strong>@item.Name</strong>
+                                    @if (item.HasDisplayColor)
+                                    {
+                                        <span>Color: @item.Color</span>
+                                    }
+                                    @if (item.HasDisplaySize)
+                                    {
+                                        <span>Size: @item.Size</span>
+                                    }
+                                </div>
+                                @if (item.IsReviewed)
+                                {
+                                    <button type="button" class="btn btn-reviewed" disabled>Reviewed ✓</button>
+                                }
+                                else
+                                {
+                                    <button type="button" class="btn btn-navy wr-item-action" @onclick="() => SelectItem(item)">
+                                        Write Review
+                                    </button>
+                                }
+                            </article>
+                        }
+                    </div>
+                    <div class="wr-footer">
+                        <button type="button" class="btn btn-outline-navy" @onclick="Close">Close</button>
+                    </div>
+                }
+                else
+                {
+                    <div class="wr-form-product">
+                        <img src="@_selected.ImageUrl"
+                             alt="@_selected.Name"
+                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                        <div>
+                            <strong>@_selected.Name</strong>
+                            @if (_selected.HasDisplayColor)
+                            {
+                                <span>Color: @_selected.Color</span>
+                            }
+                            @if (_selected.HasDisplaySize)
+                            {
+                                <span>Size: @_selected.Size</span>
+                            }
+                        </div>
+                    </div>
+
+                    <label class="wr-field">
+                        <span>Rating *</span>
+                        <div class="wr-stars" role="radiogroup" aria-label="Rating">
+                            @for (var i = 1; i <= 5; i++)
+                            {
+                                var star = i;
+                                <button type="button"
+                                        class="wr-star @(_rating >= star ? "filled" : "")"
+                                        aria-label="@($"{star} star{(star == 1 ? "" : "s")}")"
+                                        @onclick="() => _rating = star">★</button>
+                            }
+                        </div>
+                    </label>
+
+                    <label class="wr-field">
+                        <span>Review Title</span>
+                        <input type="text"
+                               maxlength="80"
+                               placeholder="Optional"
+                               @bind="_title" />
+                    </label>
+
+                    <label class="wr-field">
+                        <span>Your Review *</span>
+                        <textarea rows="4"
+                                  maxlength="1000"
+                                  placeholder="Share your experience with this product..."
+                                  @bind="_comment"></textarea>
+                    </label>
+
+                    @if (!string.IsNullOrWhiteSpace(_error))
+                    {
+                        <p class="wr-error">@_error</p>
+                    }
+
+                    <div class="wr-footer">
+                        <button type="button" class="btn btn-outline-navy" disabled="@_saving" @onclick="CancelForm">Cancel</button>
+                        <button type="button" class="btn btn-navy" disabled="@_saving" @onclick="Submit">
+                            @(_saving ? "Submitting..." : "Submit Review")
+                        </button>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public MockOrder? Order { get; set; }
+    [Parameter] public MockOrderItem? SelectedItem { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnSubmitted { get; set; }
+
+    private MockOrderItem? _selected;
+    private int _rating = 5;
+    private string _title = string.Empty;
+    private string _comment = string.Empty;
+    private string? _error;
+    private bool _saving;
+    private bool _openedForItem;
+    private string? _boundOrderId;
+
+    protected override void OnParametersSet()
+    {
+        if (Order is null)
+        {
+            _selected = null;
+            _openedForItem = false;
+            _boundOrderId = null;
+            return;
+        }
+
+        if (!string.Equals(_boundOrderId, Order.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            _boundOrderId = Order.Id;
+            _selected = null;
+            _openedForItem = false;
+            ResetFormFields();
+        }
+
+        if (SelectedItem is not null
+            && !SelectedItem.IsReviewed
+            && !_openedForItem
+            && Order.Items.Any(i => i.OrderItemId == SelectedItem.OrderItemId))
+        {
+            SelectItem(SelectedItem);
+            _openedForItem = true;
+        }
+    }
+
+    private void SelectItem(MockOrderItem item)
+    {
+        _selected = item;
+        ResetFormFields();
+    }
+
+    private void ResetFormFields()
+    {
+        _rating = 5;
+        _title = string.Empty;
+        _comment = string.Empty;
+        _error = null;
+    }
+
+    private async Task Close()
+    {
+        if (_saving) return;
+        _selected = null;
+        _openedForItem = false;
+        _boundOrderId = null;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task CancelForm()
+    {
+        if (_saving) return;
+        _error = null;
+        if (_openedForItem)
+        {
+            await Close();
+            return;
+        }
+
+        _selected = null;
+    }
+
+    private async Task Submit()
+    {
+        if (Order is null || _selected is null || _saving)
+            return;
+
+        if (_rating is < 1 or > 5)
+        {
+            _error = "Please choose a rating from 1 to 5 stars.";
+            return;
+        }
+
+        var text = _comment.Trim();
+        if (text.Length < ProductReviewStats.MinCommentLength)
+        {
+            _error = "Please write a short review (at least 5 characters).";
+            return;
+        }
+
+        _saving = true;
+        _error = null;
+        try
+        {
+            await OrderService.SubmitProductReviewAsync(
+                Order.Id,
+                _selected.OrderItemId,
+                _rating,
+                _title,
+                text);
+            Toast.Show("Review submitted successfully.");
+            await OnSubmitted.InvokeAsync();
+
+            if (_openedForItem || Order.AllItemsReviewed)
+            {
+                await Close();
+                return;
+            }
+
+            _selected = null;
+        }
+        catch (Exception ex)
+        {
+            _error = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Unable to submit this review."
+                : ex.Message;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

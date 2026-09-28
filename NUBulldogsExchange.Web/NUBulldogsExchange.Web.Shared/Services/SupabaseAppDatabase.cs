@@ -225,14 +225,89 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         var rows = await GetListAsync<ProductReviewRow>(
             $"rest/v1/product_reviews?select=*&product_id=eq.{productId}&order=review_date.desc");
 
-        return rows.Select(r => new ProductReview
+        return rows.Select(MapProductReview).ToList();
+    }
+
+    public async Task<List<long>> GetReviewedOrderItemIdsAsync(IReadOnlyCollection<string> orderIds)
+    {
+        if (!_session.IsAuthenticated || string.IsNullOrWhiteSpace(_session.AuthUserId))
+            return [];
+
+        try
         {
+            var rows = await GetListAsync<ProductReviewRow>(
+                $"rest/v1/product_reviews?select=order_item_id&auth_user_id=eq.{Esc(_session.AuthUserId)}&order_item_id=not.is.null");
+            return rows
+                .Select(r => r.OrderItemId)
+                .Where(id => id > 0)
+                .Distinct()
+                .ToList();
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("column", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("order_item_id", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("auth_user_id", StringComparison.OrdinalIgnoreCase))
+        {
+            _ = orderIds;
+            return [];
+        }
+    }
+
+    public async Task<ProductReview> SubmitProductReviewAsync(
+        string orderId,
+        long orderItemId,
+        int rating,
+        string? title,
+        string comment)
+    {
+        RequireAuth();
+        if (string.IsNullOrWhiteSpace(orderId))
+            throw new InvalidOperationException("Order number is missing.");
+        if (orderItemId <= 0)
+            throw new InvalidOperationException("Order item is missing.");
+        if (rating is < 1 or > 5)
+            throw new InvalidOperationException("Please choose a rating from 1 to 5 stars.");
+        if (string.IsNullOrWhiteSpace(comment) || comment.Trim().Length < ProductReviewStats.MinCommentLength)
+            throw new InvalidOperationException("Please write a short review (at least 5 characters).");
+
+        var row = await SendForSingleAsync<ProductReviewRow>(
+            HttpMethod.Post,
+            "rest/v1/rpc/submit_product_review",
+            new
+            {
+                p_order_id = orderId.Trim(),
+                p_order_item_id = orderItemId,
+                p_rating = rating,
+                p_title = string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
+                p_review = comment.Trim()
+            });
+
+        if (row is null || row.Id <= 0)
+            throw new InvalidOperationException("Review could not be saved.");
+
+        return MapProductReview(row);
+    }
+
+    private static ProductReview MapProductReview(ProductReviewRow r)
+    {
+        var date = r.ReviewDate == default ? r.CreatedAt : r.ReviewDate;
+        if (date == default)
+            date = DateTime.UtcNow;
+
+        return new ProductReview
+        {
+            Id = r.Id,
+            ProductId = (int)r.ProductId,
             Author = r.Author,
-            Initials = r.Initials,
+            Initials = string.IsNullOrWhiteSpace(r.Initials) ? "C" : r.Initials,
             Rating = r.Rating,
-            Date = r.ReviewDate,
-            Comment = r.Comment
-        }).ToList();
+            Date = date,
+            Title = r.Title,
+            Comment = r.Comment,
+            OrderId = r.OrderId,
+            OrderItemId = r.OrderItemId,
+            AuthUserId = r.AuthUserId
+        };
     }
 
     public async Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews)
@@ -321,6 +396,25 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             return;
         }
 
+        if (body.Contains("null value in column \"size\"", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("violates not-null constraint", StringComparison.OrdinalIgnoreCase))
+        {
+            var withEmptySize = variants.Select(v =>
+            {
+                var row = BuildVariantRow(productId, v, now, includeColor: true);
+                if (row["size"] is null)
+                    row["size"] = string.Empty;
+                return row;
+            }).ToList();
+            using var sizeRetry = await SendAsync(
+                HttpMethod.Post,
+                "rest/v1/product_variants",
+                withEmptySize,
+                "return=minimal");
+            await EnsureSuccessAsync(sizeRetry);
+            return;
+        }
+
         await EnsureSuccessAsync(insert);
     }
 
@@ -333,7 +427,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         var row = new Dictionary<string, object?>
         {
             ["product_id"] = productId,
-            ["size"] = string.IsNullOrWhiteSpace(variant.Size) ? string.Empty : variant.Size.Trim(),
+            ["size"] = string.IsNullOrWhiteSpace(variant.Size) ? null : variant.Size.Trim(),
             ["sku"] = string.IsNullOrWhiteSpace(variant.Sku) ? null : variant.Sku.Trim(),
             ["stock_quantity"] = Math.Max(0, variant.StockQuantity),
             ["price_adjustment"] = variant.PriceAdjustment,
@@ -529,20 +623,42 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         return saved;
     }
 
+    public async Task<AdminOrder> ConfirmOrderReceivedAsync(string orderId)
+    {
+        RequireAuth();
+        if (string.IsNullOrWhiteSpace(orderId))
+            throw new InvalidOperationException("Order number is missing.");
+
+        await SendForSingleAsync<CancelOrderRpcResult>(
+            HttpMethod.Post,
+            "rest/v1/rpc/confirm_order_received",
+            new { p_order_id = orderId.Trim() });
+
+        return await GetOrderByIdAsync(orderId)
+            ?? throw new InvalidOperationException("Unable to confirm this order.");
+    }
+
     public async Task UpdateOrderStatusAsync(string orderId, string status)
     {
         if (string.IsNullOrWhiteSpace(orderId))
             throw new InvalidOperationException("Order number is missing.");
 
-        var updated = await SendForListAsync<AdminOrder>(
-            HttpMethod.Patch,
-            $"rest/v1/orders?id=eq.{Esc(orderId)}",
-            new Dictionary<string, object?> { ["status"] = status.Trim() },
-            "return=representation");
+        try
+        {
+            var updated = await SendForListAsync<AdminOrder>(
+                HttpMethod.Patch,
+                $"rest/v1/orders?id=eq.{Esc(orderId)}",
+                new Dictionary<string, object?> { ["status"] = status.Trim() },
+                "return=representation");
 
-        if (updated.Count == 0)
-            throw new InvalidOperationException(
-                "Order status could not be saved. The admin account may not have permission to update public.orders.");
+            if (updated.Count == 0)
+                throw new InvalidOperationException(
+                    "Order status could not be saved. The admin account may not have permission to update public.orders.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw TranslateOrderConstraintError(ex);
+        }
     }
 
     public async Task UpdateAdminOrderAsync(
@@ -554,21 +670,43 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (string.IsNullOrWhiteSpace(orderId))
             throw new InvalidOperationException("Order number is missing.");
 
-        var updated = await SendForListAsync<AdminOrder>(
-            HttpMethod.Patch,
-            $"rest/v1/orders?id=eq.{Esc(orderId)}",
-            new Dictionary<string, object?>
-            {
-                ["status"] = status.Trim(),
-                ["payment_status"] = paymentStatus.Trim()
-            },
-            "return=representation");
+        try
+        {
+            var updated = await SendForListAsync<AdminOrder>(
+                HttpMethod.Patch,
+                $"rest/v1/orders?id=eq.{Esc(orderId)}",
+                new Dictionary<string, object?>
+                {
+                    ["status"] = status.Trim(),
+                    ["payment_status"] = paymentStatus.Trim()
+                },
+                "return=representation");
 
-        if (updated.Count == 0)
-            throw new InvalidOperationException(
-                "Order could not be saved. The admin account may not have permission to update public.orders.");
+            if (updated.Count == 0)
+                throw new InvalidOperationException(
+                    "Order could not be saved. The admin account may not have permission to update public.orders.");
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw TranslateOrderConstraintError(ex);
+        }
 
         await TryPatchAdminRemarksAsync(orderId, adminRemarks);
+    }
+
+    private static InvalidOperationException TranslateOrderConstraintError(InvalidOperationException ex)
+    {
+        var message = ex.Message ?? string.Empty;
+        if (message.Contains("orders_status_check", StringComparison.OrdinalIgnoreCase)
+            || (message.Contains("check constraint", StringComparison.OrdinalIgnoreCase)
+                && message.Contains("status", StringComparison.OrdinalIgnoreCase)))
+        {
+            return new InvalidOperationException(
+                "This order status is not allowed in the database yet. Run docs/sql/014_orders_status_check.sql in the Supabase SQL Editor, then retry.",
+                ex);
+        }
+
+        return ex;
     }
 
     private async Task TryPatchAdminRemarksAsync(string orderId, string? adminRemarks)
@@ -670,6 +808,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         // Best-effort snapshot write if RPC does not yet persist these columns.
         await TryPatchOrderCheckoutSnapshotAsync(order);
         await TryPatchOrderItemColorSnapshotsAsync(order);
+        await ApplyCheckoutOrderStockAsync(order.Id);
 
         var persisted = await PersistCheckoutPaymentAsync(
             order.Id,
@@ -700,6 +839,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         var current = await GetOrderByIdAsync(orderId)
             ?? throw new InvalidOperationException("Order not found after checkout.");
 
+        await ApplyCheckoutOrderStockAsync(orderId);
+
         if (OrderFlow.PaymentSnapshotMatches(current, method, status))
             return current;
 
@@ -717,6 +858,30 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
         throw new InvalidOperationException(
             "Payment details could not be saved. Run docs/sql/006_confirm_checkout_payment.sql in Supabase, then retry. Your cart was not cleared.");
+    }
+
+    private async Task ApplyCheckoutOrderStockAsync(string orderId)
+    {
+        if (string.IsNullOrWhiteSpace(orderId))
+            return;
+
+        try
+        {
+            await SendForSingleAsync<CheckoutRpcResult>(
+                HttpMethod.Post,
+                "rest/v1/rpc/apply_checkout_order_stock",
+                new Dictionary<string, object?> { ["p_order_id"] = orderId.Trim() });
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("apply_checkout_order_stock", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("Could not find the function", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("does not exist", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("42883", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Order was created but stock was not deducted. Run docs/sql/013_order_stock_inventory.sql in the Supabase SQL Editor, then place a new test order.",
+                ex);
+        }
     }
 
     private async Task<AdminOrder?> TryConfirmCheckoutPaymentRpcAsync(
@@ -1355,10 +1520,12 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             Id = r.Id,
             Title = r.Title,
             Message = r.Message,
-            TimeAgo = r.TimeAgo,
+            TimeAgo = OrderFlow.FormatNotificationTime(r.CreatedAt, r.TimeAgo),
             Icon = r.Icon,
             Tone = r.Tone,
-            IsRead = r.IsRead
+            IsRead = r.IsRead,
+            RelatedId = r.RelatedId,
+            RelatedHref = string.IsNullOrWhiteSpace(r.RelatedHref) ? "/orders" : r.RelatedHref
         }).ToList();
     }
 
@@ -1412,30 +1579,92 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             if (string.IsNullOrWhiteSpace(uid))
                 return;
 
-            var row = new Dictionary<string, object?>
+            if (string.IsNullOrWhiteSpace(notification.RelatedHref))
+                notification.RelatedHref = "/orders";
+            if (string.IsNullOrWhiteSpace(notification.TimeAgo)
+                || notification.TimeAgo.Equals("Just now", StringComparison.OrdinalIgnoreCase))
             {
-                ["id"] = notification.Id,
-                ["auth_user_id"] = uid,
-                ["email"] = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant(),
-                ["title"] = notification.Title,
-                ["message"] = notification.Message,
-                ["time_ago"] = string.IsNullOrWhiteSpace(notification.TimeAgo) ? "Just now" : notification.TimeAgo,
-                ["icon"] = string.IsNullOrWhiteSpace(notification.Icon) ? "bell" : notification.Icon,
-                ["tone"] = string.IsNullOrWhiteSpace(notification.Tone) ? "blue" : notification.Tone,
-                ["is_read"] = notification.IsRead,
-                ["created_at"] = DateTime.UtcNow
-            };
+                notification.TimeAgo = OrderFlow.FormatNotificationTime(DateTime.Now);
+            }
 
-            using var insert = await SendAsync(
-                HttpMethod.Post,
-                "rest/v1/notifications",
-                row);
-            _ = insert.IsSuccessStatusCode;
+            if (await TryAddCustomerNotificationRpcAsync(uid, email, notification))
+                return;
+
+            var withRelated = CustomerNotificationPayload(uid, email, notification, includeRelated: true);
+            using (var insert = await SendAsync(HttpMethod.Post, "rest/v1/notifications", withRelated))
+            {
+                if (insert.IsSuccessStatusCode)
+                    return;
+            }
+
+            var withoutRelated = CustomerNotificationPayload(uid, email, notification, includeRelated: false);
+            using var fallback = await SendAsync(HttpMethod.Post, "rest/v1/notifications", withoutRelated);
+            _ = fallback.IsSuccessStatusCode;
         }
         catch
         {
             // Best-effort: RLS or missing columns should not block status updates.
         }
+    }
+
+    private async Task<bool> TryAddCustomerNotificationRpcAsync(
+        string uid,
+        string email,
+        MockNotification notification)
+    {
+        try
+        {
+            using var response = await SendAsync(
+                HttpMethod.Post,
+                "rest/v1/rpc/add_customer_notification",
+                new Dictionary<string, object?>
+                {
+                    ["p_auth_user_id"] = uid,
+                    ["p_email"] = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant(),
+                    ["p_id"] = notification.Id,
+                    ["p_title"] = notification.Title,
+                    ["p_message"] = notification.Message,
+                    ["p_time_ago"] = notification.TimeAgo,
+                    ["p_icon"] = string.IsNullOrWhiteSpace(notification.Icon) ? "package" : notification.Icon,
+                    ["p_tone"] = string.IsNullOrWhiteSpace(notification.Tone) ? "blue" : notification.Tone,
+                    ["p_related_id"] = notification.RelatedId,
+                    ["p_related_href"] = notification.RelatedHref
+                });
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static Dictionary<string, object?> CustomerNotificationPayload(
+        string uid,
+        string email,
+        MockNotification notification,
+        bool includeRelated)
+    {
+        var row = new Dictionary<string, object?>
+        {
+            ["id"] = notification.Id,
+            ["auth_user_id"] = uid,
+            ["email"] = string.IsNullOrWhiteSpace(email) ? null : email.Trim().ToLowerInvariant(),
+            ["title"] = notification.Title,
+            ["message"] = notification.Message,
+            ["time_ago"] = notification.TimeAgo,
+            ["icon"] = string.IsNullOrWhiteSpace(notification.Icon) ? "bell" : notification.Icon,
+            ["tone"] = string.IsNullOrWhiteSpace(notification.Tone) ? "blue" : notification.Tone,
+            ["is_read"] = notification.IsRead,
+            ["created_at"] = DateTime.UtcNow
+        };
+
+        if (includeRelated)
+        {
+            row["related_id"] = notification.RelatedId;
+            row["related_href"] = notification.RelatedHref;
+        }
+
+        return row;
     }
 
     private async Task<string?> ResolveNotificationUserIdAsync(string email, string? authUserId)
@@ -2144,14 +2373,14 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         try
         {
             return await GetListAsync<AdminOrderItem>(
-                $"rest/v1/order_items?select=product_id,name,image_url,quantity,price,variant_id,size,color_name,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");
+                $"rest/v1/order_items?select=id,product_id,name,image_url,quantity,price,variant_id,size,color_name,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");
         }
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("color_name", StringComparison.OrdinalIgnoreCase) ||
             ex.Message.Contains("column", StringComparison.OrdinalIgnoreCase))
         {
             return await GetListAsync<AdminOrderItem>(
-                $"rest/v1/order_items?select=product_id,name,image_url,quantity,price,variant_id,size,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");
+                $"rest/v1/order_items?select=id,product_id,name,image_url,quantity,price,variant_id,size,variant_sku&order_id=eq.{Esc(orderId)}&order=id.asc");
         }
         catch (InvalidOperationException ex) when (
             ex.Message.Contains("permission denied", StringComparison.OrdinalIgnoreCase))
@@ -2611,7 +2840,12 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         public string Initials { get; set; } = string.Empty;
         public int Rating { get; set; }
         public DateTime ReviewDate { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public string? Title { get; set; }
         public string Comment { get; set; } = string.Empty;
+        public string? OrderId { get; set; }
+        public long OrderItemId { get; set; }
+        public string? AuthUserId { get; set; }
     }
 
     private sealed class SupabaseAuthResponse
@@ -2693,6 +2927,9 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         public string Icon { get; set; } = "bell";
         public string Tone { get; set; } = "blue";
         public bool IsRead { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public string? RelatedId { get; set; }
+        public string? RelatedHref { get; set; }
     }
 
     private sealed class AdminNotificationRow

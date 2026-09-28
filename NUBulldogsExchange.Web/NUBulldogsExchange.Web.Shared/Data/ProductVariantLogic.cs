@@ -133,51 +133,33 @@ public static class ProductVariantLogic
         variant.Sku = SuggestSku(baseSku, variant.ColorName, variant.Size);
     }
 
-    public static string? Validate(bool hasSize, bool hasColor, IReadOnlyList<ProductVariant> variants)
+    public static string? ValidateUnified(IReadOnlyList<ProductVariant> variants)
     {
-        if (!hasSize && !hasColor)
-            return null;
-
-        if (hasColor && !variants.Any(HasColor))
-            return "Add at least one color.";
-
-        if (hasSize && !variants.Any(HasSize))
-            return "Add at least one size variant.";
-
-        if (hasColor && hasSize)
-        {
-            foreach (var group in variants.GroupBy(v => (v.ColorName ?? string.Empty).Trim(), StringComparer.OrdinalIgnoreCase))
-            {
-                if (string.IsNullOrWhiteSpace(group.Key))
-                    return "Each color + size variant needs a color name.";
-                if (!group.Any(HasSize))
-                    return $"Color {group.Key} needs at least one size.";
-            }
-        }
+        if (variants.Count == 0)
+            return "Add at least one variant.";
 
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var variant in variants)
         {
-            if (hasColor && string.IsNullOrWhiteSpace(variant.ColorName))
-                return "Each color variant needs a color name.";
-            if (hasSize && string.IsNullOrWhiteSpace(variant.Size))
-                return "Each size variant needs a size name.";
+            if (string.IsNullOrWhiteSpace(variant.ColorName) && string.IsNullOrWhiteSpace(variant.Size))
+                return "Each variant needs a Color or a Size.";
             if (variant.StockQuantity < 0)
                 return "Variant stock cannot be negative.";
 
             var key = $"{(variant.ColorName ?? string.Empty).Trim()}|{(variant.Size ?? string.Empty).Trim()}";
             if (!seen.Add(key))
             {
-                if (hasColor && hasSize)
-                    return $"Duplicate variant: {variant.ColorName} / {variant.Size}";
-                if (hasColor)
-                    return $"Duplicate color: {variant.ColorName}";
-                return $"Duplicate product size: {(variant.Size ?? string.Empty).Trim()}";
+                var color = string.IsNullOrWhiteSpace(variant.ColorName) ? "(none)" : variant.ColorName.Trim();
+                var size = string.IsNullOrWhiteSpace(variant.Size) ? "(none)" : variant.Size.Trim();
+                return $"Duplicate variant: {color} / {size}";
             }
         }
 
         return null;
     }
+
+    public static string? Validate(bool hasSize, bool hasColor, IReadOnlyList<ProductVariant> variants) =>
+        !hasSize && !hasColor ? null : ValidateUnified(variants);
 
     public static string FormatVariantLabel(string? colorName, string? size)
     {
@@ -191,6 +173,65 @@ public static class ProductVariantLogic
         }
 
         return string.Join(" · ", parts);
+    }
+
+    public static string FormatInsufficientStock(string? productName, string? colorName, string? size)
+    {
+        var name = string.IsNullOrWhiteSpace(productName) ? "Selected item" : productName.Trim();
+        var hasColor = !string.IsNullOrWhiteSpace(colorName);
+        var hasSize = !string.IsNullOrWhiteSpace(size)
+            && !size.Equals("Free Size", StringComparison.OrdinalIgnoreCase);
+
+        if (hasColor && hasSize)
+            return $"{name} - {colorName!.Trim()}/{size!.Trim()} is no longer available.";
+        if (hasSize)
+            return $"{name} - Size {size!.Trim()} is no longer available.";
+        if (hasColor)
+            return $"{name} - {colorName!.Trim()} is no longer available.";
+        return "Insufficient stock for the selected item.";
+    }
+
+    public static void ApplyOrderItemStock(Product product, AdminOrderItem item, bool restore)
+    {
+        var qty = Math.Max(0, item.Quantity);
+        if (qty == 0) return;
+
+        var delta = restore ? qty : -qty;
+        if (item.VariantId is int vid && product.Variants.Count > 0)
+        {
+            var variant = product.Variants.FirstOrDefault(v => v.Id == vid);
+            if (variant is not null)
+                variant.StockQuantity = Math.Max(0, variant.StockQuantity + delta);
+            product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+        }
+        else
+        {
+            product.Stock = Math.Max(0, product.Stock + delta);
+        }
+
+        product.Sold = Math.Max(0, product.Sold + (restore ? -qty : qty));
+        product.InStock = product.Stock > 0;
+    }
+
+    public static void ApplyOrderItemStock(AdminProduct product, AdminOrderItem item, bool restore)
+    {
+        var qty = Math.Max(0, item.Quantity);
+        if (qty == 0) return;
+
+        var delta = restore ? qty : -qty;
+        if (item.VariantId is int vid && product.Variants.Count > 0)
+        {
+            var variant = product.Variants.FirstOrDefault(v => v.Id == vid);
+            if (variant is not null)
+                variant.StockQuantity = Math.Max(0, variant.StockQuantity + delta);
+            product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+        }
+        else
+        {
+            product.Stock = Math.Max(0, product.Stock + delta);
+        }
+
+        product.Sold = Math.Max(0, product.Sold + (restore ? -qty : qty));
     }
 
     private static string Abbreviate(string? name)

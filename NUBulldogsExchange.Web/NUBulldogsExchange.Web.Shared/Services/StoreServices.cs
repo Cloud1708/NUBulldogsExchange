@@ -60,11 +60,13 @@ public class CartService
                 ?.Id;
         }
 
-        var existing = _items.FirstOrDefault(i =>
-            i.Product.Id == product.Id &&
-            i.VariantId == variantId &&
-            Normalize(i.SelectedColor) == colorKey &&
-            Normalize(i.SelectedSize) == sizeKey);
+        var existing = variantId is int vid
+            ? _items.FirstOrDefault(i => i.Product.Id == product.Id && i.VariantId == vid)
+            : _items.FirstOrDefault(i =>
+                i.Product.Id == product.Id &&
+                i.VariantId is null &&
+                Normalize(i.SelectedColor) == colorKey &&
+                Normalize(i.SelectedSize) == sizeKey);
 
         if (existing is not null)
             existing.Quantity += quantity;
@@ -278,15 +280,19 @@ public class ToastService
 public class OrderService
 {
     private readonly IAppDatabase _db;
+    private readonly ProductCatalogService _catalog;
+    private readonly AdminProductService _products;
     private readonly List<MockOrder> _orders = [];
     private bool _loaded;
     private bool _loading;
     private string? _loadedEmail;
     public event Action? OnChange;
 
-    public OrderService(IAppDatabase db)
+    public OrderService(IAppDatabase db, ProductCatalogService catalog, AdminProductService products)
     {
         _db = db;
+        _catalog = catalog;
+        _products = products;
     }
 
     public IReadOnlyList<MockOrder> Orders => _orders;
@@ -306,6 +312,7 @@ public class OrderService
             var adminOrders = await _db.GetCustomerOrdersAsync(email);
             _orders.Clear();
             _orders.AddRange(adminOrders.Select(MockOrder.FromAdmin));
+            await RefreshReviewFlagsAsync();
             _loadedEmail = emailKey;
             _loaded = true;
             OnChange?.Invoke();
@@ -349,9 +356,79 @@ public class OrderService
         {
             admin.Status = "Cancelled";
             _db.UpsertOrderAsync(admin).GetAwaiter().GetResult();
+            if (admin.Items.Count > 0)
+            {
+                _catalog.ApplyCancellation(admin.Items);
+                _products.ApplyCancellation(admin.Items);
+            }
         }
 
         OnChange?.Invoke();
+    }
+
+    public async Task ReloadAsync(string? email = null)
+    {
+        _loaded = false;
+        await EnsureLoadedAsync(email);
+    }
+
+    public async Task<MockOrder> ConfirmReceivedAsync(string orderId)
+    {
+        var order = _orders.FirstOrDefault(o => o.Id.Equals(orderId, StringComparison.OrdinalIgnoreCase));
+        if (order is null || !OrderFlow.CanCustomerConfirmReceived(order))
+            throw new InvalidOperationException("This order cannot be marked as received.");
+
+        var saved = await _db.ConfirmOrderReceivedAsync(orderId);
+        var updated = MockOrder.FromAdmin(saved);
+        if (updated.Items.Count == 0)
+            updated.Items = order.Items;
+
+        var index = _orders.FindIndex(o => o.Id.Equals(orderId, StringComparison.OrdinalIgnoreCase));
+        if (index >= 0)
+            _orders[index] = updated;
+        else
+            _orders.Insert(0, updated);
+
+        ApplyReviewFlags();
+        OnChange?.Invoke();
+        return updated;
+    }
+
+    public async Task<ProductReview> SubmitProductReviewAsync(
+        string orderId,
+        long orderItemId,
+        int rating,
+        string? title,
+        string comment)
+    {
+        var order = _orders.FirstOrDefault(o => o.Id.Equals(orderId, StringComparison.OrdinalIgnoreCase));
+        if (order is null || !OrderFlow.CanWriteReview(order))
+            throw new InvalidOperationException("This order cannot be reviewed yet.");
+
+        var item = order.Items.FirstOrDefault(i => i.OrderItemId == orderItemId);
+        if (item is null)
+            throw new InvalidOperationException("This item is not part of the selected order.");
+        if (item.IsReviewed)
+            throw new InvalidOperationException("You already reviewed this item.");
+
+        var saved = await _db.SubmitProductReviewAsync(orderId, orderItemId, rating, title, comment);
+        _reviewedItemIds.Add(orderItemId);
+        item.IsReviewed = true;
+
+        try
+        {
+            var reviews = await _db.GetProductReviewsAsync(item.ProductId);
+            var product = _catalog.GetById(item.ProductId);
+            if (product is not null)
+                ProductReviewStats.Apply(product, reviews);
+        }
+        catch
+        {
+            // Catalog refresh is best-effort; the review itself already saved.
+        }
+
+        OnChange?.Invoke();
+        return saved;
     }
 
     public MockOrder PlaceOrder(AdminOrder order)
@@ -359,8 +436,39 @@ public class OrderService
         var mock = MockOrder.FromAdmin(order);
         _orders.RemoveAll(o => o.Id.Equals(mock.Id, StringComparison.OrdinalIgnoreCase));
         _orders.Insert(0, mock);
+        ApplyReviewFlags();
         OnChange?.Invoke();
         return mock;
+    }
+
+    private HashSet<long> _reviewedItemIds = [];
+
+    private async Task RefreshReviewFlagsAsync()
+    {
+        try
+        {
+            var orderIds = _orders
+                .Select(o => o.Id)
+                .Where(id => !string.IsNullOrWhiteSpace(id))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            _reviewedItemIds = [.. await _db.GetReviewedOrderItemIdsAsync(orderIds)];
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+
+        ApplyReviewFlags();
+    }
+
+    private void ApplyReviewFlags()
+    {
+        foreach (var order in _orders)
+        {
+            foreach (var item in order.Items)
+                item.IsReviewed = item.OrderItemId > 0 && _reviewedItemIds.Contains(item.OrderItemId);
+        }
     }
 }
 

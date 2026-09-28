@@ -1,0 +1,37 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+@if (Order is not null)
+{
+    <div class="od-backdrop od-confirm-backdrop" @onclick="Cancel">
+        <div class="od-confirm" role="dialog" aria-modal="true" aria-labelledby="od-confirm-title" @onclick:stopPropagation="true">
+            <h2 id="od-confirm-title">Confirm Order Received</h2>
+            <p>Are you sure you have already received this order?</p>
+            <p class="od-confirm-note">Once confirmed, this order will be moved to Completed.</p>
+            <div class="od-confirm-actions">
+                <button type="button"
+                        class="btn btn-outline-navy"
+                        disabled="@Saving"
+                        @onclick="Cancel">
+                    Cancel
+                </button>
+                <button type="button"
+                        class="btn btn-navy"
+                        disabled="@Saving"
+                        @onclick="Confirm">
+                    @(Saving ? "Saving..." : "Confirm Received")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public MockOrder? Order { get; set; }
+    [Parameter] public bool Saving { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private Task Cancel() => Saving ? Task.CompletedTask : OnCancel.InvokeAsync();
+    private Task Confirm() => Saving ? Task.CompletedTask : OnConfirm.InvokeAsync();
+}

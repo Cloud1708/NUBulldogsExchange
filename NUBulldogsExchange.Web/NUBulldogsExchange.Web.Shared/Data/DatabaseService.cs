@@ -420,25 +420,56 @@ public sealed partial class DatabaseService : IAppDatabase
         var list = new List<ProductReview>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Author, Initials, Rating, Date, Comment
+            SELECT Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, Id
             FROM ProductReviews WHERE ProductId = $productId ORDER BY Date DESC;
             """;
         command.Parameters.AddWithValue("$productId", productId);
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync())
+        try
         {
-            list.Add(new ProductReview
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
             {
-                Author = reader.GetString(0),
-                Initials = reader.GetString(1),
-                Rating = reader.GetInt32(2),
-                Date = DateTime.Parse(reader.GetString(3)),
-                Comment = reader.GetString(4)
-            });
+                list.Add(ReadProductReview(reader));
+            }
+        }
+        catch (SqliteException)
+        {
+            command.Parameters.Clear();
+            command.CommandText = """
+                SELECT Author, Initials, Rating, Date, Comment
+                FROM ProductReviews WHERE ProductId = $productId ORDER BY Date DESC;
+                """;
+            command.Parameters.AddWithValue("$productId", productId);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                list.Add(new ProductReview
+                {
+                    Author = reader.GetString(0),
+                    Initials = reader.GetString(1),
+                    Rating = reader.GetInt32(2),
+                    Date = DateTime.Parse(reader.GetString(3)),
+                    Comment = reader.GetString(4)
+                });
+            }
         }
 
         return list;
     }
+
+    private static ProductReview ReadProductReview(SqliteDataReader reader) => new()
+    {
+        Author = reader.GetString(0),
+        Initials = reader.GetString(1),
+        Rating = reader.GetInt32(2),
+        Date = DateTime.Parse(reader.GetString(3)),
+        Comment = reader.GetString(4),
+        Title = reader.FieldCount > 5 && !reader.IsDBNull(5) ? reader.GetString(5) : null,
+        OrderId = reader.FieldCount > 6 && !reader.IsDBNull(6) ? reader.GetString(6) : null,
+        OrderItemId = reader.FieldCount > 7 && !reader.IsDBNull(7) ? reader.GetInt64(7) : 0,
+        AuthUserId = reader.FieldCount > 8 && !reader.IsDBNull(8) ? reader.GetString(8) : null,
+        Id = reader.FieldCount > 9 && !reader.IsDBNull(9) ? reader.GetInt64(9) : 0
+    };
 
     public async Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews)
     {
@@ -472,6 +503,149 @@ public sealed partial class DatabaseService : IAppDatabase
         }
 
         await tx.CommitAsync();
+    }
+
+    public async Task<List<long>> GetReviewedOrderItemIdsAsync(IReadOnlyCollection<string> orderIds)
+    {
+        var ids = orderIds
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        if (ids.Count == 0)
+            return [];
+
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        var list = new List<long>();
+        await using var command = connection.CreateCommand();
+        var placeholders = string.Join(",", ids.Select((_, i) => $"$o{i}"));
+        command.CommandText = $"""
+            SELECT OrderItemId FROM ProductReviews
+            WHERE OrderItemId IS NOT NULL AND OrderId IN ({placeholders});
+            """;
+        for (var i = 0; i < ids.Count; i++)
+            command.Parameters.AddWithValue($"$o{i}", ids[i]);
+
+        try
+        {
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                if (!reader.IsDBNull(0))
+                    list.Add(reader.GetInt64(0));
+            }
+        }
+        catch (SqliteException)
+        {
+            return [];
+        }
+
+        return list.Where(id => id > 0).Distinct().ToList();
+    }
+
+    public async Task<ProductReview> SubmitProductReviewAsync(
+        string orderId,
+        long orderItemId,
+        int rating,
+        string? title,
+        string comment)
+    {
+        if (string.IsNullOrWhiteSpace(orderId))
+            throw new InvalidOperationException("Order number is missing.");
+        if (orderItemId <= 0)
+            throw new InvalidOperationException("Order item is missing.");
+        if (rating is < 1 or > 5)
+            throw new InvalidOperationException("Please choose a rating from 1 to 5 stars.");
+
+        var body = comment?.Trim() ?? string.Empty;
+        if (body.Length < ProductReviewStats.MinCommentLength)
+            throw new InvalidOperationException("Please write a short review (at least 5 characters).");
+
+        var order = await GetOrderByIdAsync(orderId.Trim())
+            ?? throw new InvalidOperationException("Order not found or not owned by the current user.");
+
+        if (!OrderFlow.CanWriteReview(order))
+        {
+            throw new InvalidOperationException(order.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+                ? "Cancelled orders cannot be reviewed."
+                : "This order cannot be reviewed yet.");
+        }
+
+        var item = order.Items.FirstOrDefault(i => i.Id == orderItemId)
+            ?? throw new InvalidOperationException("This item is not part of the selected order.");
+
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+
+        await using (var exists = connection.CreateCommand())
+        {
+            exists.CommandText = """
+                SELECT COUNT(1) FROM ProductReviews
+                WHERE OrderItemId = $itemId AND AuthUserId = $user;
+                """;
+            exists.Parameters.AddWithValue("$itemId", orderItemId);
+            exists.Parameters.AddWithValue("$user", order.AuthUserId ?? order.CustomerId ?? order.CustomerEmail);
+            var count = Convert.ToInt32(await exists.ExecuteScalarAsync());
+            if (count > 0)
+                throw new InvalidOperationException("You already reviewed this item.");
+        }
+
+        var authorSource = string.IsNullOrWhiteSpace(order.CustomerName) ? "Customer" : order.CustomerName.Trim();
+        var at = authorSource.IndexOf('@');
+        if (at > 0)
+            authorSource = authorSource[..at].Trim();
+        var parts = authorSource.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        var publicAuthor = parts.Length >= 2
+            ? $"{parts[0]} {char.ToUpperInvariant(parts[^1][0])}."
+            : (parts.Length == 1 ? parts[0] : "Customer");
+        var initials = publicAuthor.Length > 0 ? publicAuthor[0].ToString().ToUpperInvariant() : "C";
+        var now = DateTime.UtcNow;
+        var trimmedTitle = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+
+        await using var insert = connection.CreateCommand();
+        insert.CommandText = """
+            INSERT INTO ProductReviews
+                (ProductId, Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId)
+            VALUES
+                ($productId, $author, $initials, $rating, $date, $comment, $title, $orderId, $itemId, $user);
+            SELECT last_insert_rowid();
+            """;
+        insert.Parameters.AddWithValue("$productId", item.ProductId);
+        insert.Parameters.AddWithValue("$author", publicAuthor);
+        insert.Parameters.AddWithValue("$initials", initials);
+        insert.Parameters.AddWithValue("$rating", rating);
+        insert.Parameters.AddWithValue("$date", now.ToString("O"));
+        insert.Parameters.AddWithValue("$comment", body);
+        insert.Parameters.AddWithValue("$title", (object?)trimmedTitle ?? DBNull.Value);
+        insert.Parameters.AddWithValue("$orderId", order.Id);
+        insert.Parameters.AddWithValue("$itemId", orderItemId);
+        insert.Parameters.AddWithValue("$user", order.AuthUserId ?? order.CustomerId ?? order.CustomerEmail);
+        var newId = Convert.ToInt64(await insert.ExecuteScalarAsync());
+
+        var reviews = await GetProductReviewsAsync(connection, item.ProductId);
+        await using (var update = connection.CreateCommand())
+        {
+            update.CommandText = "UPDATE Products SET Rating = $rating, Reviews = $reviews WHERE Id = $id;";
+            update.Parameters.AddWithValue("$rating", reviews.Count == 0 ? 0 : Math.Round(reviews.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero));
+            update.Parameters.AddWithValue("$reviews", reviews.Count);
+            update.Parameters.AddWithValue("$id", item.ProductId);
+            await update.ExecuteNonQueryAsync();
+        }
+
+        return new ProductReview
+        {
+            Id = newId,
+            ProductId = item.ProductId,
+            Author = publicAuthor,
+            Initials = initials,
+            Rating = rating,
+            Date = now,
+            Title = trimmedTitle,
+            Comment = body,
+            OrderId = order.Id,
+            OrderItemId = orderItemId,
+            AuthUserId = order.AuthUserId ?? order.CustomerId
+        };
     }
 
     private static void BindProduct(SqliteCommand command, Product product)
@@ -721,6 +895,14 @@ public sealed partial class DatabaseService : IAppDatabase
         await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
         var now = DateTime.UtcNow.ToString("O");
 
+        if (previousStatus is not null
+            && order.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            var persistedItems = await GetOrderItemsAsync(connection, order.Id, tx);
+            await ApplySqliteOrderStockAsync(connection, tx, persistedItems, restore: true, now);
+        }
+
         await using (var command = connection.CreateCommand())
         {
             command.Transaction = tx;
@@ -817,13 +999,53 @@ public sealed partial class DatabaseService : IAppDatabase
     {
         await EnsureReadyAsync();
         await using var connection = await OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE Orders SET Status = $status WHERE Id = $id;";
-        command.Parameters.AddWithValue("$status", status);
-        command.Parameters.AddWithValue("$id", orderId);
-        var rows = await command.ExecuteNonQueryAsync();
-        if (rows <= 0)
-            throw new InvalidOperationException("Order status could not be saved.");
+
+        string? previousStatus = null;
+        await using (var existingCmd = connection.CreateCommand())
+        {
+            existingCmd.CommandText = "SELECT Status FROM Orders WHERE Id = $id;";
+            existingCmd.Parameters.AddWithValue("$id", orderId);
+            var result = await existingCmd.ExecuteScalarAsync();
+            if (result is string s)
+                previousStatus = s;
+        }
+
+        await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
+        var now = DateTime.UtcNow.ToString("O");
+
+        if (status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+            && previousStatus is not null
+            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            var items = await GetOrderItemsAsync(connection, orderId, tx);
+            await ApplySqliteOrderStockAsync(connection, tx, items, restore: true, now);
+        }
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = tx;
+            command.CommandText = "UPDATE Orders SET Status = $status WHERE Id = $id;";
+            command.Parameters.AddWithValue("$status", status);
+            command.Parameters.AddWithValue("$id", orderId);
+            var rows = await command.ExecuteNonQueryAsync();
+            if (rows <= 0)
+                throw new InvalidOperationException("Order status could not be saved.");
+        }
+
+        await tx.CommitAsync();
+    }
+
+    public async Task<AdminOrder> ConfirmOrderReceivedAsync(string orderId)
+    {
+        var order = await GetOrderByIdAsync(orderId)
+            ?? throw new InvalidOperationException("Order not found.");
+
+        if (!OrderFlow.CanCustomerConfirmReceived(order))
+            throw new InvalidOperationException("This order cannot be marked as received.");
+
+        await UpdateOrderStatusAsync(orderId, "Delivered");
+        order.Status = "Delivered";
+        return order;
     }
 
     public async Task UpdateAdminOrderAsync(
@@ -834,14 +1056,41 @@ public sealed partial class DatabaseService : IAppDatabase
     {
         await EnsureReadyAsync();
         await using var connection = await OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = "UPDATE Orders SET Status = $status, PaymentStatus = $paymentStatus WHERE Id = $id;";
-        command.Parameters.AddWithValue("$status", status);
-        command.Parameters.AddWithValue("$paymentStatus", paymentStatus);
-        command.Parameters.AddWithValue("$id", orderId);
-        var rows = await command.ExecuteNonQueryAsync();
-        if (rows <= 0)
-            throw new InvalidOperationException("Order could not be saved.");
+
+        string? previousStatus = null;
+        await using (var existingCmd = connection.CreateCommand())
+        {
+            existingCmd.CommandText = "SELECT Status FROM Orders WHERE Id = $id;";
+            existingCmd.Parameters.AddWithValue("$id", orderId);
+            var result = await existingCmd.ExecuteScalarAsync();
+            if (result is string s)
+                previousStatus = s;
+        }
+
+        await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
+        var now = DateTime.UtcNow.ToString("O");
+
+        if (status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+            && previousStatus is not null
+            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+        {
+            var items = await GetOrderItemsAsync(connection, orderId, tx);
+            await ApplySqliteOrderStockAsync(connection, tx, items, restore: true, now);
+        }
+
+        await using (var command = connection.CreateCommand())
+        {
+            command.Transaction = tx;
+            command.CommandText = "UPDATE Orders SET Status = $status, PaymentStatus = $paymentStatus WHERE Id = $id;";
+            command.Parameters.AddWithValue("$status", status);
+            command.Parameters.AddWithValue("$paymentStatus", paymentStatus);
+            command.Parameters.AddWithValue("$id", orderId);
+            var rows = await command.ExecuteNonQueryAsync();
+            if (rows <= 0)
+                throw new InvalidOperationException("Order could not be saved.");
+        }
+
+        await tx.CommitAsync();
 
         if (string.IsNullOrWhiteSpace(adminRemarks))
             return;
@@ -876,12 +1125,13 @@ public sealed partial class DatabaseService : IAppDatabase
         return await GetOrderItemsAsync(connection, orderId);
     }
 
-    private static async Task<List<AdminOrderItem>> GetOrderItemsAsync(SqliteConnection connection, string orderId)
+    private static async Task<List<AdminOrderItem>> GetOrderItemsAsync(SqliteConnection connection, string orderId, SqliteTransaction? tx = null)
     {
         var items = new List<AdminOrderItem>();
         await using var command = connection.CreateCommand();
+        command.Transaction = tx;
         command.CommandText = """
-            SELECT ProductId, Name, ImageUrl, Quantity, Price, VariantId, Size, ColorName, VariantSku
+            SELECT Id, ProductId, Name, ImageUrl, Quantity, Price, VariantId, Size, ColorName, VariantSku
             FROM OrderItems WHERE OrderId = $orderId;
             """;
         command.Parameters.AddWithValue("$orderId", orderId);
@@ -890,15 +1140,16 @@ public sealed partial class DatabaseService : IAppDatabase
         {
             items.Add(new AdminOrderItem
             {
-                ProductId = reader.GetInt32(0),
-                Name = reader.GetString(1),
-                ImageUrl = reader.GetString(2),
-                Quantity = reader.GetInt32(3),
-                Price = reader.GetDecimal(4),
-                VariantId = reader.FieldCount > 5 && !reader.IsDBNull(5) ? reader.GetInt32(5) : null,
-                Size = reader.FieldCount > 6 && !reader.IsDBNull(6) ? reader.GetString(6) : null,
-                ColorName = reader.FieldCount > 7 && !reader.IsDBNull(7) ? reader.GetString(7) : null,
-                VariantSku = reader.FieldCount > 8 && !reader.IsDBNull(8) ? reader.GetString(8) : null
+                Id = reader.GetInt64(0),
+                ProductId = reader.GetInt32(1),
+                Name = reader.GetString(2),
+                ImageUrl = reader.GetString(3),
+                Quantity = reader.GetInt32(4),
+                Price = reader.GetDecimal(5),
+                VariantId = reader.FieldCount > 6 && !reader.IsDBNull(6) ? reader.GetInt32(6) : null,
+                Size = reader.FieldCount > 7 && !reader.IsDBNull(7) ? reader.GetString(7) : null,
+                ColorName = reader.FieldCount > 8 && !reader.IsDBNull(8) ? reader.GetString(8) : null,
+                VariantSku = reader.FieldCount > 9 && !reader.IsDBNull(9) ? reader.GetString(9) : null
             });
         }
 
@@ -919,6 +1170,18 @@ public sealed partial class DatabaseService : IAppDatabase
             Fulfillment = reader.GetString(reader.GetOrdinal("Fulfillment")),
             Status = reader.GetString(reader.GetOrdinal("Status"))
         };
+
+        order.PaymentMethod = TryGetString(reader, "PaymentMethod") ?? string.Empty;
+        order.CustomerPhone = TryGetString(reader, "CustomerPhone") ?? string.Empty;
+        order.AdminRemarks = TryGetString(reader, "AdminRemarks") ?? TryGetString(reader, "AdminNotes");
+        order.OrderNotes = TryGetString(reader, "OrderNotes") ?? TryGetString(reader, "CustomerNotes");
+        order.ShippingRecipientName = TryGetString(reader, "ShippingRecipientName");
+        order.ShippingPhone = TryGetString(reader, "ShippingPhone");
+        order.ShippingAddressLine = TryGetString(reader, "ShippingAddressLine");
+        order.ShippingBarangay = TryGetString(reader, "ShippingBarangay");
+        order.ShippingCity = TryGetString(reader, "ShippingCity");
+        order.ShippingProvince = TryGetString(reader, "ShippingProvince");
+        order.ShippingPostalCode = TryGetString(reader, "ShippingPostalCode");
 
         try
         {
@@ -956,6 +1219,54 @@ public sealed partial class DatabaseService : IAppDatabase
             order.Subtotal = order.Total + order.DiscountAmount;
 
         return order;
+    }
+
+    private static MockNotification ReadNotification(SqliteDataReader reader)
+    {
+        DateTime? createdAt = null;
+        var createdRaw = TryGetString(reader, "CreatedAt");
+        if (!string.IsNullOrWhiteSpace(createdRaw) && DateTime.TryParse(createdRaw, out var parsed))
+            createdAt = parsed;
+
+        var timeAgo = TryGetString(reader, "TimeAgo");
+        return new MockNotification
+        {
+            Id = reader.GetString(reader.GetOrdinal("Id")),
+            Title = reader.GetString(reader.GetOrdinal("Title")),
+            Message = reader.GetString(reader.GetOrdinal("Message")),
+            TimeAgo = OrderFlow.FormatNotificationTime(createdAt, timeAgo),
+            Icon = TryGetString(reader, "Icon") ?? "bell",
+            Tone = TryGetString(reader, "Tone") ?? "blue",
+            IsRead = TryGetInt(reader, "IsRead") == 1,
+            RelatedId = TryGetString(reader, "RelatedId"),
+            RelatedHref = TryGetString(reader, "RelatedHref") ?? "/orders"
+        };
+    }
+
+    private static string? TryGetString(SqliteDataReader reader, string column)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return null;
+        }
+    }
+
+    private static int TryGetInt(SqliteDataReader reader, string column)
+    {
+        try
+        {
+            var ordinal = reader.GetOrdinal(column);
+            return reader.IsDBNull(ordinal) ? 0 : reader.GetInt32(ordinal);
+        }
+        catch (IndexOutOfRangeException)
+        {
+            return 0;
+        }
     }
 
     #endregion
@@ -1074,12 +1385,12 @@ public sealed partial class DatabaseService : IAppDatabase
         await using var command = connection.CreateCommand();
         if (string.IsNullOrWhiteSpace(email))
         {
-            command.CommandText = "SELECT Id, Title, Message, TimeAgo, Icon, Tone, IsRead FROM Notifications ORDER BY RowId DESC;";
+            command.CommandText = "SELECT * FROM Notifications ORDER BY RowId DESC;";
         }
         else
         {
             command.CommandText = """
-                SELECT Id, Title, Message, TimeAgo, Icon, Tone, IsRead
+                SELECT *
                 FROM Notifications WHERE Email = $email OR Email = ''
                 ORDER BY RowId DESC;
                 """;
@@ -1089,16 +1400,7 @@ public sealed partial class DatabaseService : IAppDatabase
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
-            list.Add(new MockNotification
-            {
-                Id = reader.GetString(0),
-                Title = reader.GetString(1),
-                Message = reader.GetString(2),
-                TimeAgo = reader.GetString(3),
-                Icon = reader.GetString(4),
-                Tone = reader.GetString(5),
-                IsRead = reader.GetInt32(6) == 1
-            });
+            list.Add(ReadNotification(reader));
         }
 
         return list;
@@ -1124,17 +1426,21 @@ public sealed partial class DatabaseService : IAppDatabase
             await using var insert = connection.CreateCommand();
             insert.Transaction = tx;
             insert.CommandText = """
-                INSERT INTO Notifications (Id, Email, Title, Message, TimeAgo, Icon, Tone, IsRead)
-                VALUES ($id, $email, $title, $message, $timeAgo, $icon, $tone, $isRead);
+                INSERT INTO Notifications (Id, Email, Title, Message, TimeAgo, Icon, Tone, IsRead, RelatedId, RelatedHref)
+                VALUES ($id, $email, $title, $message, $timeAgo, $icon, $tone, $isRead, $relatedId, $relatedHref);
                 """;
             insert.Parameters.AddWithValue("$id", item.Id);
             insert.Parameters.AddWithValue("$email", emailKey);
             insert.Parameters.AddWithValue("$title", item.Title);
             insert.Parameters.AddWithValue("$message", item.Message);
-            insert.Parameters.AddWithValue("$timeAgo", item.TimeAgo);
+            insert.Parameters.AddWithValue("$timeAgo", string.IsNullOrWhiteSpace(item.TimeAgo)
+                ? OrderFlow.FormatNotificationTime(DateTime.Now)
+                : item.TimeAgo);
             insert.Parameters.AddWithValue("$icon", item.Icon);
             insert.Parameters.AddWithValue("$tone", item.Tone);
             insert.Parameters.AddWithValue("$isRead", item.IsRead ? 1 : 0);
+            insert.Parameters.AddWithValue("$relatedId", (object?)item.RelatedId ?? DBNull.Value);
+            insert.Parameters.AddWithValue("$relatedHref", (object?)item.RelatedHref ?? DBNull.Value);
             await insert.ExecuteNonQueryAsync();
         }
 
@@ -1149,11 +1455,19 @@ public sealed partial class DatabaseService : IAppDatabase
         if (string.IsNullOrWhiteSpace(notification.Id))
             notification.Id = Guid.NewGuid().ToString("N");
 
+        if (string.IsNullOrWhiteSpace(notification.TimeAgo)
+            || notification.TimeAgo.Equals("Just now", StringComparison.OrdinalIgnoreCase))
+        {
+            notification.TimeAgo = OrderFlow.FormatNotificationTime(DateTime.Now);
+        }
+        if (string.IsNullOrWhiteSpace(notification.RelatedHref))
+            notification.RelatedHref = "/orders";
+
         await using var connection = await OpenAsync();
         await using var insert = connection.CreateCommand();
         insert.CommandText = """
-            INSERT INTO Notifications (Id, Email, Title, Message, TimeAgo, Icon, Tone, IsRead)
-            VALUES ($id, $email, $title, $message, $timeAgo, $icon, $tone, $isRead);
+            INSERT INTO Notifications (Id, Email, Title, Message, TimeAgo, Icon, Tone, IsRead, RelatedId, RelatedHref)
+            VALUES ($id, $email, $title, $message, $timeAgo, $icon, $tone, $isRead, $relatedId, $relatedHref);
             """;
         insert.Parameters.AddWithValue("$id", notification.Id);
         insert.Parameters.AddWithValue("$email", emailKey);
@@ -1163,6 +1477,8 @@ public sealed partial class DatabaseService : IAppDatabase
         insert.Parameters.AddWithValue("$icon", notification.Icon);
         insert.Parameters.AddWithValue("$tone", notification.Tone);
         insert.Parameters.AddWithValue("$isRead", notification.IsRead ? 1 : 0);
+        insert.Parameters.AddWithValue("$relatedId", (object?)notification.RelatedId ?? DBNull.Value);
+        insert.Parameters.AddWithValue("$relatedHref", (object?)notification.RelatedHref ?? DBNull.Value);
         await insert.ExecuteNonQueryAsync();
     }
 
@@ -1842,6 +2158,205 @@ public sealed partial class DatabaseService : IAppDatabase
             ?? throw new InvalidOperationException("Order not found after payment save.");
     }
 
+    private static async Task ValidateSqliteOrderItemStockAsync(
+        SqliteConnection connection,
+        SqliteTransaction tx,
+        AdminOrderItem item)
+    {
+        var qty = Math.Max(0, item.Quantity);
+        if (qty <= 0)
+            throw new InvalidOperationException("Invalid order quantity.");
+
+        if (item.VariantId is int variantId)
+        {
+            await using var variantRead = connection.CreateCommand();
+            variantRead.Transaction = tx;
+            variantRead.CommandText = "SELECT StockQuantity FROM ProductVariants WHERE Id = $id;";
+            variantRead.Parameters.AddWithValue("$id", variantId);
+            var value = await variantRead.ExecuteScalarAsync();
+            if (value is null or DBNull || Convert.ToInt32(value) < qty)
+                throw new InvalidOperationException(
+                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+            return;
+        }
+
+        var hasVariants = false;
+        await using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.Transaction = tx;
+            countCmd.CommandText = "SELECT COUNT(*) FROM ProductVariants WHERE ProductId = $id;";
+            countCmd.Parameters.AddWithValue("$id", item.ProductId);
+            hasVariants = Convert.ToInt32(await countCmd.ExecuteScalarAsync()) > 0;
+        }
+
+        if (hasVariants)
+            throw new InvalidOperationException(
+                ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+
+        await using var read = connection.CreateCommand();
+        read.Transaction = tx;
+        read.CommandText = "SELECT Stock FROM Products WHERE Id = $id;";
+        read.Parameters.AddWithValue("$id", item.ProductId);
+        var stockObj = await read.ExecuteScalarAsync();
+        if (stockObj is null or DBNull || Convert.ToInt32(stockObj) < qty)
+            throw new InvalidOperationException(
+                ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+    }
+
+    private static async Task<(int PreviousStock, int NewStock, string ProductName)> ApplySqliteOrderItemStockAsync(
+        SqliteConnection connection,
+        SqliteTransaction tx,
+        AdminOrderItem item,
+        bool restore,
+        string nowText)
+    {
+        var qty = Math.Max(0, item.Quantity);
+        if (qty <= 0)
+            throw new InvalidOperationException("Invalid order quantity.");
+
+        var hasVariants = false;
+        await using (var countCmd = connection.CreateCommand())
+        {
+            countCmd.Transaction = tx;
+            countCmd.CommandText = "SELECT COUNT(*) FROM ProductVariants WHERE ProductId = $id;";
+            countCmd.Parameters.AddWithValue("$id", item.ProductId);
+            hasVariants = Convert.ToInt32(await countCmd.ExecuteScalarAsync()) > 0;
+        }
+
+        int previousStock;
+        int newStock;
+        string productName;
+        int sold;
+
+        await using (var read = connection.CreateCommand())
+        {
+            read.Transaction = tx;
+            read.CommandText = "SELECT Stock, Name, Sold FROM Products WHERE Id = $id;";
+            read.Parameters.AddWithValue("$id", item.ProductId);
+            await using var reader = await read.ExecuteReaderAsync();
+            if (!await reader.ReadAsync())
+                throw new InvalidOperationException($"Product {item.ProductId} was not found.");
+            previousStock = reader.GetInt32(0);
+            productName = reader.GetString(1);
+            sold = reader.GetInt32(2);
+        }
+
+        if (item.VariantId is int variantId)
+        {
+            int variantStock;
+            await using (var variantRead = connection.CreateCommand())
+            {
+                variantRead.Transaction = tx;
+                variantRead.CommandText = "SELECT StockQuantity FROM ProductVariants WHERE Id = $id;";
+                variantRead.Parameters.AddWithValue("$id", variantId);
+                var value = await variantRead.ExecuteScalarAsync();
+                if (value is null or DBNull)
+                    throw new InvalidOperationException(
+                        ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+                variantStock = Convert.ToInt32(value);
+            }
+
+            previousStock = variantStock;
+            if (!restore && variantStock < qty)
+                throw new InvalidOperationException(
+                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+
+            await using var deduct = connection.CreateCommand();
+            deduct.Transaction = tx;
+            deduct.CommandText = restore
+                ? """
+                    UPDATE ProductVariants
+                    SET StockQuantity = StockQuantity + $qty, UpdatedAt = $updatedAt
+                    WHERE Id = $id;
+                    """
+                : """
+                    UPDATE ProductVariants
+                    SET StockQuantity = StockQuantity - $qty, UpdatedAt = $updatedAt
+                    WHERE Id = $id AND StockQuantity >= $qty;
+                    """;
+            deduct.Parameters.AddWithValue("$qty", qty);
+            deduct.Parameters.AddWithValue("$updatedAt", nowText);
+            deduct.Parameters.AddWithValue("$id", variantId);
+            var rows = await deduct.ExecuteNonQueryAsync();
+            if (!restore && rows <= 0)
+                throw new InvalidOperationException(
+                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+
+            newStock = restore ? variantStock + qty : variantStock - qty;
+
+            await using var recap = connection.CreateCommand();
+            recap.Transaction = tx;
+            recap.CommandText = """
+                UPDATE Products
+                SET Stock = (
+                        SELECT COALESCE(SUM(StockQuantity), 0)
+                        FROM ProductVariants
+                        WHERE ProductId = $productId
+                    ),
+                    Sold = $sold,
+                    InStock = (
+                        SELECT CASE WHEN COALESCE(SUM(StockQuantity), 0) > 0 THEN 1 ELSE 0 END
+                        FROM ProductVariants
+                        WHERE ProductId = $productId
+                    ),
+                    UpdatedAt = $updatedAt
+                WHERE Id = $productId;
+                """;
+            recap.Parameters.AddWithValue("$productId", item.ProductId);
+            recap.Parameters.AddWithValue("$sold", Math.Max(0, sold + (restore ? -qty : qty)));
+            recap.Parameters.AddWithValue("$updatedAt", nowText);
+            await recap.ExecuteNonQueryAsync();
+        }
+        else
+        {
+            if (hasVariants)
+                throw new InvalidOperationException(
+                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+
+            if (!restore && previousStock < qty)
+                throw new InvalidOperationException(
+                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+
+            newStock = restore ? previousStock + qty : previousStock - qty;
+            await using var update = connection.CreateCommand();
+            update.Transaction = tx;
+            update.CommandText = restore
+                ? """
+                    UPDATE Products
+                    SET Stock = Stock + $qty, Sold = $sold, InStock = 1, UpdatedAt = $updatedAt
+                    WHERE Id = $id;
+                    """
+                : """
+                    UPDATE Products
+                    SET Stock = Stock - $qty, Sold = $sold, InStock = $inStock, UpdatedAt = $updatedAt
+                    WHERE Id = $id AND Stock >= $qty;
+                    """;
+            update.Parameters.AddWithValue("$qty", qty);
+            update.Parameters.AddWithValue("$sold", Math.Max(0, sold + (restore ? -qty : qty)));
+            update.Parameters.AddWithValue("$updatedAt", nowText);
+            update.Parameters.AddWithValue("$id", item.ProductId);
+            if (!restore)
+                update.Parameters.AddWithValue("$inStock", newStock > 0 ? 1 : 0);
+            var rows = await update.ExecuteNonQueryAsync();
+            if (!restore && rows <= 0)
+                throw new InvalidOperationException(
+                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+        }
+
+        return (previousStock, newStock, productName);
+    }
+
+    private static async Task ApplySqliteOrderStockAsync(
+        SqliteConnection connection,
+        SqliteTransaction tx,
+        IEnumerable<AdminOrderItem> items,
+        bool restore,
+        string nowText)
+    {
+        foreach (var item in items)
+            await ApplySqliteOrderItemStockAsync(connection, tx, item, restore, nowText);
+    }
+
     public async Task PlaceCheckoutOrderAsync(AdminOrder order, string? promoCode, decimal discountAmount, string userEmail)
     {
         await EnsureReadyAsync();
@@ -1915,19 +2430,7 @@ public sealed partial class DatabaseService : IAppDatabase
 
             foreach (var item in order.Items)
             {
-                await using var stockCmd = connection.CreateCommand();
-                stockCmd.Transaction = tx;
-                stockCmd.CommandText = "SELECT Stock, Name FROM Products WHERE Id = $id;";
-                stockCmd.Parameters.AddWithValue("$id", item.ProductId);
-                await using var reader = await stockCmd.ExecuteReaderAsync();
-                if (!await reader.ReadAsync())
-                    throw new InvalidOperationException($"Product {item.ProductId} was not found.");
-                var stock = reader.GetInt32(0);
-                var name = reader.GetString(1);
-                await reader.DisposeAsync();
-
-                if (stock < item.Quantity)
-                    throw new InvalidOperationException($"Insufficient stock for {name}.");
+                await ValidateSqliteOrderItemStockAsync(connection, tx, item);
             }
 
             await using (var orderCmd = connection.CreateCommand())
@@ -1980,35 +2483,8 @@ public sealed partial class DatabaseService : IAppDatabase
                 itemCmd.Parameters.AddWithValue("$variantSku", (object?)item.VariantSku ?? DBNull.Value);
                 await itemCmd.ExecuteNonQueryAsync();
 
-                int previousStock;
-                string productName;
-                await using (var read = connection.CreateCommand())
-                {
-                    read.Transaction = tx;
-                    read.CommandText = "SELECT Stock, Name, Sold FROM Products WHERE Id = $id;";
-                    read.Parameters.AddWithValue("$id", item.ProductId);
-                    await using var reader = await read.ExecuteReaderAsync();
-                    await reader.ReadAsync();
-                    previousStock = reader.GetInt32(0);
-                    productName = reader.GetString(1);
-                    var sold = reader.GetInt32(2);
-                    await reader.DisposeAsync();
-
-                    var newStock = previousStock - item.Quantity;
-                    await using var update = connection.CreateCommand();
-                    update.Transaction = tx;
-                    update.CommandText = """
-                        UPDATE Products
-                        SET Stock = $stock, Sold = $sold, InStock = $inStock, UpdatedAt = $updatedAt
-                        WHERE Id = $id;
-                        """;
-                    update.Parameters.AddWithValue("$stock", newStock);
-                    update.Parameters.AddWithValue("$sold", sold + item.Quantity);
-                    update.Parameters.AddWithValue("$inStock", newStock > 0 ? 1 : 0);
-                    update.Parameters.AddWithValue("$updatedAt", nowText);
-                    update.Parameters.AddWithValue("$id", item.ProductId);
-                    await update.ExecuteNonQueryAsync();
-                }
+                var (previousStock, newStock, productName) =
+                    await ApplySqliteOrderItemStockAsync(connection, tx, item, restore: false, nowText);
 
                 await using (var hist = connection.CreateCommand())
                 {
@@ -2025,63 +2501,11 @@ public sealed partial class DatabaseService : IAppDatabase
                     hist.Parameters.AddWithValue("$productName", productName);
                     hist.Parameters.AddWithValue("$quantity", item.Quantity);
                     hist.Parameters.AddWithValue("$previous", previousStock);
-                    hist.Parameters.AddWithValue("$new", previousStock - item.Quantity);
+                    hist.Parameters.AddWithValue("$new", newStock);
                     hist.Parameters.AddWithValue("$notes", $"Order {order.Id}");
                     hist.Parameters.AddWithValue("$date", nowText);
                     hist.Parameters.AddWithValue("$admin", emailKey);
                     await hist.ExecuteNonQueryAsync();
-                }
-
-                int? variantId = item.VariantId;
-                if (variantId is null)
-                {
-                    await using var variantCmd = connection.CreateCommand();
-                    variantCmd.Transaction = tx;
-                    variantCmd.CommandText = """
-                        SELECT Id FROM ProductVariants
-                        WHERE ProductId = $productId AND VariantName = 'Default'
-                        LIMIT 1;
-                        """;
-                    variantCmd.Parameters.AddWithValue("$productId", item.ProductId);
-                    var v = await variantCmd.ExecuteScalarAsync();
-                    if (v is not null and not DBNull)
-                        variantId = Convert.ToInt32(v);
-                }
-
-                if (item.VariantId is int selectedVariantId)
-                {
-                    await using var deduct = connection.CreateCommand();
-                    deduct.Transaction = tx;
-                    deduct.CommandText = """
-                        UPDATE ProductVariants
-                        SET StockQuantity = StockQuantity - $qty, UpdatedAt = $updatedAt
-                        WHERE Id = $id AND StockQuantity >= $qty;
-                        """;
-                    deduct.Parameters.AddWithValue("$qty", item.Quantity);
-                    deduct.Parameters.AddWithValue("$updatedAt", nowText);
-                    deduct.Parameters.AddWithValue("$id", selectedVariantId);
-                    await deduct.ExecuteNonQueryAsync();
-
-                    await using var recap = connection.CreateCommand();
-                    recap.Transaction = tx;
-                    recap.CommandText = """
-                        UPDATE Products
-                        SET Stock = (
-                                SELECT COALESCE(SUM(StockQuantity), 0)
-                                FROM ProductVariants
-                                WHERE ProductId = $productId
-                            ),
-                            InStock = (
-                                SELECT CASE WHEN COALESCE(SUM(StockQuantity), 0) > 0 THEN 1 ELSE 0 END
-                                FROM ProductVariants
-                                WHERE ProductId = $productId
-                            ),
-                            UpdatedAt = $updatedAt
-                        WHERE Id = $productId;
-                        """;
-                    recap.Parameters.AddWithValue("$productId", item.ProductId);
-                    recap.Parameters.AddWithValue("$updatedAt", nowText);
-                    await recap.ExecuteNonQueryAsync();
                 }
 
                 await using (var move = connection.CreateCommand())
@@ -2097,10 +2521,10 @@ public sealed partial class DatabaseService : IAppDatabase
                         );
                         """;
                     move.Parameters.AddWithValue("$productId", item.ProductId);
-                    move.Parameters.AddWithValue("$variantId", (object?)variantId ?? DBNull.Value);
+                    move.Parameters.AddWithValue("$variantId", (object?)item.VariantId ?? DBNull.Value);
                     move.Parameters.AddWithValue("$quantity", -item.Quantity);
                     move.Parameters.AddWithValue("$previous", previousStock);
-                    move.Parameters.AddWithValue("$new", previousStock - item.Quantity);
+                    move.Parameters.AddWithValue("$new", newStock);
                     move.Parameters.AddWithValue("$orderId", order.Id);
                     move.Parameters.AddWithValue("$notes", $"Checkout sale for {productName}");
                     move.Parameters.AddWithValue("$performedBy", emailKey);
@@ -2108,7 +2532,7 @@ public sealed partial class DatabaseService : IAppDatabase
                     await move.ExecuteNonQueryAsync();
                 }
 
-                if (variantId is int vid)
+                if (item.VariantId is int vid)
                 {
                     await using var inv = connection.CreateCommand();
                     inv.Transaction = tx;
@@ -2117,23 +2541,11 @@ public sealed partial class DatabaseService : IAppDatabase
                         SET QuantityOnHand = $qty, UpdatedAt = $updatedAt
                         WHERE ProductId = $productId AND VariantId = $variantId;
                         """;
-                    inv.Parameters.AddWithValue("$qty", previousStock - item.Quantity);
+                    inv.Parameters.AddWithValue("$qty", newStock);
                     inv.Parameters.AddWithValue("$updatedAt", nowText);
                     inv.Parameters.AddWithValue("$productId", item.ProductId);
                     inv.Parameters.AddWithValue("$variantId", vid);
                     await inv.ExecuteNonQueryAsync();
-
-                    await using var pv = connection.CreateCommand();
-                    pv.Transaction = tx;
-                    pv.CommandText = """
-                        UPDATE ProductVariants
-                        SET StockQuantity = $qty, UpdatedAt = $updatedAt
-                        WHERE Id = $id;
-                        """;
-                    pv.Parameters.AddWithValue("$qty", previousStock - item.Quantity);
-                    pv.Parameters.AddWithValue("$updatedAt", nowText);
-                    pv.Parameters.AddWithValue("$id", vid);
-                    await pv.ExecuteNonQueryAsync();
                 }
             }
 
@@ -2726,7 +3138,10 @@ public sealed partial class DatabaseService : IAppDatabase
             TimeAgo TEXT NOT NULL DEFAULT '',
             Icon TEXT NOT NULL DEFAULT 'bell',
             Tone TEXT NOT NULL DEFAULT 'blue',
-            IsRead INTEGER NOT NULL DEFAULT 0
+            IsRead INTEGER NOT NULL DEFAULT 0,
+            RelatedId TEXT NULL,
+            RelatedHref TEXT NULL,
+            CreatedAt TEXT NULL
         );
 
         CREATE TABLE IF NOT EXISTS AdminNotifications (

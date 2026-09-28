@@ -88,9 +88,10 @@ public sealed class OrderCardModel
         _ => Color.FromArgb("#475569")
     };
 
-    public bool ShowTrack => Order.Status is "Processing" or "Confirmed" or "Ready for Pickup" or "Pending";
-    public bool ShowBuyAgain => Order.Status == "Completed";
-    public bool ShowReview => Order.Status == "Completed";
+    public bool ShowTrack => Order.Status is "Pending" or "Confirmed" or "Processing" or "Ready for Pickup"
+        or "Out for Delivery" or "Preparing" or "Shipped";
+    public bool ShowBuyAgain => Order.Status is "Completed" or "Delivered";
+    public bool ShowReview => Order.Status is "Completed" or "Delivered";
     public bool ShowDetails => true;
 }
 

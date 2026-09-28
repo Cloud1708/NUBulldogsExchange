@@ -93,29 +93,22 @@ public class ProductCatalogService
             foreach (var product in products)
             {
                 if (!byProduct.TryGetValue(product.Id, out var variants))
-                {
-                    product.Variants = [];
-                    continue;
-                }
+                    variants = [];
 
                 product.Variants = variants;
                 if (product.HasVariants)
                 {
                     product.Sizes = product.Variants
-                        .Where(v => v.IsActive)
-                        .Select(v => v.Size)
-                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size))
+                        .Select(v => v.Size.Trim())
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
-                    if (product.HasColorVariants)
-                    {
-                        product.Colors = product.Variants
-                            .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
-                            .Select(v => v.ColorName!.Trim())
-                            .Distinct(StringComparer.OrdinalIgnoreCase)
-                            .ToList();
-                    }
-                    product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+                    product.Colors = product.Variants
+                        .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
+                        .Select(v => v.ColorName!.Trim())
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    product.Stock = product.Variants.Where(v => v.IsActive).Sum(v => Math.Max(0, v.StockQuantity));
                     product.InStock = product.Stock > 0;
                 }
             }
@@ -126,27 +119,19 @@ public class ProductCatalogService
         }
     }
 
-    public void ApplyPurchase(IEnumerable<AdminOrderItem> items)
+    public void ApplyPurchase(IEnumerable<AdminOrderItem> items) =>
+        ApplyOrderStock(items, restore: false);
+
+    public void ApplyCancellation(IEnumerable<AdminOrderItem> items) =>
+        ApplyOrderStock(items, restore: true);
+
+    private void ApplyOrderStock(IEnumerable<AdminOrderItem> items, bool restore)
     {
         foreach (var item in items)
         {
             var product = GetById(item.ProductId);
             if (product is null) continue;
-
-            if (item.VariantId is int variantId && product.Variants.Count > 0)
-            {
-                var variant = product.Variants.FirstOrDefault(v => v.Id == variantId);
-                if (variant is not null)
-                    variant.StockQuantity = Math.Max(0, variant.StockQuantity - item.Quantity);
-                product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
-            }
-            else
-            {
-                product.Stock = Math.Max(0, product.Stock - item.Quantity);
-            }
-
-            product.Sold += item.Quantity;
-            product.InStock = product.Stock > 0;
+            ProductVariantLogic.ApplyOrderItemStock(product, item, restore);
         }
 
         OnChange?.Invoke();
@@ -279,24 +264,19 @@ public class ProductCatalogService
         if (product.HasVariants)
         {
             product.Sizes = product.Variants
-                .Where(v => v.IsActive)
-                .Select(v => v.Size)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size))
+                .Select(v => v.Size.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
-            if (product.HasColorVariants)
-            {
-                product.Colors = product.Variants
-                    .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
-                    .Select(v => v.ColorName!.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-            }
-            product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+            product.Colors = product.Variants
+                .Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName))
+                .Select(v => v.ColorName!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            product.Stock = product.Variants.Where(v => v.IsActive).Sum(v => Math.Max(0, v.StockQuantity));
         }
-        else if (product.Sizes.Count == 0)
+        else
         {
-            // No invented apparel sizes — empty means no size selector required.
             product.Sizes = [];
         }
 

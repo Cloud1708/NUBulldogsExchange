@@ -95,10 +95,8 @@
                 </label>
 
                 <div class="admin-field-full">
-                    <ProductSizeVariantEditor HasSizeVariants="_hasSizeVariants"
-                                              HasSizeVariantsChanged="OnHasSizeVariantsChanged"
-                                              HasColorVariants="_hasColorVariants"
-                                              HasColorVariantsChanged="OnHasColorVariantsChanged"
+                    <ProductSizeVariantEditor HasVariants="_hasVariants"
+                                              HasVariantsChanged="OnHasVariantsChanged"
                                               Variants="_variants"
                                               VariantsChanged="OnVariantsChanged"
                                               StockText="@_stock.ToString()"
@@ -108,7 +106,7 @@
                                               BaseSku="_sku" />
                 </div>
 
-                @if (!_hasSizeVariants && !_hasColorVariants)
+                @if (!_hasVariants)
                 {
                     <label class="admin-field admin-field-full">
                         <span>Colors (comma-separated)</span>
@@ -180,8 +178,7 @@
     private string _imageUrl = string.Empty;
     private string _description = string.Empty;
     private string _colors = string.Empty;
-    private bool _hasSizeVariants;
-    private bool _hasColorVariants;
+    private bool _hasVariants;
     private List<ProductVariant> _variants = [];
     private int _sold;
     private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
@@ -216,8 +213,7 @@
             _imageUrl = string.Empty;
             _description = string.Empty;
             _colors = string.Empty;
-            _hasSizeVariants = false;
-            _hasColorVariants = false;
+            _hasVariants = false;
             _variants = [];
             return;
         }
@@ -240,22 +236,13 @@
         _imageUrl = product.ImageUrl;
         _description = product.Description;
         _colors = string.Join(", ", product.Colors);
-        _hasSizeVariants = product.HasSizeVariants;
-        _hasColorVariants = product.HasColorVariants;
+        _hasVariants = product.HasVariants;
         _variants = product.Variants.Select(v => v.Clone()).ToList();
     }
 
-    private Task OnHasSizeVariantsChanged(bool value)
+    private Task OnHasVariantsChanged(bool value)
     {
-        _hasSizeVariants = value;
-        _errors.Remove(nameof(_stock));
-        _errors.Remove("variants");
-        return Task.CompletedTask;
-    }
-
-    private Task OnHasColorVariantsChanged(bool value)
-    {
-        _hasColorVariants = value;
+        _hasVariants = value;
         _errors.Remove(nameof(_stock));
         _errors.Remove("variants");
         return Task.CompletedTask;
@@ -336,9 +323,9 @@
         if (_price <= 0)
             _errors[nameof(_price)] = "Price must be greater than 0.";
 
-        if (_hasSizeVariants || _hasColorVariants)
+        if (_hasVariants)
         {
-            var variantError = ProductSizeVariantEditor.Validate(_hasSizeVariants, _hasColorVariants, _variants);
+            var variantError = ProductSizeVariantEditor.Validate(_variants);
             if (variantError is not null)
                 _errors["variants"] = variantError;
         }
@@ -354,7 +341,7 @@
     {
         if (!Validate()) return;
 
-        var hasVariants = _hasSizeVariants || _hasColorVariants;
+        var hasVariants = _hasVariants;
         var variants = hasVariants
             ? _variants.Select(v => v.Clone()).ToList()
             : [];
@@ -380,9 +367,7 @@
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList()
                 : SplitList(_colors),
-            Sizes = _hasSizeVariants
-                ? variants.Select(v => v.Size).Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
-                : [],
+            Sizes = variants.Select(v => v.Size).Where(s => !string.IsNullOrWhiteSpace(s)).ToList(),
             Variants = variants
         };
 

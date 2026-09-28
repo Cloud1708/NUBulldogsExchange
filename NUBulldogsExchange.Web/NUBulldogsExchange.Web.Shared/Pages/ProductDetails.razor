@@ -10,6 +10,7 @@
 @inject NavigationManager Navigation
 @inject ProductCatalogService Catalog
 @inject AdminProductService AdminProducts
+@inject IAppDatabase Db
 @implements IDisposable
 
 <PageTitle>@(_product?.Name ?? "Product") | NU Bulldogs Exchange</PageTitle>
@@ -111,11 +112,11 @@ else
 
                     <p class="detail-desc">@_product.Description</p>
 
-                    @if (_product.HasColorVariants)
+                    @if (HasColors)
                     {
                         <div class="pdp-option">
                             <div class="pdp-option-head">
-                                <span>Color</span>
+                                <span>Select Color</span>
                                 @if (!string.IsNullOrWhiteSpace(_selectedColor))
                                 {
                                     <small>@MockData.FormatColorName(_selectedColor)</small>
@@ -140,34 +141,8 @@ else
                             </div>
                         </div>
                     }
-                    else if (!_product.HasSizeVariants && _product.Colors.Count > 0)
-                    {
-                        <div class="pdp-option">
-                            <div class="pdp-option-head">
-                                <span>Color</span>
-                                @if (!string.IsNullOrWhiteSpace(_selectedColor))
-                                {
-                                    <small>@MockData.FormatColorName(_selectedColor)</small>
-                                }
-                            </div>
-                            <div class="pdp-swatches">
-                                @foreach (var color in _product.Colors)
-                                {
-                                    <button type="button"
-                                            class="pdp-swatch @color @(_selectedColor == color ? "selected" : "")"
-                                            title="@MockData.FormatColorName(color)"
-                                            aria-label="@MockData.FormatColorName(color)"
-                                            @onclick="() => SelectColor(color)">
-                                    </button>
-                                }
-                            </div>
-                            <p class="pdp-color-label">
-                                @string.Join(" / ", _product.Colors.Select(MockData.FormatColorName))
-                            </p>
-                        </div>
-                    }
 
-                    @if (_product.HasSizeVariants)
+                    @if (HasSizes)
                     {
                         <div class="pdp-option">
                             <div class="pdp-option-head">
@@ -195,25 +170,6 @@ else
                             {
                                 <p class="pdp-size-error">@_sizeError</p>
                             }
-                        </div>
-                    }
-                    else if (_product.Sizes.Count > 0)
-                    {
-                        <div class="pdp-option">
-                            <div class="pdp-option-head">
-                                <span>Size</span>
-                                <button type="button" class="pdp-size-guide-link" @onclick="() => _showSizeGuide = true">Size Guide</button>
-                            </div>
-                            <div class="pdp-sizes">
-                                @foreach (var size in _product.Sizes)
-                                {
-                                    <button type="button"
-                                            class="pdp-size @(_selectedSize == size ? "selected" : "")"
-                                            @onclick="() => SelectSize(size)">
-                                        @size
-                                    </button>
-                                }
-                            </div>
                         </div>
                     }
 
@@ -299,10 +255,13 @@ else
                                     <dt>Material</dt>
                                     <dd>@(string.IsNullOrWhiteSpace(_product.Material) ? "—" : _product.Material)</dd>
                                 </div>
-                                <div class="pdp-spec-row">
-                                    <dt>Available Sizes</dt>
-                                    <dd>@string.Join(", ", _product.Sizes)</dd>
-                                </div>
+                                @if (HasSizes)
+                                {
+                                    <div class="pdp-spec-row">
+                                        <dt>Available Sizes</dt>
+                                        <dd>@string.Join(", ", ProductVariantLogic.DistinctSizes(_product.Variants.Where(v => v.IsActive)))</dd>
+                                    </div>
+                                }
                                 <div class="pdp-spec-row">
                                     <dt>Category</dt>
                                     <dd>@_product.Category</dd>
@@ -311,10 +270,13 @@ else
                                     <dt>SKU</dt>
                                     <dd>@_product.Sku</dd>
                                 </div>
-                                <div class="pdp-spec-row">
-                                    <dt>Colors</dt>
-                                    <dd>@_product.Colors.Count option@(_product.Colors.Count == 1 ? "" : "s")</dd>
-                                </div>
+                                @if (HasColors)
+                                {
+                                    <div class="pdp-spec-row">
+                                        <dt>Colors</dt>
+                                        <dd>@string.Join(", ", VisibleColors)</dd>
+                                    </div>
+                                }
                             </dl>
                         </div>
                     }
@@ -346,13 +308,17 @@ else
                             </div>
 
                             <div class="pdp-review-list">
+                                @if (_displayReviews.Count == 0)
+                                {
+                                    <p class="pdp-reviews-empty">No reviews yet. After your order is completed, you can write a review from My Orders.</p>
+                                }
                                 @foreach (var review in _displayReviews)
                                 {
                                     <article class="pdp-review-card">
                                         <div class="pdp-review-avatar">@review.Initials</div>
                                         <div class="pdp-review-body">
                                             <div class="pdp-review-head">
-                                                <strong>@review.Author</strong>
+                                                <strong>@review.PublicAuthor</strong>
                                                 <span>@review.Date.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</span>
                                             </div>
                                             <div class="rating">
@@ -361,15 +327,25 @@ else
                                                     <span class="star @(i <= review.Rating ? "filled" : "")">★</span>
                                                 }
                                             </div>
+                                            @if (!string.IsNullOrWhiteSpace(review.Title))
+                                            {
+                                                <h4 class="pdp-review-title">@review.Title</h4>
+                                            }
                                             <p>@review.Comment</p>
+                                            @if (review.IsVerifiedPurchase)
+                                            {
+                                                <small class="pdp-review-verified">Verified Purchase</small>
+                                            }
                                         </div>
                                     </article>
                                 }
                             </div>
 
-                            <button type="button" class="btn btn-outline-navy pdp-write-review" @onclick="() => _showReviewModal = true">
-                                Write a Review
-                            </button>
+                            <p class="pdp-review-hint">
+                                Reviews come from verified purchases.
+                                <a href="/orders">Write a review from My Orders</a>
+                                after pickup is completed or delivery is marked delivered.
+                            </p>
                         </div>
                     }
                     else
@@ -446,40 +422,6 @@ else
         </div>
     }
 
-    @if (_showReviewModal)
-    {
-        <div class="pdp-modal-backdrop" @onclick="CloseReviewModal">
-            <div class="pdp-modal" @onclick:stopPropagation="true">
-                <div class="pdp-modal-head">
-                    <h3>Write a Review</h3>
-                    <button type="button" class="pdp-modal-close" @onclick="CloseReviewModal" aria-label="Close">
-                        <Icon Name="x" Size="18" />
-                    </button>
-                </div>
-                <div class="pdp-review-form">
-                    <label>
-                        Name
-                        <input type="text" @bind="_reviewName" placeholder="Your name" maxlength="40" />
-                    </label>
-                    <label>
-                        Rating
-                        <select @bind="_reviewRating">
-                            <option value="5">5 stars</option>
-                            <option value="4">4 stars</option>
-                            <option value="3">3 stars</option>
-                            <option value="2">2 stars</option>
-                            <option value="1">1 star</option>
-                        </select>
-                    </label>
-                    <label>
-                        Review
-                        <textarea @bind="_reviewText" rows="4" placeholder="Share your experience" maxlength="500"></textarea>
-                    </label>
-                    <button type="button" class="btn btn-navy" @onclick="SubmitReview">Submit Review</button>
-                </div>
-            </div>
-        </div>
-    }
 }
 
 @code {
@@ -502,10 +444,13 @@ else
     private string _stockClass = "in-stock";
 
     private bool _showSizeGuide;
-    private bool _showReviewModal;
-    private string _reviewName = string.Empty;
-    private int _reviewRating = 5;
-    private string _reviewText = string.Empty;
+    private int _loadedProductId;
+
+    private bool HasColors =>
+        _product?.Variants.Any(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName)) == true;
+
+    private bool HasSizes =>
+        _product?.Variants.Any(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size)) == true;
 
     private IEnumerable<string> VisibleColors =>
         _product is null
@@ -518,7 +463,7 @@ else
         {
             if (_product is null) return [];
             var rows = _product.Variants.Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size));
-            if (_product.HasColorVariants)
+            if (HasColors)
                 rows = rows.Where(v => ProductVariantLogic.SameText(v.ColorName, _selectedColor));
             return rows;
         }
@@ -529,21 +474,24 @@ else
         get
         {
             if (_product is null) return 0;
-            if (_product.HasVariants)
+            if (!_product.HasVariants)
+                return Math.Max(0, _product.Stock);
+
+            var exact = ResolveSelectedVariant();
+            if (exact is not null)
+                return Math.Max(0, exact.StockQuantity);
+
+            if (HasColors && !HasSizes && !string.IsNullOrWhiteSpace(_selectedColor))
+                return ProductVariantLogic.Find(_product.Variants, _selectedColor, null)?.StockQuantity ?? 0;
+
+            if (HasColors && HasSizes && !string.IsNullOrWhiteSpace(_selectedColor))
             {
-                if (_selectedVariantId is int id)
-                {
-                    var variant = _product.Variants.FirstOrDefault(v => v.Id == id);
-                    return variant?.StockQuantity ?? 0;
-                }
-
-                if (_product.HasColorVariants && !_product.HasSizeVariants && !string.IsNullOrWhiteSpace(_selectedColor))
-                    return ProductVariantLogic.Find(_product.Variants, _selectedColor, null)?.StockQuantity ?? 0;
-
-                return _product.Variants.Where(v => v.IsActive).Sum(v => Math.Max(0, v.StockQuantity));
+                return _product.Variants
+                    .Where(v => v.IsActive && ProductVariantLogic.SameText(v.ColorName, _selectedColor))
+                    .Sum(v => Math.Max(0, v.StockQuantity));
             }
 
-            return Math.Max(0, _product.Stock);
+            return _product.Variants.Where(v => v.IsActive).Sum(v => Math.Max(0, v.StockQuantity));
         }
     }
 
@@ -558,30 +506,59 @@ else
         Auth.OnChange += Refresh;
         await AdminProducts.EnsureLoadedAsync();
         await Catalog.EnsureLoadedAsync();
-        LoadProduct();
     }
 
-    protected override void OnParametersSet()
+    protected override async Task OnParametersSetAsync()
     {
         LoadProduct();
+        await LoadReviewsAsync();
     }
 
     private void LoadProduct()
     {
-        _product = Catalog.GetById(Id);
+        var next = Catalog.GetById(Id);
+        var productChanged = next?.Id != _loadedProductId;
+        _product = next;
         if (_product is null)
         {
             _related = [];
+            _displayReviews = [];
+            _loadedProductId = 0;
             return;
         }
 
-        ResetSelection(_product);
-        _related = Catalog.GetRelated(_product).ToList();
+        if (productChanged)
+        {
+            ResetSelection(_product);
+            _related = Catalog.GetRelated(_product).ToList();
+            _activeTab = "Description";
+            _showSizeGuide = false;
+            _loadedProductId = _product.Id;
+            UpdateStockClass();
+        }
+
         _displayReviews = [.. _product.ProductReviews];
-        _activeTab = "Description";
-        _showSizeGuide = false;
-        _showReviewModal = false;
-        UpdateStockClass();
+    }
+
+    private async Task LoadReviewsAsync()
+    {
+        if (_product is null)
+        {
+            _displayReviews = [];
+            return;
+        }
+
+        try
+        {
+            var reviews = await Db.GetProductReviewsAsync(_product.Id);
+            ProductReviewStats.Apply(_product, reviews);
+            _displayReviews = [.. reviews];
+        }
+        catch
+        {
+            ProductReviewStats.Apply(_product, _product.ProductReviews);
+            _displayReviews = [.. _product.ProductReviews];
+        }
     }
 
     private void ResetSelection(Product product)
@@ -591,16 +568,10 @@ else
             _gallery = [product.ImageUrl];
 
         _selectedImage = _gallery.FirstOrDefault() ?? product.ImageUrl;
-        _selectedColor = product.HasColorVariants
-            ? ProductVariantLogic.DistinctColors(product.Variants.Where(v => v.IsActive)).FirstOrDefault()
-            : product.HasSizeVariants
-                ? null
-                : product.Colors.FirstOrDefault();
+        _selectedColor = null;
         _selectedVariantId = null;
         _selectedSize = null;
         _sizeError = null;
-        ApplyVariantSelection(product);
-
         _quantity = AvailableStock > 0 ? 1 : 0;
     }
 
@@ -632,50 +603,20 @@ else
             return;
 
         _selectedColor = color;
-        if (_product.HasColorVariants)
+        _selectedSize = null;
+        _selectedVariantId = null;
+        _sizeError = null;
+
+        if (!HasSizes)
         {
-            _selectedVariantId = null;
-            _selectedSize = null;
-            ApplyVariantSelection(_product);
+            var colorVariant = ProductVariantLogic.Find(_product.Variants, color, null);
+            _selectedVariantId = colorVariant?.Id;
         }
+
+        if (_quantity > AvailableStock)
+            _quantity = Math.Max(0, AvailableStock);
 
         UpdateStockClass();
-    }
-
-    private void ApplyVariantSelection(Product product)
-    {
-        if (product.HasColorVariants && product.HasSizeVariants)
-        {
-            var firstInStock = VisibleSizeVariants.FirstOrDefault(v => v.StockQuantity > 0);
-            if (firstInStock is not null)
-            {
-                _selectedVariantId = firstInStock.Id;
-                _selectedSize = firstInStock.Size;
-            }
-        }
-        else if (product.HasColorVariants)
-        {
-            var colorVariant = ProductVariantLogic.Find(product.Variants, _selectedColor, null);
-            _selectedVariantId = colorVariant?.Id;
-            _selectedSize = null;
-        }
-        else if (product.HasSizeVariants)
-        {
-            var firstInStock = product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity > 0);
-            if (firstInStock is not null)
-            {
-                _selectedVariantId = firstInStock.Id;
-                _selectedSize = firstInStock.Size;
-            }
-        }
-        else if (product.Sizes.Count > 0)
-        {
-            _selectedSize = product.Sizes.Count == 1
-                ? product.Sizes[0]
-                : product.Sizes.Contains("M")
-                    ? "M"
-                    : product.Sizes.FirstOrDefault();
-        }
     }
 
     private static bool IsLightHex(string hex)
@@ -687,12 +628,6 @@ else
         var g = Convert.ToInt32(normalized[3..5], 16);
         var b = Convert.ToInt32(normalized[5..7], 16);
         return ((r * 299) + (g * 587) + (b * 114)) / 1000 > 200;
-    }
-
-    private void SelectSize(string size)
-    {
-        _selectedSize = size;
-        _sizeError = null;
     }
 
     private void SelectVariant(ProductVariant variant)
@@ -718,10 +653,85 @@ else
             _quantity++;
     }
 
+    private ProductVariant? ResolveSelectedVariant()
+    {
+        if (_product is null || !_product.HasVariants)
+            return null;
+
+        if (_selectedVariantId is int id)
+        {
+            var byId = _product.Variants.FirstOrDefault(v => v.Id == id && v.IsActive);
+            if (byId is not null)
+            {
+                var colorOk = !HasColors || ProductVariantLogic.SameText(byId.ColorName, _selectedColor);
+                var sizeOk = !HasSizes || ProductVariantLogic.SameText(byId.Size, _selectedSize);
+                if (colorOk && sizeOk)
+                    return byId;
+            }
+        }
+
+        return ProductVariantLogic.Find(
+            _product.Variants,
+            HasColors ? _selectedColor : null,
+            HasSizes ? _selectedSize : null);
+    }
+
     private bool ValidateSelection()
     {
         if (_product is null) return false;
         _sizeError = null;
+
+        if (HasColors && string.IsNullOrWhiteSpace(_selectedColor))
+        {
+            Toast.Show("Please select a color.");
+            return false;
+        }
+
+        if (HasSizes && string.IsNullOrWhiteSpace(_selectedSize))
+        {
+            _sizeError = "Please select a size.";
+            Toast.Show("Please select a size.");
+            return false;
+        }
+
+        if (_product.HasVariants)
+        {
+            var variant = ResolveSelectedVariant();
+            if (variant is null)
+            {
+                if (HasColors && HasSizes)
+                    Toast.Show("Please select a color and a size.");
+                else if (HasColors)
+                    Toast.Show("Please select a color.");
+                else
+                {
+                    _sizeError = "Please select a size.";
+                    Toast.Show("Please select a size.");
+                }
+
+                return false;
+            }
+
+            _selectedVariantId = variant.Id;
+            _selectedColor = HasColors ? variant.ColorName : null;
+            _selectedSize = HasSizes ? variant.Size : null;
+
+            if (variant.StockQuantity <= 0)
+            {
+                Toast.Show("This product is out of stock.");
+                return false;
+            }
+
+            if (variant.StockQuantity < _quantity)
+            {
+                Toast.Show(HasSizes
+                    ? "Not enough stock for the selected size."
+                    : "Not enough stock for the selected color.");
+                return false;
+            }
+
+            return true;
+        }
 
         if (AvailableStock <= 0)
         {
@@ -729,56 +739,9 @@ else
             return false;
         }
 
-        if (_product.HasColorVariants && string.IsNullOrWhiteSpace(_selectedColor))
-        {
-            Toast.Show("Please select a color.");
-            return false;
-        }
-
-        if (!_product.HasColorVariants && _product.Colors.Count > 0 && string.IsNullOrWhiteSpace(_selectedColor))
-        {
-            Toast.Show("Please select a color.");
-            return false;
-        }
-
-        if (_product.HasSizeVariants)
-        {
-            if (_selectedVariantId is null)
-            {
-                _sizeError = "Please select a size.";
-                Toast.Show("Please select a size.");
-                return false;
-            }
-
-            var variant = _product.Variants.FirstOrDefault(v => v.Id == _selectedVariantId);
-            if (variant is null || variant.StockQuantity < _quantity)
-            {
-                Toast.Show("Not enough stock for the selected size.");
-                return false;
-            }
-        }
-        else if (_product.HasColorVariants)
-        {
-            var variant = ProductVariantLogic.Find(_product.Variants, _selectedColor, null);
-            if (variant is null)
-            {
-                Toast.Show("Please select a color.");
-                return false;
-            }
-
-            _selectedVariantId = variant.Id;
-            if (variant.StockQuantity < _quantity)
-            {
-                Toast.Show("Not enough stock for the selected color.");
-                return false;
-            }
-        }
-        else if (_product.Sizes.Count > 0 && string.IsNullOrWhiteSpace(_selectedSize))
-        {
-            Toast.Show("Please select a size.");
-            return false;
-        }
-
+        _selectedVariantId = null;
+        _selectedColor = null;
+        _selectedSize = null;
         return true;
     }
 
@@ -786,7 +749,12 @@ else
     {
         if (_product is null || !ValidateSelection()) return;
 
-        Cart.Add(_product, _quantity, _selectedColor, _selectedSize, _selectedVariantId);
+        Cart.Add(
+            _product,
+            _quantity,
+            HasColors ? _selectedColor : null,
+            HasSizes ? _selectedSize : null,
+            _selectedVariantId);
         Toast.Show("Product added to cart.");
     }
 
@@ -794,7 +762,12 @@ else
     {
         if (_product is null || !ValidateSelection()) return;
 
-        Cart.Add(_product, _quantity, _selectedColor, _selectedSize, _selectedVariantId);
+        Cart.Add(
+            _product,
+            _quantity,
+            HasColors ? _selectedColor : null,
+            HasSizes ? _selectedSize : null,
+            _selectedVariantId);
         Toast.Show("Product added to cart.");
         Navigation.NavigateTo("/cart");
     }
@@ -811,42 +784,6 @@ else
 
         Wishlist.Toggle(_product.Id);
         Toast.Show(Wishlist.Contains(_product.Id) ? "Added to wishlist." : "Removed from wishlist.");
-    }
-
-    private void CloseReviewModal()
-    {
-        _showReviewModal = false;
-        _reviewName = string.Empty;
-        _reviewText = string.Empty;
-        _reviewRating = 5;
-    }
-
-    private void SubmitReview()
-    {
-        if (_product is null) return;
-
-        if (string.IsNullOrWhiteSpace(_reviewName) || string.IsNullOrWhiteSpace(_reviewText))
-        {
-            Toast.Show("Please enter your name and review.");
-            return;
-        }
-
-        var initials = _reviewName.Trim()[0].ToString().ToUpperInvariant();
-        var review = new ProductReview
-        {
-            Author = _reviewName.Trim(),
-            Initials = initials,
-            Rating = Math.Clamp(_reviewRating, 1, 5),
-            Date = DateTime.Today,
-            Comment = _reviewText.Trim()
-        };
-
-        _product.ProductReviews.Insert(0, review);
-        _displayReviews = [.. _product.ProductReviews];
-        _product.Reviews++;
-        CloseReviewModal();
-        Toast.Show("Review submitted.");
-        _activeTab = "Reviews";
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);

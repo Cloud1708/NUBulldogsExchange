@@ -2,6 +2,7 @@ namespace NUBulldogsExchange.Web.Shared.Data;
 
 public class MockOrderItem
 {
+    public long OrderItemId { get; set; }
     public int ProductId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string ImageUrl { get; set; } = string.Empty;
@@ -9,6 +10,10 @@ public class MockOrderItem
     public decimal Price { get; set; }
     public string Size { get; set; } = "Free Size";
     public string? Color { get; set; }
+    public bool IsReviewed { get; set; }
+
+    public bool HasDisplayColor => OrderFlow.HasDisplayColor(Color);
+    public bool HasDisplaySize => OrderFlow.HasDisplaySize(Size);
 }
 
 public class MockOrder
@@ -42,6 +47,10 @@ public class MockOrder
     public bool IsActive => Status is "Pending" or "Processing" or "Ready for Pickup" or "Confirmed"
         or "Preparing" or "Out for Delivery" or "Shipped";
     public bool CanCancel => OrderFlow.CanCustomerCancel(this);
+    public bool CanConfirmReceived => OrderFlow.CanCustomerConfirmReceived(this);
+    public bool CanWriteReview => OrderFlow.CanWriteReview(this);
+    public bool HasUnreviewedItems => Items.Any(i => !i.IsReviewed);
+    public bool AllItemsReviewed => Items.Count > 0 && Items.All(i => i.IsReviewed);
     public string CustomerCategory => OrderFlow.GetCustomerOrderCategory(this);
     public string CustomerStatusKey => OrderFlow.CustomerStatusKey(CustomerCategory);
     public string FulfillmentLocationLabel =>
@@ -79,6 +88,7 @@ public class MockOrder
         ShippingPostalCode = order.ShippingPostalCode,
         Items = order.Items.Select(i => new MockOrderItem
         {
+            OrderItemId = i.Id,
             ProductId = i.ProductId,
             Name = i.Name,
             ImageUrl = i.ImageUrl,
@@ -99,6 +109,7 @@ public class MockNotification
     public string Icon { get; set; } = "bell";
     public string Tone { get; set; } = "blue";
     public bool IsRead { get; set; }
+    public string? RelatedId { get; set; }
     public string? RelatedHref { get; set; }
 }
 

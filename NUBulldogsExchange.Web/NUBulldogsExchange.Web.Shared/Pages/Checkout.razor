@@ -1347,7 +1347,7 @@ else
             try { Orders.PlaceOrder(order); }
             catch (Exception ex) { Console.Error.WriteLine(ex); }
 
-            try { Catalog.ApplyPurchase(order.Items); }
+            try { await Catalog.ReloadAsync(); }
             catch (Exception ex) { Console.Error.WriteLine(ex); }
 
             if (isDelivery && _saveAddress && (_useNewAddress || _savedAddresses.Count == 0) && user.Id != Guid.Empty)
@@ -1378,12 +1378,14 @@ else
             {
                 await Notifications.AddAsync(new MockNotification
                 {
-                    Title = "Order Confirmed",
-                    Message = $"Your order #{order.Id} has been placed and is being processed.",
-                    TimeAgo = "Just now",
+                    Title = "Order Placed",
+                    Message = $"Your order {order.Id} has been placed and will be confirmed soon.",
+                    TimeAgo = OrderFlow.FormatNotificationTime(DateTime.Now),
                     Icon = "check-circle",
                     Tone = "green",
-                    IsRead = false
+                    IsRead = false,
+                    RelatedId = order.Id,
+                    RelatedHref = "/orders"
                 });
             }
             catch (Exception ex)

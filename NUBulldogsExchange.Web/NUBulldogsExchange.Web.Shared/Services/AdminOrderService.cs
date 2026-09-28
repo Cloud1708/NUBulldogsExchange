@@ -33,15 +33,19 @@ public class AdminOrderService
     ];
 
     private readonly IAppDatabase _db;
+    private readonly ProductCatalogService _catalog;
+    private readonly AdminProductService _products;
     private readonly List<AdminOrder> _orders = [];
     private bool _loaded;
     private bool _loading;
 
     public event Action? OnChange;
 
-    public AdminOrderService(IAppDatabase db)
+    public AdminOrderService(IAppDatabase db, ProductCatalogService catalog, AdminProductService products)
     {
         _db = db;
+        _catalog = catalog;
+        _products = products;
     }
 
     public IReadOnlyList<AdminOrder> All => _orders;
@@ -196,6 +200,9 @@ public class AdminOrderService
             }
         }
 
+        if (statusChanged && status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            ApplyLocalCancellation(order);
+
         if (notifyCustomer && statusChanged)
             await TryNotifyCustomerAsync(order, status, remarksValue);
 
@@ -218,6 +225,9 @@ public class AdminOrderService
 
         await _db.UpdateOrderStatusAsync(order.Id, status);
         order.Status = status;
+
+        if (status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            ApplyLocalCancellation(order);
 
         try
         {
@@ -243,6 +253,8 @@ public class AdminOrderService
         _orders.RemoveAll(o => o.Id.Equals(order.Id, StringComparison.OrdinalIgnoreCase));
         var saved = await _db.GetOrderByIdAsync(order.Id) ?? order;
         _orders.Add(saved);
+        _catalog.ApplyPurchase(saved.Items);
+        _products.ApplyPurchase(saved.Items);
         OnChange?.Invoke();
         return saved;
     }
@@ -276,10 +288,11 @@ public class AdminOrderService
                     Id = Guid.NewGuid().ToString("N"),
                     Title = title,
                     Message = message,
-                    TimeAgo = "Just now",
+                    TimeAgo = OrderFlow.FormatNotificationTime(DateTime.Now),
                     Icon = "package",
                     Tone = NotificationTone(newStatus),
                     IsRead = false,
+                    RelatedId = order.Id,
                     RelatedHref = "/orders"
                 });
         }
@@ -291,4 +304,11 @@ public class AdminOrderService
 
     private static string NotificationTone(string newStatus) =>
         newStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase) ? "gold" : "blue";
+
+    private void ApplyLocalCancellation(AdminOrder order)
+    {
+        if (order.Items.Count == 0) return;
+        _catalog.ApplyCancellation(order.Items);
+        _products.ApplyCancellation(order.Items);
+    }
 }
