@@ -1,0 +1,123 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using System.Globalization
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminProductService Products
+
+@if (Product is not null)
+{
+    <div class="admin-modal-backdrop ar-backdrop" @onclick="Close">
+        <div class="admin-modal admin-price-modal admin-price-history-modal" role="dialog" aria-modal="true" aria-labelledby="ph-title" @onclick:stopPropagation="true">
+            <header class="ar-modal-header">
+                <h2 id="ph-title">Price History — @Product.Name</h2>
+                <button type="button" class="admin-product-modal-close" aria-label="Close" @onclick="Close">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </header>
+
+            <div class="admin-price-modal-body">
+                <div class="admin-price-product">
+                    <img src="@Product.ImageUrl"
+                         alt="@Product.Name"
+                         width="72"
+                         height="72"
+                         style="width:72px;height:72px;max-width:72px;object-fit:cover;border-radius:10px;"
+                         onerror="this.onerror=null;this.src='@CatalogHelpers.PlaceholderImage';" />
+                    <div>
+                        <strong>@Product.Name</strong>
+                        <p>Category: @Product.Category</p>
+                        <p>SKU: @Product.Sku</p>
+                    </div>
+                </div>
+
+                @if (_loading)
+                {
+                    <p class="admin-modal-note">Loading history…</p>
+                }
+                else if (_entries.Count == 0)
+                {
+                    <p class="admin-modal-note">No price changes recorded yet.</p>
+                }
+                else
+                {
+                    <div class="admin-inventory-table-wrap">
+                        <table class="admin-inventory-table admin-price-history-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Variant</th>
+                                    <th>Previous Price</th>
+                                    <th>New Price</th>
+                                    <th>Promo Price</th>
+                                    <th>Reason</th>
+                                    <th>Updated By</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var entry in _entries)
+                                {
+                                    <tr>
+                                        <td>@entry.DateLabel</td>
+                                        <td>@(Product.HasVariants ? "All Variants" : "—")</td>
+                                        <td>₱@entry.PreviousPrice.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                        <td>₱@entry.NewPrice.ToString("N2", CultureInfo.InvariantCulture)</td>
+                                        <td>@(entry.PromoPrice is decimal promo
+                                                ? $"₱{promo.ToString("N2", CultureInfo.InvariantCulture)}"
+                                                : "—")</td>
+                                        <td>@entry.Reason</td>
+                                        <td>@entry.UpdatedBy</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-navy" @onclick="Close">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public AdminProduct? Product { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+
+    private readonly List<ProductPriceHistoryEntry> _entries = [];
+    private bool _loading;
+    private int? _boundId;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Product is null)
+        {
+            _boundId = null;
+            _entries.Clear();
+            return;
+        }
+
+        if (_boundId == Product.Id)
+            return;
+
+        _boundId = Product.Id;
+        _loading = true;
+        _entries.Clear();
+        try
+        {
+            var rows = await Products.GetPriceHistoryAsync(Product.Id);
+            _entries.AddRange(rows);
+        }
+        catch
+        {
+            _entries.Clear();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+}

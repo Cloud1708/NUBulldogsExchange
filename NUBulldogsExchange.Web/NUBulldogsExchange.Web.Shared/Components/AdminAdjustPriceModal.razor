@@ -1,0 +1,443 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using System.Globalization
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminProductService Products
+@inject AuthService Auth
+@inject ToastService Toast
+
+@if (Product is not null)
+{
+    var title = Product.HasVariants
+        ? $"Adjust Price — {Product.Name} (Variant)"
+        : $"Adjust Price — {Product.Name}";
+    var selectedVariant = Product.Variants.FirstOrDefault(v => v.Id == _selectedVariantId);
+    var currentPrice = selectedVariant is not null && _scope == ScopeSpecific
+        ? ProductVariantLogic.ResolvePrice(Product.Price, selectedVariant)
+        : Product.Price;
+    var hasVariablePricing = ProductVariantLogic.HasVariablePricing(Product.Variants);
+
+    <div class="admin-modal-backdrop ar-backdrop" @onclick="Cancel">
+        <div class="admin-modal admin-price-modal @(Product.HasVariants ? "is-variant" : "")"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="ap-title"
+             @onclick:stopPropagation="true">
+            <header class="ar-modal-header">
+                <h2 id="ap-title">@title</h2>
+                <button type="button" class="admin-product-modal-close" aria-label="Close" @onclick="Cancel">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </header>
+
+            <form class="admin-price-modal-form" @onsubmit="Save" @onsubmit:preventDefault="true">
+                <div class="admin-price-modal-body">
+                    <aside class="admin-price-left">
+                        <div class="admin-price-product">
+                            <img src="@Product.ImageUrl"
+                                 alt="@Product.Name"
+                                 width="72"
+                                 height="72"
+                                 style="width:72px;height:72px;max-width:72px;object-fit:cover;border-radius:10px;flex-shrink:0;"
+                                 onerror="this.onerror=null;this.src='@CatalogHelpers.PlaceholderImage';" />
+                            <div>
+                                <strong>@Product.Name</strong>
+                                <p>Category: @Product.Category</p>
+                                <p>SKU: @Product.Sku</p>
+                            </div>
+                        </div>
+
+                        @if (Product.HasVariants)
+                        {
+                            <div class="admin-price-note">
+                                <span class="admin-price-note-icon" aria-hidden="true">i</span>
+                                <p>
+                                    @(hasVariablePricing
+                                        ? "This product uses different prices per variant. Choose a specific variant or apply one shared price to all."
+                                        : "This product has variants. You can adjust the price for a specific variant or apply to all variants.")
+                                </p>
+                            </div>
+
+                            <div class="admin-price-scope">
+                                <div class="admin-price-scope-label">Adjust For</div>
+                                <label class="admin-price-radio @(_scope == ScopeSpecific ? "is-selected" : "")">
+                                    <input type="radio" name="price-scope" checked="@(_scope == ScopeSpecific)" @onchange="() => SetScope(ScopeSpecific)" />
+                                    <span>
+                                        <strong>Specific Variant</strong>
+                                        <small>Adjust price for one variant only.</small>
+                                    </span>
+                                </label>
+                                <label class="admin-price-radio @(_scope == ScopeAll ? "is-selected" : "")">
+                                    <input type="radio" name="price-scope" checked="@(_scope == ScopeAll)" @onchange="() => SetScope(ScopeAll)" />
+                                    <span>
+                                        <strong>All Variants</strong>
+                                        <small>Apply the same price to every size/color.</small>
+                                    </span>
+                                </label>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="admin-price-current admin-price-current-left">
+                                <span>Current Price</span>
+                                <strong>₱@Product.Price.ToString("N2", CultureInfo.InvariantCulture)</strong>
+                            </div>
+                        }
+                    </aside>
+
+                    <section class="admin-price-right">
+                        @if (Product.HasVariants)
+                        {
+                            @if (_scope == ScopeSpecific)
+                            {
+                                <label class="admin-field">
+                                    <span>Select Variant <em>*</em></span>
+                                    <select @bind="_selectedVariantId" @bind:after="OnVariantChanged">
+                                        <option value="0">Select variant…</option>
+                                        @foreach (var variant in Product.Variants.Where(v => v.IsActive))
+                                        {
+                                            var label = InventoryRow.FormatVariantLabel(variant);
+                                            var price = ProductVariantLogic.ResolvePrice(Product.Price, variant);
+                                            <option value="@variant.Id">@label — ₱@price.ToString("N2", CultureInfo.InvariantCulture)</option>
+                                        }
+                                    </select>
+                                    @if (!string.IsNullOrEmpty(_variantError))
+                                    {
+                                        <em>@_variantError</em>
+                                    }
+                                </label>
+
+                                @if (selectedVariant is not null)
+                                {
+                                    <div class="admin-price-variant-preview">
+                                        <img src="@Product.ImageUrl"
+                                             alt=""
+                                             width="44"
+                                             height="44"
+                                             style="width:44px;height:44px;object-fit:cover;border-radius:8px;"
+                                             onerror="this.onerror=null;this.src='@CatalogHelpers.PlaceholderImage';" />
+                                        <div class="admin-price-variant-copy">
+                                            @if (selectedVariant.HasColor)
+                                            {
+                                                <span>Color: @selectedVariant.ColorName</span>
+                                            }
+                                            @if (selectedVariant.HasSize)
+                                            {
+                                                <span>Size: @selectedVariant.Size</span>
+                                            }
+                                            <div class="admin-price-current compact">
+                                                <span>Current Price</span>
+                                                <strong>₱@currentPrice.ToString("N2", CultureInfo.InvariantCulture)</strong>
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
+                            }
+                            else
+                            {
+                                <div class="admin-price-all-banner">
+                                    This price change will apply to all variants of this product and clear per-variant price differences.
+                                </div>
+                                <div class="admin-price-current compact">
+                                    <span>Current Base Price</span>
+                                    <strong>₱@Product.Price.ToString("N2", CultureInfo.InvariantCulture)</strong>
+                                </div>
+                            }
+                        }
+
+                        <div class="admin-price-grid-2">
+                            <label class="admin-field">
+                                <span>New Price <em>*</em></span>
+                                <div class="admin-price-input">
+                                    <span>₱</span>
+                                    <input type="number"
+                                           min="0.01"
+                                           step="0.01"
+                                           value="@_newPriceText"
+                                           @oninput="OnNewPriceInput"
+                                           placeholder="0.00" />
+                                </div>
+                                @if (!string.IsNullOrEmpty(_newPriceError))
+                                {
+                                    <em>@_newPriceError</em>
+                                }
+                            </label>
+
+                            <label class="admin-field">
+                                <span>Promo Price (Optional)</span>
+                                <div class="admin-price-input">
+                                    <span>₱</span>
+                                    <input type="number"
+                                           min="0.01"
+                                           step="0.01"
+                                           value="@_promoPriceText"
+                                           @oninput="OnPromoPriceInput"
+                                           placeholder="" />
+                                </div>
+                                <small class="ar-hint">Leave empty if no promo price.</small>
+                                @if (!string.IsNullOrEmpty(_promoPriceError))
+                                {
+                                    <em>@_promoPriceError</em>
+                                }
+                            </label>
+                        </div>
+
+                        <div class="admin-price-grid-2">
+                            <label class="admin-field">
+                                <span>Effective Date <em>*</em></span>
+                                <input type="date" @bind="_effectiveDate" />
+                                @if (!string.IsNullOrEmpty(_dateError))
+                                {
+                                    <em>@_dateError</em>
+                                }
+                            </label>
+
+                            <label class="admin-field">
+                                <span>Reason <em>*</em></span>
+                                <select @bind="_reason">
+                                    @foreach (var reason in AdminProductService.PriceAdjustmentReasons)
+                                    {
+                                        <option value="@reason">@reason</option>
+                                    }
+                                </select>
+                                @if (!string.IsNullOrEmpty(_reasonError))
+                                {
+                                    <em>@_reasonError</em>
+                                }
+                            </label>
+                        </div>
+
+                        <label class="admin-field">
+                            <span>Notes (Optional)</span>
+                            <textarea rows="3"
+                                      maxlength="500"
+                                      @bind="_notes"
+                                      @bind:event="oninput"
+                                      placeholder="Optional notes..."></textarea>
+                        </label>
+                    </section>
+                </div>
+
+                <footer class="admin-price-modal-footer">
+                    <button type="button" class="btn btn-outline-navy" disabled="@_saving" @onclick="Cancel">Cancel</button>
+                    <button type="submit" class="btn btn-navy" disabled="@_saving">
+                        @(_saving ? "Saving..." : "Save Changes")
+                    </button>
+                </footer>
+            </form>
+        </div>
+    </div>
+}
+
+@code {
+    private const string ScopeSpecific = "specific";
+    private const string ScopeAll = "all";
+
+    [Parameter] public AdminProduct? Product { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string _scope = ScopeSpecific;
+    private int _selectedVariantId;
+    private string _newPriceText = string.Empty;
+    private string _promoPriceText = string.Empty;
+    private DateTime _effectiveDate = DateTime.Today;
+    private string _reason = "Price Update";
+    private string _notes = string.Empty;
+    private string? _newPriceError;
+    private string? _promoPriceError;
+    private string? _dateError;
+    private string? _reasonError;
+    private string? _variantError;
+    private bool _saving;
+    private int? _boundId;
+
+    protected override void OnParametersSet()
+    {
+        if (Product is null)
+        {
+            _boundId = null;
+            return;
+        }
+
+        if (_boundId != Product.Id)
+        {
+            _boundId = Product.Id;
+            _scope = Product.HasVariants ? ScopeSpecific : ScopeAll;
+            _selectedVariantId = Product.HasVariants && Product.Variants.Count == 1
+                ? Product.Variants[0].Id
+                : 0;
+            PrefillNewPrice();
+            _promoPriceText = string.Empty;
+            _effectiveDate = DateTime.Today;
+            _reason = "Price Update";
+            _notes = string.Empty;
+            ClearErrors();
+        }
+    }
+
+    private void PrefillNewPrice()
+    {
+        if (Product is null)
+        {
+            _newPriceText = string.Empty;
+            return;
+        }
+
+        if (_scope == ScopeSpecific && _selectedVariantId > 0)
+        {
+            var variant = Product.Variants.FirstOrDefault(v => v.Id == _selectedVariantId);
+            if (variant is not null)
+            {
+                _newPriceText = ProductVariantLogic.ResolvePrice(Product.Price, variant)
+                    .ToString("0.##", CultureInfo.InvariantCulture);
+                return;
+            }
+        }
+
+        _newPriceText = Product.Price.ToString("0.##", CultureInfo.InvariantCulture);
+    }
+
+    private void SetScope(string scope)
+    {
+        _scope = scope;
+        _variantError = null;
+        PrefillNewPrice();
+    }
+
+    private void OnVariantChanged()
+    {
+        _variantError = null;
+        PrefillNewPrice();
+    }
+
+    private void OnNewPriceInput(ChangeEventArgs e) =>
+        _newPriceText = e.Value?.ToString() ?? string.Empty;
+
+    private void OnPromoPriceInput(ChangeEventArgs e) =>
+        _promoPriceText = e.Value?.ToString() ?? string.Empty;
+
+    private void ClearErrors()
+    {
+        _newPriceError = null;
+        _promoPriceError = null;
+        _dateError = null;
+        _reasonError = null;
+        _variantError = null;
+    }
+
+    private async Task Cancel()
+    {
+        if (_saving) return;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task Save()
+    {
+        if (Product is null || _saving) return;
+        ClearErrors();
+
+        string? scopeNote = null;
+        var applyToAll = true;
+        int? variantId = null;
+
+        if (Product.HasVariants)
+        {
+            if (_scope == ScopeSpecific)
+            {
+                if (_selectedVariantId <= 0)
+                {
+                    _variantError = "Select a variant.";
+                    return;
+                }
+
+                var variant = Product.Variants.FirstOrDefault(v => v.Id == _selectedVariantId);
+                if (variant is null)
+                {
+                    _variantError = "Selected variant was not found.";
+                    return;
+                }
+
+                applyToAll = false;
+                variantId = variant.Id;
+                scopeNote = $"Scope: Specific Variant ({InventoryRow.FormatVariantLabel(variant)}).";
+            }
+            else
+            {
+                applyToAll = true;
+                scopeNote = "Scope: All Variants.";
+            }
+        }
+
+        if (!decimal.TryParse(_newPriceText, NumberStyles.Number, CultureInfo.InvariantCulture, out var newPrice) ||
+            newPrice <= 0)
+        {
+            _newPriceError = "New price must be greater than 0.";
+            return;
+        }
+
+        decimal? promo = null;
+        if (!string.IsNullOrWhiteSpace(_promoPriceText))
+        {
+            if (!decimal.TryParse(_promoPriceText, NumberStyles.Number, CultureInfo.InvariantCulture, out var promoValue) ||
+                promoValue <= 0)
+            {
+                _promoPriceError = "Promo price must be greater than 0.";
+                return;
+            }
+
+            if (promoValue >= newPrice)
+            {
+                _promoPriceError = "Promo price must be less than the new price.";
+                return;
+            }
+
+            promo = promoValue;
+        }
+
+        if (string.IsNullOrWhiteSpace(_reason))
+        {
+            _reasonError = "Select a reason.";
+            return;
+        }
+
+        if (_effectiveDate.Date > DateTime.Today)
+        {
+            _dateError = "Scheduled future pricing is not supported yet. Use today's date.";
+            return;
+        }
+
+        var notes = string.IsNullOrWhiteSpace(scopeNote)
+            ? _notes
+            : string.IsNullOrWhiteSpace(_notes) ? scopeNote : $"{_notes}\n{scopeNote}";
+
+        _saving = true;
+        try
+        {
+            var (success, message) = await Products.AdjustPriceAsync(
+                Product.Id,
+                newPrice,
+                promo,
+                _effectiveDate,
+                _reason,
+                notes,
+                Auth.DisplayName,
+                variantId,
+                applyToAll);
+
+            if (!success)
+            {
+                _newPriceError = message;
+                return;
+            }
+
+            Toast.Show(message);
+            await OnChanged.InvokeAsync();
+            await OnClose.InvokeAsync();
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

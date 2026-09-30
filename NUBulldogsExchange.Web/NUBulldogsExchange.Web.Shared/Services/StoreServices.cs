@@ -21,7 +21,7 @@ public class CartService
     public int TotalCount => _items.Sum(i => i.Quantity);
     public string? AppliedPromoCode { get; private set; }
     public decimal AppliedDiscount { get; private set; }
-    public decimal Subtotal => _items.Sum(i => i.Product.Price * i.Quantity);
+    public decimal Subtotal => _items.Sum(i => i.UnitPrice * i.Quantity);
     public decimal EstimatedTotal => Math.Max(0, Subtotal - AppliedDiscount);
 
     public void SetPromo(string? code, decimal discount)
@@ -232,7 +232,7 @@ public class CartService
                 ProductId = i.Product.Id,
                 VariantId = i.VariantId,
                 Quantity = i.Quantity,
-                UnitPrice = i.Product.Price,
+                UnitPrice = i.UnitPrice,
                 SelectedColor = i.SelectedColor,
                 SelectedSize = i.SelectedSize
             });

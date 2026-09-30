@@ -9,10 +9,9 @@ public class AdminInventoryService
     public static readonly string[] AdjustmentReasons =
     [
         "Restock",
+        "Damaged Item",
         "Inventory Correction",
-        "Damaged Items",
-        "Returned Items",
-        "Lost Items",
+        "Returned Item",
         "Manual Adjustment",
         "Other"
     ];
@@ -20,7 +19,6 @@ public class AdminInventoryService
     private readonly IAppDatabase _db;
     private readonly AdminProductService _products;
     private readonly AdminSettingsService _settings;
-    private readonly Dictionary<int, int> _reserved = new();
     private readonly Dictionary<int, int> _lowStockLevels = new();
     private readonly List<InventoryHistoryEntry> _history = [];
     private bool _loaded;
@@ -41,10 +39,12 @@ public class AdminInventoryService
         if (_loaded) return;
         await _products.EnsureLoadedAsync();
         _history.Clear();
-        _history.AddRange(await _db.GetInventoryHistoryAsync());
-        _reserved.Clear();
-        foreach (var kv in await _db.GetReservedStockAsync())
-            _reserved[kv.Key] = kv.Value;
+        foreach (var entry in await _db.GetInventoryHistoryAsync())
+        {
+            entry.HydrateMetaFromNotes();
+            _history.Add(entry);
+        }
+
         _lowStockLevels.Clear();
         foreach (var kv in await _db.GetLowStockLevelsAsync())
             _lowStockLevels[kv.Key] = kv.Value;
@@ -52,9 +52,9 @@ public class AdminInventoryService
         OnChange?.Invoke();
     }
 
-    public int TotalInventory => _products.All.Sum(p => Math.Max(0, p.Stock));
+    public int TotalInventory => Rows.Sum(r => Math.Max(0, r.TotalStock));
     public int InStockCount => Rows.Count(r => r.StockStateKey == "in");
-    public int LowStockCount => Rows.Count(r => r.StockStateKey == "low");
+    public int LowStockCount => Rows.Count(r => r.StockStateKey is "low" or "attention");
     public int OutOfStockCount => Rows.Count(r => r.StockStateKey == "out");
 
     public IReadOnlyList<InventoryHistoryEntry> History =>
@@ -78,7 +78,8 @@ public class AdminInventoryService
         int quantity,
         string reason,
         string? notes,
-        string adminName)
+        string adminName,
+        int? variantId = null)
     {
         var product = _products.GetById(productId);
         if (product is null)
@@ -99,7 +100,21 @@ public class AdminInventoryService
         if (type == "Set Stock" && quantity < 0)
             return (false, "Stock cannot be lower than 0.");
 
-        var previous = product.Stock;
+        ProductVariant? variant = null;
+        string? variantLabel = null;
+        if (product.HasVariants)
+        {
+            if (variantId is null or <= 0)
+                return (false, "Select a variant to adjust.");
+
+            variant = product.Variants.FirstOrDefault(v => v.Id == variantId.Value);
+            if (variant is null)
+                return (false, "Selected variant was not found.");
+
+            variantLabel = InventoryRow.FormatVariantLabel(variant);
+        }
+
+        var previous = variant?.StockQuantity ?? product.Stock;
         var next = type switch
         {
             "Add Stock" => previous + quantity,
@@ -111,7 +126,16 @@ public class AdminInventoryService
         if (next < 0)
             return (false, "Stock cannot be lower than 0.");
 
-        await _products.SetStockAsync(productId, next);
+        if (variant is not null)
+        {
+            var ok = await _products.SetVariantStockAsync(productId, variant.Id, next);
+            if (!ok)
+                return (false, "Unable to update variant stock.");
+        }
+        else
+        {
+            await _products.SetStockAsync(productId, next);
+        }
 
         var entry = new InventoryHistoryEntry
         {
@@ -122,28 +146,44 @@ public class AdminInventoryService
             PreviousStock = previous,
             NewStock = next,
             Reason = reason.Trim(),
-            Notes = notes?.Trim() ?? string.Empty,
+            VariantLabel = variantLabel,
+            Notes = InventoryHistoryEntry.BuildNotes(variantLabel, null, notes),
             Date = DateTime.Now,
             AdminName = string.IsNullOrWhiteSpace(adminName) ? "Admin" : adminName
         };
 
         await _db.AddInventoryHistoryAsync(entry);
+        entry.HydrateMetaFromNotes();
         _history.Insert(0, entry);
 
         OnChange?.Invoke();
         return (true, "Inventory updated successfully.");
     }
 
-    private InventoryRow ToRow(AdminProduct product) => new()
+    private InventoryRow ToRow(AdminProduct product)
     {
-        ProductId = product.Id,
-        Name = product.Name,
-        Sku = product.Sku,
-        Category = product.Category,
-        ImageUrl = product.ImageUrl,
-        Available = product.Stock,
-        Reserved = _reserved.GetValueOrDefault(product.Id),
-        LowStockLevel = _lowStockLevels.GetValueOrDefault(product.Id, _settings.LowStockThreshold),
-        Variants = product.Variants.Select(v => v.Clone()).ToList()
-    };
+        var variants = product.Variants
+            .Where(v => v.IsActive)
+            .Select(v => v.Clone())
+            .OrderBy(v => v.ColorName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(v => InventoryRow.SizeSortRank(v.Size))
+            .ThenBy(v => v.Size, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+        var total = variants.Count > 0
+            ? variants.Sum(v => Math.Max(0, v.StockQuantity))
+            : Math.Max(0, product.Stock);
+
+        return new InventoryRow
+        {
+            ProductId = product.Id,
+            Name = product.Name,
+            Sku = product.Sku,
+            Category = product.Category,
+            ImageUrl = product.ImageUrl,
+            TotalStock = total,
+            LowStockLevel = _lowStockLevels.GetValueOrDefault(product.Id, _settings.LowStockThreshold),
+            Variants = variants
+        };
+    }
 }

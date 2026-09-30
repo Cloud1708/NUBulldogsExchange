@@ -33,6 +33,7 @@ public interface IAppDatabase
     Task<List<ProductVariant>> GetProductVariantsAsync(int productId);
     Task<List<ProductVariant>> GetProductVariantsByProductIdsAsync(IEnumerable<int> productIds);
     Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants);
+    Task UpdateProductVariantStockAsync(int productId, int variantId, int stockQuantity);
 
     // Categories
     Task<List<AdminCategory>> GetCategoriesAsync();
@@ -52,6 +53,10 @@ public interface IAppDatabase
     Task<AdminOrder> PersistCheckoutPaymentAsync(string orderId, string paymentMethod, string paymentStatus);
     Task AppendOrderStatusHistoryAsync(string orderId, string? oldStatus, string newStatus, string? notes, string? changedBy);
     Task<List<OrderStatusHistoryEntry>> GetOrderStatusHistoryAsync(string orderId);
+
+    // Product price history
+    Task<List<ProductPriceHistoryEntry>> GetProductPriceHistoryAsync(int? productId = null);
+    Task AddProductPriceHistoryAsync(ProductPriceHistoryEntry entry);
 
     // Saved delivery addresses (public.user_addresses)
     Task<List<UserAddress>> GetUserAddressesAsync(Guid userId);

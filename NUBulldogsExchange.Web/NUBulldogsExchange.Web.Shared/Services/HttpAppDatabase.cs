@@ -63,6 +63,24 @@ public sealed class HttpAppDatabase : IAppDatabase
         response.EnsureSuccessStatusCode();
     }
 
+    public async Task UpdateProductVariantStockAsync(int productId, int variantId, int stockQuantity)
+    {
+        var response = await _http.PutAsJsonAsync(
+            $"api/products/{productId}/variants/{variantId}/stock",
+            new { stockQuantity = Math.Max(0, stockQuantity) });
+        if (response.IsSuccessStatusCode)
+            return;
+
+        // Fallback for hosts without a dedicated stock endpoint.
+        var variants = await GetProductVariantsAsync(productId);
+        var target = variants.FirstOrDefault(v => v.Id == variantId);
+        if (target is null)
+            throw new InvalidOperationException("Variant not found.");
+
+        target.StockQuantity = Math.Max(0, stockQuantity);
+        await ReplaceProductVariantsAsync(productId, variants);
+    }
+
     public async Task<List<ProductReview>> GetProductReviewsAsync(int productId) =>
         await _http.GetFromJsonAsync<List<ProductReview>>($"api/products/{productId}/reviews") ?? [];
 
@@ -523,6 +541,18 @@ public sealed class HttpAppDatabase : IAppDatabase
     public async Task AddInventoryHistoryAsync(InventoryHistoryEntry entry)
     {
         var response = await _http.PostAsJsonAsync("api/inventory/history", entry);
+        response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<List<ProductPriceHistoryEntry>> GetProductPriceHistoryAsync(int? productId = null)
+    {
+        var qs = productId is int id && id > 0 ? $"?productId={id}" : string.Empty;
+        return await _http.GetFromJsonAsync<List<ProductPriceHistoryEntry>>($"api/products/price-history{qs}") ?? [];
+    }
+
+    public async Task AddProductPriceHistoryAsync(ProductPriceHistoryEntry entry)
+    {
+        var response = await _http.PostAsJsonAsync("api/products/price-history", entry);
         response.EnsureSuccessStatusCode();
     }
 

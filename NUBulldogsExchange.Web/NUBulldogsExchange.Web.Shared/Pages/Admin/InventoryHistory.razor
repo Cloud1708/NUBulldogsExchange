@@ -31,33 +31,33 @@
         {
             <div class="admin-inventory-table-wrap">
                 <table class="admin-inventory-table">
-                    <thead>
-                        <tr>
-                            <th>Date</th>
-                            <th>Product</th>
-                            <th>Type</th>
-                            <th>Quantity</th>
-                            <th>Previous</th>
-                            <th>New</th>
-                            <th>Reason</th>
-                            <th>Admin</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var entry in InventoryService.History)
-                        {
+                        <thead>
                             <tr>
-                                <td>@entry.Date.ToString("yyyy-MM-dd HH:mm")</td>
-                                <td><strong>@entry.ProductName</strong></td>
-                                <td>@entry.Type</td>
-                                <td><strong>@entry.QuantityLabel</strong></td>
-                                <td>@entry.PreviousStock</td>
-                                <td>@entry.NewStock</td>
-                                <td>@entry.Reason</td>
-                                <td>@entry.AdminName</td>
+                                <th>Date</th>
+                                <th>Product</th>
+                                <th>Variant</th>
+                                <th>Previous</th>
+                                <th>New</th>
+                                <th>Change</th>
+                                <th>Reason</th>
+                                <th>Admin</th>
                             </tr>
-                        }
-                    </tbody>
+                        </thead>
+                        <tbody>
+                            @foreach (var entry in InventoryService.History)
+                            {
+                                <tr>
+                                    <td>@entry.Date.ToString("MMM d, yyyy h:mm tt")</td>
+                                    <td><strong>@entry.ProductName</strong></td>
+                                    <td>@(string.IsNullOrWhiteSpace(entry.VariantLabel) ? "—" : entry.VariantLabel)</td>
+                                    <td>@entry.PreviousStock</td>
+                                    <td>@entry.NewStock</td>
+                                    <td><strong>@entry.ChangeLabel</strong></td>
+                                    <td>@entry.Reason</td>
+                                    <td>@entry.AdminName</td>
+                                </tr>
+                            }
+                        </tbody>
                 </table>
             </div>
         }

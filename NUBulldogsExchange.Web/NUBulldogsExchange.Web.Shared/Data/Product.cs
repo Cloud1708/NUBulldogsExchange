@@ -215,4 +215,7 @@ public class CartItem
             return Math.Max(0, Product.Stock);
         }
     }
+
+    /// <summary>Unit price for the selected variant (or product price when no variant).</summary>
+    public decimal UnitPrice => ProductVariantLogic.ResolveCartItemPrice(this);
 }

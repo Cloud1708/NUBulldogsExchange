@@ -99,14 +99,18 @@ else
                     </div>
 
                     <div class="detail-price pdp-price">
-                        @if (_product.OriginalPrice is decimal original)
+                        @if (_product.OriginalPrice is decimal original && original > DisplayPrice)
                         {
                             <s>₱@original.ToString("N0")</s>
-                            <strong>₱@_product.Price.ToString("N0")</strong>
+                            <strong>₱@DisplayPrice.ToString("N0")</strong>
+                        }
+                        else if (ShowFromPrice)
+                        {
+                            <strong>From ₱@DisplayPrice.ToString("N0")</strong>
                         }
                         else
                         {
-                            <strong>₱@_product.Price.ToString("N0")</strong>
+                            <strong>₱@DisplayPrice.ToString("N0")</strong>
                         }
                     </div>
 
@@ -460,6 +464,26 @@ else
 
     private bool HasSizes =>
         _product?.Variants.Any(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size)) == true;
+
+    private bool HasVariablePricing =>
+        _product is not null && ProductVariantLogic.HasVariablePricing(_product.Variants);
+
+    private decimal DisplayPrice
+    {
+        get
+        {
+            if (_product is null) return 0;
+            var selected = ResolveSelectedVariant();
+            if (selected is not null)
+                return ProductVariantLogic.ResolvePrice(_product, selected);
+            if (HasVariablePricing)
+                return ProductVariantLogic.MinActivePrice(_product.Price, _product.Variants);
+            return _product.Price;
+        }
+    }
+
+    private bool ShowFromPrice =>
+        HasVariablePricing && ResolveSelectedVariant() is null;
 
     private IEnumerable<string> VisibleColors =>
         _product is null

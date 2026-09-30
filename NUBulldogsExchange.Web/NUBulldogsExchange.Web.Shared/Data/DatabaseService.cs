@@ -375,6 +375,55 @@ public sealed partial class DatabaseService : IAppDatabase
         await tx.CommitAsync();
     }
 
+    public async Task UpdateProductVariantStockAsync(int productId, int variantId, int stockQuantity)
+    {
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
+
+        var now = DateTime.UtcNow.ToString("O");
+        await using (var update = connection.CreateCommand())
+        {
+            update.Transaction = tx;
+            update.CommandText = """
+                UPDATE ProductVariants
+                SET StockQuantity = $stock, UpdatedAt = $updatedAt
+                WHERE Id = $id AND ProductId = $productId;
+                """;
+            update.Parameters.AddWithValue("$stock", Math.Max(0, stockQuantity));
+            update.Parameters.AddWithValue("$updatedAt", now);
+            update.Parameters.AddWithValue("$id", variantId);
+            update.Parameters.AddWithValue("$productId", productId);
+            await update.ExecuteNonQueryAsync();
+        }
+
+        int total;
+        await using (var sum = connection.CreateCommand())
+        {
+            sum.Transaction = tx;
+            sum.CommandText = "SELECT COALESCE(SUM(StockQuantity), 0) FROM ProductVariants WHERE ProductId = $productId;";
+            sum.Parameters.AddWithValue("$productId", productId);
+            total = Convert.ToInt32(await sum.ExecuteScalarAsync());
+        }
+
+        await using (var product = connection.CreateCommand())
+        {
+            product.Transaction = tx;
+            product.CommandText = """
+                UPDATE Products
+                SET Stock = $stock, InStock = $inStock, UpdatedAt = $updatedAt
+                WHERE Id = $productId;
+                """;
+            product.Parameters.AddWithValue("$stock", total);
+            product.Parameters.AddWithValue("$inStock", total > 0 ? 1 : 0);
+            product.Parameters.AddWithValue("$updatedAt", now);
+            product.Parameters.AddWithValue("$productId", productId);
+            await product.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+    }
+
     private static async Task<List<ProductVariant>> LoadProductVariantsAsync(SqliteConnection connection, int productId)
     {
         var list = new List<ProductVariant>();
@@ -2030,6 +2079,79 @@ public sealed partial class DatabaseService : IAppDatabase
         await command.ExecuteNonQueryAsync();
     }
 
+    public async Task<List<ProductPriceHistoryEntry>> GetProductPriceHistoryAsync(int? productId = null)
+    {
+        await EnsureReadyAsync();
+        var list = new List<ProductPriceHistoryEntry>();
+        await using var connection = await OpenAsync();
+        await using var command = connection.CreateCommand();
+        if (productId is int id && id > 0)
+        {
+            command.CommandText = """
+                SELECT * FROM ProductPriceHistory
+                WHERE ProductId = $productId
+                ORDER BY CreatedAt DESC;
+                """;
+            command.Parameters.AddWithValue("$productId", id);
+        }
+        else
+        {
+            command.CommandText = "SELECT * FROM ProductPriceHistory ORDER BY CreatedAt DESC;";
+        }
+
+        await using var reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+        {
+            list.Add(new ProductPriceHistoryEntry
+            {
+                Id = Guid.TryParse(reader.GetString(reader.GetOrdinal("Id")), out var guid) ? guid : Guid.NewGuid(),
+                ProductId = reader.GetInt32(reader.GetOrdinal("ProductId")),
+                VariantId = reader.IsDBNull(reader.GetOrdinal("VariantId"))
+                    ? null
+                    : reader.GetInt64(reader.GetOrdinal("VariantId")),
+                PreviousPrice = Convert.ToDecimal(reader.GetDouble(reader.GetOrdinal("PreviousPrice"))),
+                NewPrice = Convert.ToDecimal(reader.GetDouble(reader.GetOrdinal("NewPrice"))),
+                PromoPrice = reader.IsDBNull(reader.GetOrdinal("PromoPrice"))
+                    ? null
+                    : Convert.ToDecimal(reader.GetDouble(reader.GetOrdinal("PromoPrice"))),
+                Reason = reader.GetString(reader.GetOrdinal("Reason")),
+                Notes = reader.GetString(reader.GetOrdinal("Notes")),
+                UpdatedBy = reader.GetString(reader.GetOrdinal("UpdatedBy")),
+                CreatedAt = DateTime.Parse(reader.GetString(reader.GetOrdinal("CreatedAt")))
+            });
+        }
+
+        return list;
+    }
+
+    public async Task AddProductPriceHistoryAsync(ProductPriceHistoryEntry entry)
+    {
+        await EnsureReadyAsync();
+        if (entry.Id == Guid.Empty)
+            entry.Id = Guid.NewGuid();
+
+        await using var connection = await OpenAsync();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            INSERT INTO ProductPriceHistory (
+                Id, ProductId, VariantId, PreviousPrice, NewPrice, PromoPrice, Reason, Notes, UpdatedBy, CreatedAt
+            ) VALUES (
+                $id, $productId, $variantId, $previous, $newPrice, $promo, $reason, $notes, $updatedBy, $createdAt
+            );
+            """;
+        command.Parameters.AddWithValue("$id", entry.Id.ToString("D"));
+        command.Parameters.AddWithValue("$productId", entry.ProductId);
+        command.Parameters.AddWithValue("$variantId", (object?)entry.VariantId ?? DBNull.Value);
+        command.Parameters.AddWithValue("$previous", entry.PreviousPrice);
+        command.Parameters.AddWithValue("$newPrice", entry.NewPrice);
+        command.Parameters.AddWithValue("$promo", (object?)entry.PromoPrice ?? DBNull.Value);
+        command.Parameters.AddWithValue("$reason", entry.Reason);
+        command.Parameters.AddWithValue("$notes", entry.Notes ?? string.Empty);
+        command.Parameters.AddWithValue("$updatedBy", entry.UpdatedBy);
+        command.Parameters.AddWithValue("$createdAt", entry.CreatedAt.ToString("O"));
+        await command.ExecuteNonQueryAsync();
+    }
+
     public async Task<Dictionary<int, int>> GetReservedStockAsync()
     {
         await EnsureReadyAsync();
@@ -3553,6 +3675,19 @@ public sealed partial class DatabaseService : IAppDatabase
             Notes TEXT NOT NULL DEFAULT '',
             Date TEXT NOT NULL,
             AdminName TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS ProductPriceHistory (
+            Id TEXT PRIMARY KEY,
+            ProductId INTEGER NOT NULL,
+            VariantId INTEGER NULL,
+            PreviousPrice REAL NOT NULL,
+            NewPrice REAL NOT NULL,
+            PromoPrice REAL NULL,
+            Reason TEXT NOT NULL,
+            Notes TEXT NOT NULL DEFAULT '',
+            UpdatedBy TEXT NOT NULL,
+            CreatedAt TEXT NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS InventoryMeta (

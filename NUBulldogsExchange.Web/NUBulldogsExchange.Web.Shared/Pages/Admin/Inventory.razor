@@ -58,12 +58,11 @@
             <table class="admin-inventory-table">
                 <thead>
                     <tr>
-                        <th>Product</th>
+                        <th class="col-product">Product</th>
                         <th>SKU</th>
                         <th>Category</th>
-                        <th>Available</th>
-                        <th>Reserved</th>
-                        <th>Low Stock Level</th>
+                        <th>Total Stock</th>
+                        <th>Stock Alerts</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -71,42 +70,53 @@
                 <tbody>
                     @foreach (var row in InventoryService.Rows)
                     {
-                        <tr>
+                        var expanded = _expandedProductId == row.ProductId;
+                        <tr class="@(expanded ? "is-expanded" : "")">
                             <td>
                                 <div class="admin-inventory-product">
+                                    @if (row.HasVariants)
+                                    {
+                                        <button type="button"
+                                                class="admin-inventory-expand"
+                                                aria-expanded="@expanded"
+                                                aria-label="@(expanded ? "Collapse variants" : "Expand variants")"
+                                                @onclick="() => ToggleExpand(row.ProductId)">
+                                            @(expanded ? "▾" : "▸")
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <span class="admin-inventory-expand-spacer" aria-hidden="true"></span>
+                                    }
                                     <img src="@row.ImageUrl"
                                          alt="@row.Name"
                                          loading="lazy"
                                          onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                     <div>
                                         <strong title="@row.Name">@row.Name</strong>
-                                        @if (row.HasVariants)
-                                        {
-                                            <div class="admin-inventory-variants">
-                                                <small>Total: @row.Available</small>
-                                                @foreach (var colorGroup in row.Variants.GroupBy(v => string.IsNullOrWhiteSpace(v.ColorName) ? string.Empty : v.ColorName!, StringComparer.OrdinalIgnoreCase))
-                                                {
-                                                    @if (!string.IsNullOrWhiteSpace(colorGroup.Key))
-                                                    {
-                                                        <small>@colorGroup.Key</small>
-                                                    }
-                                                    @foreach (var variant in colorGroup)
-                                                    {
-                                                        <small>@(string.IsNullOrWhiteSpace(variant.Size) ? "Stock" : variant.Size) @variant.StockQuantity</small>
-                                                    }
-                                                }
-                                            </div>
-                                        }
                                     </div>
                                 </div>
                             </td>
                             <td><code>@row.Sku</code></td>
                             <td>@row.Category</td>
                             <td>
-                                <strong class="@(row.IsLowOrOut ? "is-warning" : "")">@row.Available</strong>
+                                <strong class="@(row.IsLowOrOut ? "is-warning" : "")">@row.TotalStock</strong>
                             </td>
-                            <td>@row.Reserved</td>
-                            <td>@row.LowStockLevel</td>
+                            <td>
+                                @if (!row.HasStockAlerts)
+                                {
+                                    <span class="admin-inventory-alert-none">None</span>
+                                }
+                                else
+                                {
+                                    <div class="admin-inventory-alerts">
+                                        @foreach (var alert in row.StockAlertLines)
+                                        {
+                                            <span class="@(alert.Contains("Out", StringComparison.OrdinalIgnoreCase) ? "is-out" : "is-low")">@alert</span>
+                                        }
+                                    </div>
+                                }
+                            </td>
                             <td>
                                 <span class="admin-stock-badge stock-@row.StockStateKey">@row.StockState</span>
                             </td>
@@ -126,6 +136,148 @@
                                 </div>
                             </td>
                         </tr>
+
+                        @if (row.HasVariants && expanded)
+                        {
+                            <tr class="admin-inventory-variant-row">
+                                <td colspan="7">
+                                    <div class="admin-inventory-variant-panel">
+                                        <div class="admin-inventory-variant-title">Variant Stock (@row.VariantMode)</div>
+
+                                        @if (row.HasColors && row.HasSizes)
+                                        {
+                                            @foreach (var colorGroup in row.Variants.GroupBy(v => v.ColorName?.Trim() ?? "—", StringComparer.OrdinalIgnoreCase))
+                                            {
+                                                var subtotal = colorGroup.Sum(v => Math.Max(0, v.StockQuantity));
+                                                var hex = ProductVariantLogic.ColorHex(row.Variants, colorGroup.Key);
+                                                <div class="admin-inventory-color-group">
+                                                    <div class="admin-inventory-color-heading">
+                                                        <span class="admin-inventory-swatch" style="background:@hex"></span>
+                                                        COLOR: @colorGroup.Key.ToUpperInvariant()
+                                                    </div>
+                                                    <table class="admin-inventory-variant-table">
+                                                        <thead>
+                                                            <tr>
+                                                                <th>Size</th>
+                                                                <th>Stock</th>
+                                                                <th>Low Stock Level</th>
+                                                                <th>Status</th>
+                                                                <th>Actions</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
+                                                            @foreach (var variant in colorGroup)
+                                                            {
+                                                                <tr>
+                                                                    <td>@(string.IsNullOrWhiteSpace(variant.Size) ? "—" : variant.Size)</td>
+                                                                    <td><strong>@variant.StockQuantity</strong></td>
+                                                                    <td>@row.LowStockLevel</td>
+                                                                    <td>
+                                                                        <span class="admin-stock-badge stock-@InventoryRow.VariantStatusKey(variant.StockQuantity, row.LowStockLevel)">
+                                                                            @InventoryRow.VariantStatus(variant.StockQuantity, row.LowStockLevel)
+                                                                        </span>
+                                                                    </td>
+                                                                    <td>
+                                                                        <button type="button"
+                                                                                class="btn btn-outline-navy admin-variant-adjust-btn"
+                                                                                @onclick="() => OpenAdjust(row, variant.Id)">
+                                                                            Adjust
+                                                                        </button>
+                                                                    </td>
+                                                                </tr>
+                                                            }
+                                                        </tbody>
+                                                    </table>
+                                                    <div class="admin-inventory-subtotal">Subtotal: @subtotal</div>
+                                                </div>
+                                            }
+                                            <div class="admin-inventory-variant-total">TOTAL PRODUCT STOCK: @row.TotalStock</div>
+                                        }
+                                        else if (row.HasColors)
+                                        {
+                                            <table class="admin-inventory-variant-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Color</th>
+                                                        <th>Stock</th>
+                                                        <th>Low Stock Level</th>
+                                                        <th>Status</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var variant in row.Variants)
+                                                    {
+                                                        var hex = ProductVariantLogic.NormalizeHex(variant.ColorHex)
+                                                                  ?? ProductVariantLogic.DefaultHex(variant.ColorName);
+                                                        <tr>
+                                                            <td>
+                                                                <span class="admin-inventory-color-cell">
+                                                                    <span class="admin-inventory-swatch" style="background:@hex"></span>
+                                                                    @(variant.ColorName ?? "—")
+                                                                </span>
+                                                            </td>
+                                                            <td><strong>@variant.StockQuantity</strong></td>
+                                                            <td>@row.LowStockLevel</td>
+                                                            <td>
+                                                                <span class="admin-stock-badge stock-@InventoryRow.VariantStatusKey(variant.StockQuantity, row.LowStockLevel)">
+                                                                    @InventoryRow.VariantStatus(variant.StockQuantity, row.LowStockLevel)
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <button type="button"
+                                                                        class="btn btn-outline-navy admin-variant-adjust-btn"
+                                                                        @onclick="() => OpenAdjust(row, variant.Id)">
+                                                                    Adjust
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                            <div class="admin-inventory-variant-total">Total @row.TotalStock</div>
+                                        }
+                                        else
+                                        {
+                                            <table class="admin-inventory-variant-table">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Size</th>
+                                                        <th>Stock</th>
+                                                        <th>Low Stock Level</th>
+                                                        <th>Status</th>
+                                                        <th>Actions</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var variant in row.Variants)
+                                                    {
+                                                        <tr>
+                                                            <td>@(string.IsNullOrWhiteSpace(variant.Size) ? "—" : variant.Size)</td>
+                                                            <td><strong>@variant.StockQuantity</strong></td>
+                                                            <td>@row.LowStockLevel</td>
+                                                            <td>
+                                                                <span class="admin-stock-badge stock-@InventoryRow.VariantStatusKey(variant.StockQuantity, row.LowStockLevel)">
+                                                                    @InventoryRow.VariantStatus(variant.StockQuantity, row.LowStockLevel)
+                                                                </span>
+                                                            </td>
+                                                            <td>
+                                                                <button type="button"
+                                                                        class="btn btn-outline-navy admin-variant-adjust-btn"
+                                                                        @onclick="() => OpenAdjust(row, variant.Id)">
+                                                                    Adjust
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                            <div class="admin-inventory-variant-total">Total @row.TotalStock</div>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
                     }
                 </tbody>
             </table>
@@ -135,13 +287,28 @@
 
 @if (_adjustRow is not null)
 {
+    var currentStock = CurrentAdjustStock;
     <div class="admin-modal-backdrop" @onclick="CloseAdjust">
         <div class="admin-modal admin-inventory-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>Adjust Stock</h2>
-            <p class="admin-inventory-modal-product">@_adjustRow.Name</p>
-            <p class="admin-modal-note">Current Available Stock: <strong>@_adjustRow.Available</strong></p>
+            <h2>Adjust Stock — @_adjustRow.Name</h2>
 
             <form class="admin-category-form" @onsubmit="SaveAdjust" @onsubmit:preventDefault="true">
+                @if (_adjustRow.HasVariants)
+                {
+                    <label class="admin-field">
+                        <span>Variant</span>
+                        <select @bind="_selectedVariantId" @bind:after="OnVariantChanged">
+                            <option value="0">Select variant…</option>
+                            @foreach (var variant in _adjustRow.Variants)
+                            {
+                                <option value="@variant.Id">@InventoryRow.FormatVariantLabel(variant)</option>
+                            }
+                        </select>
+                    </label>
+                }
+
+                <p class="admin-modal-note">Current Stock: <strong>@currentStock</strong></p>
+
                 <label class="admin-field">
                     <span>Adjustment Type</span>
                     <select @bind="_adjustType">
@@ -203,9 +370,17 @@
                     @foreach (var entry in entries)
                     {
                         <article class="admin-inventory-history-item">
-                            <strong>@entry.DateLabel</strong>
-                            <span>@entry.Reason · @entry.Type @entry.QuantityLabel</span>
-                            <span>@entry.PreviousStock → @entry.NewStock</span>
+                            <strong>@entry.DateTimeLabel</strong>
+                            @if (!string.IsNullOrWhiteSpace(entry.VariantLabel))
+                            {
+                                <span>Variant: @entry.VariantLabel</span>
+                            }
+                            <span>@entry.PreviousStock → @entry.NewStock (@entry.ChangeLabel)</span>
+                            <span>@entry.Reason · @entry.Type</span>
+                            @if (!string.IsNullOrWhiteSpace(entry.Reference))
+                            {
+                                <span>Ref: @entry.Reference</span>
+                            }
                             <span class="muted">@entry.AdminName</span>
                         </article>
                     }
@@ -221,11 +396,24 @@
 @code {
     private InventoryRow? _adjustRow;
     private InventoryRow? _historyRow;
+    private int? _expandedProductId;
+    private int _selectedVariantId;
     private string _adjustType = "Add Stock";
     private int _quantity;
     private string _reason = "Restock";
     private string _notes = string.Empty;
     private string? _quantityError;
+
+    private int CurrentAdjustStock
+    {
+        get
+        {
+            if (_adjustRow is null) return 0;
+            if (!_adjustRow.HasVariants) return _adjustRow.TotalStock;
+            var variant = _adjustRow.Variants.FirstOrDefault(v => v.Id == _selectedVariantId);
+            return variant?.StockQuantity ?? 0;
+        }
+    }
 
     protected override void OnInitialized()
     {
@@ -234,9 +422,13 @@
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
-    private void OpenAdjust(InventoryRow row)
+    private void ToggleExpand(int productId) =>
+        _expandedProductId = _expandedProductId == productId ? null : productId;
+
+    private void OpenAdjust(InventoryRow row, int? variantId = null)
     {
         _adjustRow = row;
+        _selectedVariantId = variantId ?? (row.HasVariants && row.Variants.Count == 1 ? row.Variants[0].Id : 0);
         _adjustType = "Add Stock";
         _quantity = 0;
         _reason = "Restock";
@@ -244,9 +436,12 @@
         _quantityError = null;
     }
 
+    private void OnVariantChanged() => _quantityError = null;
+
     private void CloseAdjust()
     {
         _adjustRow = null;
+        _selectedVariantId = 0;
         _quantityError = null;
     }
 
@@ -255,13 +450,21 @@
         if (_adjustRow is null) return;
         _quantityError = null;
 
+        int? variantId = _adjustRow.HasVariants ? _selectedVariantId : null;
+        if (_adjustRow.HasVariants && (_selectedVariantId <= 0))
+        {
+            _quantityError = "Select a variant to adjust.";
+            return;
+        }
+
         var (success, message) = await InventoryService.AdjustAsync(
             _adjustRow.ProductId,
             _adjustType,
             _quantity,
             _reason,
             _notes,
-            Auth.DisplayName);
+            Auth.DisplayName,
+            variantId);
 
         if (!success)
         {
@@ -270,7 +473,10 @@
         }
 
         Toast.Show(message);
+        // Keep expanded product if still viewing variants.
+        var keepExpanded = _expandedProductId;
         CloseAdjust();
+        _expandedProductId = keepExpanded;
     }
 
     private void OpenProductHistory(InventoryRow row) => _historyRow = row;

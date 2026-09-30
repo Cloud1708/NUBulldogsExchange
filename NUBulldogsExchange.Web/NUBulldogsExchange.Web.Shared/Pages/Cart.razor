@@ -57,7 +57,7 @@ else
                     {
                         var selected = _selected.Contains(item.Key);
                         var maxStock = item.AvailableStock;
-                        var lineTotal = item.Product.Price * item.Quantity;
+                        var lineTotal = item.UnitPrice * item.Quantity;
 
                         <article class="cart-item @(selected ? "selected" : "")">
                             <label class="cart-item-check">
@@ -92,7 +92,7 @@ else
                                             }
                                         </p>
                                     </div>
-                                    <strong class="cart-item-price">₱@item.Product.Price.ToString("N0")</strong>
+                                    <strong class="cart-item-price">₱@item.UnitPrice.ToString("N0")</strong>
                                 </div>
 
                                 <div class="qty-controls cart-item-qty">
@@ -216,7 +216,7 @@ else
         CartService.Items.Count > 0 && CartService.Items.All(i => _selected.Contains(i.Key));
 
     private decimal SelectedSubtotal =>
-        SelectedItems.Sum(i => i.Product.Price * i.Quantity);
+        SelectedItems.Sum(i => i.UnitPrice * i.Quantity);
 
     private decimal Discount => _promoApplied ? _discount : 0;
 
@@ -323,7 +323,7 @@ else
             {
                 ProductId = i.Product.Id,
                 Quantity = i.Quantity,
-                UnitPrice = i.Product.Price,
+                UnitPrice = i.UnitPrice,
                 Category = i.Product.Category
             });
 
@@ -379,7 +379,7 @@ else
             {
                 ProductId = i.Product.Id,
                 Quantity = i.Quantity,
-                UnitPrice = i.Product.Price,
+                UnitPrice = i.UnitPrice,
                 Category = i.Product.Category
             });
 

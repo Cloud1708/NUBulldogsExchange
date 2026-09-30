@@ -237,7 +237,7 @@ public class AdminProductService
         existing.Name = product.Name.Trim();
         existing.Sku = product.Sku.Trim();
         existing.Category = product.Category.Trim();
-        existing.Price = product.Price;
+        // Price changes go through AdjustPriceAsync — preserve current pricing on edit.
         existing.Stock = product.Stock;
         existing.Sold = product.Sold;
         existing.Status = product.Status;
@@ -346,6 +346,9 @@ public class AdminProductService
     {
         var product = GetById(id);
         if (product is null) return false;
+        if (product.HasVariants)
+            return false;
+
         product.Stock = Math.Max(0, stock);
         await PersistAsync(product);
 
@@ -360,6 +363,195 @@ public class AdminProductService
         OnChange?.Invoke();
         return true;
     }
+
+    public async Task<bool> SetVariantStockAsync(int productId, int variantId, int stock)
+    {
+        var product = GetById(productId);
+        if (product is null) return false;
+
+        var variant = product.Variants.FirstOrDefault(v => v.Id == variantId);
+        if (variant is null) return false;
+
+        var next = Math.Max(0, stock);
+        await _db.UpdateProductVariantStockAsync(productId, variantId, next);
+
+        variant.StockQuantity = next;
+        product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+        await PersistAsync(product);
+
+        try
+        {
+            product.Variants = await _db.GetProductVariantsAsync(productId);
+            if (product.HasVariants)
+                product.Stock = product.Variants.Sum(v => Math.Max(0, v.StockQuantity));
+        }
+        catch
+        {
+            // Keep in-memory values if reload fails.
+        }
+
+        SyncStorefront(product);
+        OnChange?.Invoke();
+        return true;
+    }
+
+    public static readonly string[] PriceAdjustmentReasons =
+    [
+        "Price Update",
+        "Supplier Cost Change",
+        "Seasonal Adjustment",
+        "Promo Adjustment",
+        "Inventory Clearance",
+        "Correction",
+        "Other"
+    ];
+
+    /// <summary>
+    /// Updates product and/or variant pricing.
+    /// Same-price products: updates products.price and clears price_adjustment.
+    /// Different-price / specific variant: sets that variant's price_adjustment
+    /// so effective price = products.price + price_adjustment.
+    /// </summary>
+    public async Task<(bool Success, string Message)> AdjustPriceAsync(
+        int productId,
+        decimal newPrice,
+        decimal? promoPrice,
+        DateTime effectiveDate,
+        string reason,
+        string? notes,
+        string adminName,
+        int? variantId = null,
+        bool applyToAllVariants = true)
+    {
+        var product = GetById(productId);
+        if (product is null)
+            return (false, "Product not found.");
+
+        if (newPrice <= 0)
+            return (false, "New price must be greater than 0.");
+
+        if (promoPrice is decimal promo)
+        {
+            if (promo <= 0)
+                return (false, "Promo price must be greater than 0.");
+            if (promo >= newPrice)
+                return (false, "Promo price must be less than the new price.");
+        }
+
+        if (string.IsNullOrWhiteSpace(reason))
+            return (false, "Select a reason.");
+
+        if (effectiveDate.Date > DateTime.Today)
+            return (false, "Scheduled future pricing is not supported yet. Use today's date to apply immediately.");
+
+        if (effectiveDate.Date < DateTime.Today.AddDays(-1))
+            return (false, "Effective date cannot be more than one day in the past.");
+
+        ProductVariant? targetVariant = null;
+        if (product.HasVariants && !applyToAllVariants)
+        {
+            if (variantId is not int vid || vid <= 0)
+                return (false, "Select a variant.");
+
+            targetVariant = product.Variants.FirstOrDefault(v => v.Id == vid);
+            if (targetVariant is null)
+                return (false, "Selected variant was not found.");
+        }
+
+        var salePrice = promoPrice is decimal p
+            ? decimal.Round(p, 2, MidpointRounding.AwayFromZero)
+            : decimal.Round(newPrice, 2, MidpointRounding.AwayFromZero);
+        var listPrice = promoPrice is decimal
+            ? decimal.Round(newPrice, 2, MidpointRounding.AwayFromZero)
+            : (decimal?)null;
+
+        var previousPrice = targetVariant is not null
+            ? ProductVariantLogic.ResolvePrice(product.Price, targetVariant)
+            : product.Price;
+        var previousOriginal = product.OriginalPrice;
+        var previousAdjustments = product.Variants
+            .Select(v => (v.Id, v.PriceAdjustment))
+            .ToDictionary(x => x.Id, x => x.PriceAdjustment);
+
+        try
+        {
+            if (targetVariant is not null)
+            {
+                // Specific variant: keep products.price as base; store delta on the variant.
+                ProductVariantLogic.SetAbsolutePrice(targetVariant, product.Price, salePrice);
+                if (listPrice is decimal compareAt)
+                    product.OriginalPrice = compareAt;
+                else if (promoPrice is null)
+                    product.OriginalPrice = null;
+            }
+            else
+            {
+                // Product / all variants: shared products.price, clear deltas.
+                product.Price = salePrice;
+                product.OriginalPrice = listPrice;
+                ProductVariantLogic.ApplySamePriceMode(product.Variants);
+            }
+
+            await PersistAsync(product);
+            if (product.HasVariants)
+                await _db.ReplaceProductVariantsAsync(product.Id, product.Variants);
+            SyncStorefront(product);
+
+            var entry = new ProductPriceHistoryEntry
+            {
+                ProductId = product.Id,
+                VariantId = targetVariant?.Id,
+                PreviousPrice = previousPrice,
+                NewPrice = decimal.Round(newPrice, 2, MidpointRounding.AwayFromZero),
+                PromoPrice = promoPrice is decimal pp
+                    ? decimal.Round(pp, 2, MidpointRounding.AwayFromZero)
+                    : null,
+                Reason = reason.Trim(),
+                Notes = notes?.Trim() ?? string.Empty,
+                UpdatedBy = string.IsNullOrWhiteSpace(adminName) ? "Admin" : adminName.Trim(),
+                CreatedAt = DateTime.UtcNow,
+                VariantLabel = targetVariant is not null
+                    ? InventoryRow.FormatVariantLabel(targetVariant)
+                    : product.HasVariants ? "All Variants" : "—"
+            };
+
+            if (previousOriginal is decimal oldOrig)
+                entry.Notes = string.IsNullOrWhiteSpace(entry.Notes)
+                    ? $"Previous compare-at: ₱{oldOrig:N2}"
+                    : $"{entry.Notes}\nPrevious compare-at: ₱{oldOrig:N2}";
+
+            try
+            {
+                await _db.AddProductPriceHistoryAsync(entry);
+            }
+            catch
+            {
+                // Price already saved. History requires docs/sql/019_product_price_history.sql.
+            }
+
+            OnChange?.Invoke();
+            return (true, "Price updated successfully.");
+        }
+        catch (Exception ex)
+        {
+            product.Price = targetVariant is null
+                ? previousPrice
+                : product.Price;
+            product.OriginalPrice = previousOriginal;
+            foreach (var variant in product.Variants)
+            {
+                if (previousAdjustments.TryGetValue(variant.Id, out var adj))
+                    variant.PriceAdjustment = adj;
+            }
+
+            return (false, string.IsNullOrWhiteSpace(ex.Message)
+                ? "Unable to update price."
+                : ex.Message);
+        }
+    }
+
+    public Task<List<ProductPriceHistoryEntry>> GetPriceHistoryAsync(int productId) =>
+        _db.GetProductPriceHistoryAsync(productId);
 
     public void NotifyChanged() => OnChange?.Invoke();
 
@@ -426,6 +618,7 @@ public class AdminProductService
         target.Category = product.Category;
         target.Sku = product.Sku;
         target.Price = product.Price;
+        target.OriginalPrice = product.OriginalPrice;
         target.Stock = product.Stock;
         target.Sold = product.Sold;
         target.InStock = product.Stock > 0;
@@ -462,7 +655,7 @@ public class AdminProductService
                 v.Sku = string.IsNullOrWhiteSpace(v.Sku) ? null : v.Sku.Trim().ToUpperInvariant();
                 v.StockQuantity = Math.Max(0, v.StockQuantity);
                 v.Status = string.IsNullOrWhiteSpace(v.Status) ? "Active" : v.Status.Trim();
-                v.PriceAdjustment = 0;
+                // Preserve price_adjustment so same-price (0) and different-price deltas both work.
                 return v;
             })
             .ToList();
@@ -490,6 +683,7 @@ public class AdminProductService
         Category = product.Category,
         Sku = product.Sku,
         Price = product.Price,
+        OriginalPrice = product.OriginalPrice,
         Stock = product.Stock,
         Sold = product.Sold,
         InStock = product.Stock > 0 && product.IsActive,

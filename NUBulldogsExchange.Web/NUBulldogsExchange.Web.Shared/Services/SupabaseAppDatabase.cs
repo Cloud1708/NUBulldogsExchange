@@ -424,6 +424,44 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             $"rest/v1/product_variants?select=*&product_id=in.({inList})&order=id.asc");
     }
 
+    public async Task UpdateProductVariantStockAsync(int productId, int variantId, int stockQuantity)
+    {
+        var stock = Math.Max(0, stockQuantity);
+        using (var patch = await SendAsync(
+                   HttpMethod.Patch,
+                   $"rest/v1/product_variants?id=eq.{variantId}&product_id=eq.{productId}",
+                   new Dictionary<string, object?>
+                   {
+                       ["stock_quantity"] = stock,
+                       ["updated_at"] = DateTime.UtcNow
+                   }))
+        {
+            await EnsureSuccessAsync(patch);
+        }
+
+        using (var rpc = await SendAsync(
+                   HttpMethod.Post,
+                   "rest/v1/rpc/nube_sync_product_aggregate_stock",
+                   new Dictionary<string, object?> { ["p_product_id"] = productId }))
+        {
+            if (rpc.IsSuccessStatusCode)
+                return;
+        }
+
+        var variants = await GetProductVariantsAsync(productId);
+        var total = variants.Sum(v => Math.Max(0, v.StockQuantity));
+        using var productPatch = await SendAsync(
+            HttpMethod.Patch,
+            $"rest/v1/products?id=eq.{productId}",
+            new Dictionary<string, object?>
+            {
+                ["stock"] = total,
+                ["in_stock"] = total > 0,
+                ["updated_at"] = DateTime.UtcNow
+            });
+        await EnsureSuccessAsync(productPatch);
+    }
+
     public async Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants)
     {
         using (var delete = await SendAsync(
@@ -2206,6 +2244,40 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     // Inventory
     // ========================================================
 
+    public Task<List<ProductPriceHistoryEntry>> GetProductPriceHistoryAsync(int? productId = null)
+    {
+        var url = productId is int id && id > 0
+            ? $"rest/v1/product_price_history?select=*&product_id=eq.{id}&order=created_at.desc"
+            : "rest/v1/product_price_history?select=*&order=created_at.desc";
+        return GetListAsync<ProductPriceHistoryEntry>(url);
+    }
+
+    public async Task AddProductPriceHistoryAsync(ProductPriceHistoryEntry entry)
+    {
+        if (entry.Id == Guid.Empty)
+            entry.Id = Guid.NewGuid();
+
+        var body = new Dictionary<string, object?>
+        {
+            ["id"] = entry.Id,
+            ["product_id"] = entry.ProductId,
+            ["variant_id"] = entry.VariantId,
+            ["previous_price"] = entry.PreviousPrice,
+            ["new_price"] = entry.NewPrice,
+            ["promo_price"] = entry.PromoPrice,
+            ["reason"] = entry.Reason,
+            ["notes"] = entry.Notes ?? string.Empty,
+            ["updated_by"] = entry.UpdatedBy,
+            ["created_at"] = entry.CreatedAt == default ? DateTime.UtcNow : entry.CreatedAt
+        };
+
+        using var response = await SendAsync(
+            HttpMethod.Post,
+            "rest/v1/product_price_history",
+            body);
+        await EnsureSuccessAsync(response);
+    }
+
     public Task<List<InventoryHistoryEntry>> GetInventoryHistoryAsync() =>
         GetListAsync<InventoryHistoryEntry>(
             "rest/v1/inventory_history?select=*&order=date.desc");
@@ -2809,6 +2881,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             ["category"] = p.Category,
             ["sku"] = p.Sku,
             ["price"] = p.Price,
+            ["original_price"] = p.OriginalPrice,
             ["stock"] = Math.Max(0, p.Stock),
             ["sold"] = p.Sold,
             ["description"] = description,

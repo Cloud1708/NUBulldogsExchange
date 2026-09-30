@@ -1,4 +1,5 @@
 @namespace NUBulldogsExchange.Web.Shared.Components.Admin
+@using System.Globalization
 @using NUBulldogsExchange.Web.Shared.Data
 
 <div class="admin-size-variants">
@@ -29,18 +30,195 @@
     }
     else
     {
+        <div class="admin-variant-pricing">
+            <div class="admin-variant-pricing-label">Pricing</div>
+            <label class="admin-price-radio @(!UseDifferentPrices ? "is-selected" : "") @(PriceModeLocked ? "is-locked" : "")">
+                <input type="radio"
+                       name="@_radioGroup"
+                       checked="@(!UseDifferentPrices)"
+                       disabled="@(Disabled || PriceModeLocked)"
+                       @onchange="() => SetPricingMode(false)" />
+                <span>
+                    <strong>Same price for all variants</strong>
+                    <small>All variants will use this price.</small>
+                </span>
+            </label>
+            <label class="admin-price-radio @(UseDifferentPrices ? "is-selected" : "") @(PriceModeLocked ? "is-locked" : "")">
+                <input type="radio"
+                       name="@_radioGroup"
+                       checked="@UseDifferentPrices"
+                       disabled="@(Disabled || PriceModeLocked)"
+                       @onchange="() => SetPricingMode(true)" />
+                <span>
+                    <strong>Different price per variant</strong>
+                    <small>Set individual price for each variant.</small>
+                </span>
+            </label>
+
+            @if (!UseDifferentPrices)
+            {
+                <label class="admin-field">
+                    <span>Base Price (₱)</span>
+                    <input type="number"
+                           min="0.01"
+                           step="0.01"
+                           value="@EffectiveBasePriceText"
+                           disabled="@(Disabled || BasePriceReadOnly)"
+                           @oninput="OnBasePriceInput"
+                           placeholder="850.00" />
+                    <div class="admin-variant-price-hint">
+                        This price will apply to all variants. You can change prices later using the Adjust Price feature.
+                    </div>
+                    @if (!string.IsNullOrWhiteSpace(BasePriceError))
+                    {
+                        <em>@BasePriceError</em>
+                    }
+                </label>
+            }
+            else
+            {
+                <div class="admin-variant-price-hint">
+                    Enter a price for each variant in the table below.
+                </div>
+                @if (!string.IsNullOrWhiteSpace(BasePriceError))
+                {
+                    <em>@BasePriceError</em>
+                }
+            }
+        </div>
+
         <div class="admin-size-variants-panel">
             <div class="admin-size-variants-head">
                 <strong>Product Variants</strong>
                 <span class="admin-size-variants-total">Total Stock: @TotalStock</span>
             </div>
 
-            <div class="admin-size-variants-table admin-unified-variants-table" role="table">
+            @if (!Disabled)
+            {
+                <div class="admin-variant-toolbar">
+                    <button type="button"
+                            class="btn btn-outline-navy admin-size-variants-add"
+                            @onclick="AddRow">
+                        + Add Variant
+                    </button>
+                    <button type="button"
+                            class="btn btn-navy"
+                            @onclick="OpenGenerator">
+                        Generate Multiple Variants
+                    </button>
+                </div>
+            }
+
+            @if (_generatorOpen && !Disabled)
+            {
+                <div class="admin-variant-generator-panel" role="dialog" aria-label="Generate Variants">
+                    <div class="admin-variant-generator-head">
+                        <strong>Generate Variants</strong>
+                        <button type="button"
+                                class="admin-variant-generator-close"
+                                aria-label="Close"
+                                @onclick="CloseGenerator">×</button>
+                    </div>
+
+                    <div class="admin-variant-builder-block">
+                        <span class="admin-variant-builder-label">Colors</span>
+                        <div class="admin-variant-chip-row">
+                            @foreach (var color in ProductVariantLogic.SuggestedColors)
+                            {
+                                var selected = _selectedColors.Any(c =>
+                                    c.Equals(color.Name, StringComparison.OrdinalIgnoreCase));
+                                <button type="button"
+                                        class="admin-variant-chip @(selected ? "is-selected" : "")"
+                                        @onclick="() => ToggleSuggestedColor(color.Name, color.Hex)">
+                                    <span class="admin-variant-chip-swatch" style="background:@color.Hex"></span>
+                                    @color.Name
+                                </button>
+                            }
+                        </div>
+                        <div class="admin-variant-builder-add">
+                            <input type="text"
+                                   value="@_customColor"
+                                   @oninput="e => _customColor = e.Value?.ToString() ?? string.Empty"
+                                   placeholder="Custom color name"
+                                   @onkeydown="OnCustomColorKey" />
+                            <button type="button" class="btn btn-outline-navy" @onclick="AddCustomColor">Add</button>
+                        </div>
+                        @if (_selectedColors.Count > 0)
+                        {
+                            <div class="admin-variant-selected-chips">
+                                <span class="admin-variant-selected-label">Selected:</span>
+                                @foreach (var color in _selectedColors.ToList())
+                                {
+                                    <span class="admin-variant-selected-chip">
+                                        @color
+                                        <button type="button" aria-label="Remove @color" @onclick="() => RemoveSelectedColor(color)">×</button>
+                                    </span>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    <div class="admin-variant-builder-block">
+                        <span class="admin-variant-builder-label">Sizes</span>
+                        <div class="admin-variant-chip-row">
+                            @foreach (var size in ProductVariantLogic.DefaultSizes)
+                            {
+                                var selected = _selectedSizes.Any(s =>
+                                    s.Equals(size, StringComparison.OrdinalIgnoreCase));
+                                <button type="button"
+                                        class="admin-variant-chip @(selected ? "is-selected" : "")"
+                                        @onclick="() => ToggleSize(size)">
+                                    @size
+                                </button>
+                            }
+                        </div>
+                        <div class="admin-variant-builder-add">
+                            <input type="text"
+                                   value="@_customSize"
+                                   @oninput="e => _customSize = e.Value?.ToString() ?? string.Empty"
+                                   placeholder="Custom size"
+                                   @onkeydown="OnCustomSizeKey" />
+                            <button type="button" class="btn btn-outline-navy" @onclick="AddCustomSize">Add</button>
+                        </div>
+                        @if (_selectedSizes.Count > 0)
+                        {
+                            <div class="admin-variant-selected-chips">
+                                <span class="admin-variant-selected-label">Selected:</span>
+                                @foreach (var size in _selectedSizes.ToList())
+                                {
+                                    <span class="admin-variant-selected-chip">
+                                        @size
+                                        <button type="button" aria-label="Remove @size" @onclick="() => RemoveSelectedSize(size)">×</button>
+                                    </span>
+                                }
+                            </div>
+                        }
+                    </div>
+
+                    @if (!string.IsNullOrWhiteSpace(_generatorError))
+                    {
+                        <em class="admin-size-variants-error">@_generatorError</em>
+                    }
+
+                    <div class="admin-variant-generator-actions">
+                        <button type="button" class="btn btn-outline-navy" @onclick="CloseGenerator">Cancel</button>
+                        <button type="button"
+                                class="btn btn-navy"
+                                disabled="@(_selectedColors.Count == 0 && _selectedSizes.Count == 0)"
+                                @onclick="GenerateVariants">
+                            Generate Variants
+                        </button>
+                    </div>
+                </div>
+            }
+
+            <div class="admin-size-variants-table admin-unified-variants-table admin-priced-variants-table" role="table">
                 <div class="admin-unified-variants-row is-header" role="row">
                     <span role="columnheader">Color</span>
                     <span role="columnheader">Size</span>
-                    <span role="columnheader">Stock</span>
                     <span role="columnheader">SKU</span>
+                    <span role="columnheader">Price</span>
+                    <span role="columnheader">Stock</span>
                     <span role="columnheader">Status</span>
                     <span role="columnheader" class="admin-size-variants-actions">Action</span>
                 </div>
@@ -49,38 +227,53 @@
                 {
                     var index = i;
                     var row = Variants[index];
+                    var displayPrice = DisplayPriceFor(row);
                     <div class="admin-unified-variants-row" role="row">
                         <div class="admin-unified-color-cell">
                             <input type="text"
                                    value="@row.ColorName"
-                                   placeholder="Navy"
+                                   placeholder="Navy or #0B1F3A"
                                    disabled="@Disabled"
+                                   list="@_colorListId"
                                    @oninput="e => OnColorNameChanged(index, e)" />
-                            @if (!string.IsNullOrWhiteSpace(row.ColorName))
+                            @if (!string.IsNullOrWhiteSpace(row.ColorName) || !string.IsNullOrWhiteSpace(row.ColorHex))
                             {
                                 <input type="color"
+                                       class="admin-variant-row-color-picker"
                                        value="@ColorInputValue(row.ColorHex, row.ColorName)"
                                        disabled="@Disabled"
-                                       @oninput="e => OnColorHexPickerChanged(index, e)"
-                                       aria-label="Color swatch" />
+                                       title="Pick color"
+                                       @oninput="e => OnColorHexPickerChanged(index, e)" />
                             }
                         </div>
                         <input type="text"
                                value="@row.Size"
                                placeholder="S"
                                disabled="@Disabled"
+                               list="@_sizeListId"
                                @oninput="e => OnSizeChanged(index, e)" />
+                        <span class="admin-variant-sku-readonly" title="Auto-generated from base SKU, color, and size">
+                            @(string.IsNullOrWhiteSpace(row.Sku) ? "—" : row.Sku)
+                        </span>
+                        @if (UseDifferentPrices && !Disabled && !PriceInputsReadOnly)
+                        {
+                            <input type="number"
+                                   min="0.01"
+                                   step="0.01"
+                                   value="@(displayPrice > 0 ? FormatPriceInput(displayPrice) : string.Empty)"
+                                   @oninput="e => OnAbsolutePriceChanged(index, e)"
+                                   placeholder="0.00" />
+                        }
+                        else
+                        {
+                            <span class="admin-variant-price-readonly">₱@displayPrice.ToString("N2", CultureInfo.InvariantCulture)</span>
+                        }
                         <input type="number"
                                min="0"
                                step="1"
                                value="@row.StockQuantity"
                                disabled="@Disabled"
                                @oninput="e => OnStockChanged(index, e)" />
-                        <input type="text"
-                               value="@row.Sku"
-                               placeholder="NUBE-HD-001-S"
-                               disabled="@Disabled"
-                               @oninput="e => OnSkuChanged(index, e)" />
                         <select value="@(string.IsNullOrWhiteSpace(row.Status) ? "Active" : row.Status)"
                                 disabled="@Disabled"
                                 @onchange="e => OnStatusChanged(index, e)">
@@ -98,12 +291,18 @@
                 }
             </div>
 
-            <button type="button"
-                    class="btn btn-outline-navy admin-size-variants-add"
-                    disabled="@Disabled"
-                    @onclick="AddRow">
-                + Add Variant
-            </button>
+            <datalist id="@_colorListId">
+                @foreach (var color in ProductVariantLogic.SuggestedColors)
+                {
+                    <option value="@color.Name"></option>
+                }
+            </datalist>
+            <datalist id="@_sizeListId">
+                @foreach (var size in ProductVariantLogic.DefaultSizes)
+                {
+                    <option value="@size"></option>
+                }
+            </datalist>
 
             @if (!string.IsNullOrWhiteSpace(VariantsError))
             {
@@ -125,16 +324,127 @@
     [Parameter] public string BaseSku { get; set; } = string.Empty;
     [Parameter] public bool Disabled { get; set; }
 
+    [Parameter] public string BasePriceText { get; set; } = string.Empty;
+    [Parameter] public EventCallback<string> BasePriceTextChanged { get; set; }
+    [Parameter] public string? BasePriceError { get; set; }
+    [Parameter] public bool BasePriceReadOnly { get; set; }
+
+    [Parameter] public bool UseDifferentPrices { get; set; }
+    [Parameter] public EventCallback<bool> UseDifferentPricesChanged { get; set; }
+    [Parameter] public bool PriceModeLocked { get; set; }
+    [Parameter] public bool PriceInputsReadOnly { get; set; }
+
+    private readonly string _radioGroup = $"pricing-{Guid.NewGuid():N}";
+    private readonly string _colorListId = $"colors-{Guid.NewGuid():N}";
+    private readonly string _sizeListId = $"sizes-{Guid.NewGuid():N}";
+    private readonly List<string> _selectedColors = [];
+    private readonly List<string> _selectedSizes = [];
+    private readonly Dictionary<string, string> _colorHex = new(StringComparer.OrdinalIgnoreCase);
+    private string _customColor = string.Empty;
+    private string _customSize = string.Empty;
+    private string _localBasePriceText = string.Empty;
+    private string _lastSyncedBaseSku = string.Empty;
+    private decimal _anchoredBasePrice;
+    private bool _generatorOpen;
+    private string? _generatorError;
+    private bool _differentPriceAbsolutesReady;
+
     private int TotalStock =>
-        Variants.Where(v => v.IsActive).Sum(v => Math.Max(0, v.StockQuantity));
+        Variants.Sum(v => Math.Max(0, v.StockQuantity));
+
+    private string EffectiveBasePriceText =>
+        !string.IsNullOrWhiteSpace(_localBasePriceText) ? _localBasePriceText : BasePriceText;
+
+    private decimal ResolvedBasePrice => ParsePrice(EffectiveBasePriceText);
+
+    protected override void OnParametersSet()
+    {
+        if (string.IsNullOrWhiteSpace(_localBasePriceText) && !string.IsNullOrWhiteSpace(BasePriceText))
+            _localBasePriceText = BasePriceText;
+
+        if (_anchoredBasePrice <= 0 && ResolvedBasePrice > 0)
+            _anchoredBasePrice = ResolvedBasePrice;
+
+        if (UseDifferentPrices)
+            EnsureAbsoluteVariantPrices();
+        else
+            _differentPriceAbsolutesReady = false;
+
+        // Keep auto SKUs in sync with the product base SKU.
+        var currentBaseSku = (BaseSku ?? string.Empty).Trim();
+        if (!string.Equals(_lastSyncedBaseSku, currentBaseSku, StringComparison.OrdinalIgnoreCase)
+            && Variants.Count > 0)
+        {
+            _lastSyncedBaseSku = currentBaseSku;
+            foreach (var variant in Variants)
+                variant.Sku = ProductVariantLogic.SuggestSku(currentBaseSku, variant.ColorName, variant.Size);
+        }
+        else if (string.IsNullOrEmpty(_lastSyncedBaseSku))
+        {
+            _lastSyncedBaseSku = currentBaseSku;
+        }
+    }
+
+    private void EnsureAbsoluteVariantPrices()
+    {
+        if (_differentPriceAbsolutesReady || Variants.Count == 0)
+            return;
+
+        var shared = ResolvedBasePrice;
+        if (shared > 0)
+        {
+            foreach (var variant in Variants)
+                variant.PriceAdjustment = ProductVariantLogic.ResolvePrice(shared, variant);
+        }
+
+        _differentPriceAbsolutesReady = true;
+    }
 
     public static string? Validate(IReadOnlyList<ProductVariant> variants) =>
         ProductVariantLogic.ValidateUnified(variants);
+
+    public static string? Validate(
+        IReadOnlyList<ProductVariant> variants,
+        bool requirePositivePrices,
+        decimal productPrice) =>
+        ProductVariantLogic.ValidateUnified(variants, requirePositivePrices, productPrice);
+
+    /// <summary>
+    /// Same-price: shared base price.
+    /// Different-price: PriceAdjustment holds the absolute sell price while editing.
+    /// </summary>
+    private decimal DisplayPriceFor(ProductVariant row)
+    {
+        if (!UseDifferentPrices)
+        {
+            var basePrice = ResolvedBasePrice;
+            if (basePrice <= 0 && _anchoredBasePrice > 0)
+                basePrice = _anchoredBasePrice;
+            return basePrice;
+        }
+
+        return row.PriceAdjustment > 0 ? row.PriceAdjustment : 0m;
+    }
+
+    private static decimal ParsePrice(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+            return 0m;
+
+        var cleaned = text.Trim().Replace("₱", string.Empty).Replace(",", string.Empty).Trim();
+        if (decimal.TryParse(cleaned, NumberStyles.Number, CultureInfo.InvariantCulture, out var price))
+            return price;
+        if (decimal.TryParse(cleaned, NumberStyles.Number, CultureInfo.CurrentCulture, out price))
+            return price;
+        return 0m;
+    }
 
     private async Task OnHasVariantsChanged(ChangeEventArgs e)
     {
         var enabled = e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
         HasVariants = enabled;
+        _generatorOpen = false;
+        _generatorError = null;
         if (enabled && Variants.Count == 0)
             Variants.Add(NewRow());
         await HasVariantsChanged.InvokeAsync(enabled);
@@ -144,38 +454,155 @@
     private Task OnStockInput(ChangeEventArgs e) =>
         StockTextChanged.InvokeAsync(e.Value?.ToString() ?? "0");
 
+    private async Task OnBasePriceInput(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString() ?? string.Empty;
+        _localBasePriceText = text;
+        var previousBase = _anchoredBasePrice > 0 ? _anchoredBasePrice : ResolvedBasePrice;
+        await BasePriceTextChanged.InvokeAsync(text);
+
+        var newBase = ParsePrice(text);
+        _anchoredBasePrice = newBase;
+
+        if (!UseDifferentPrices)
+        {
+            ProductVariantLogic.ApplySamePriceMode(Variants);
+            await NotifyVariantsAsync();
+            return;
+        }
+
+        if (previousBase != newBase && Variants.Count > 0)
+        {
+            foreach (var variant in Variants)
+            {
+                var absolute = ProductVariantLogic.ResolvePrice(previousBase, variant);
+                if (absolute <= 0)
+                    absolute = newBase > 0 ? newBase : absolute;
+                ProductVariantLogic.SetAbsolutePrice(variant, newBase, absolute);
+            }
+
+            await NotifyVariantsAsync();
+        }
+    }
+
+    private async Task SetPricingMode(bool different)
+    {
+        if (PriceModeLocked || UseDifferentPrices == different)
+            return;
+
+        UseDifferentPrices = different;
+        if (!different)
+        {
+            ProductVariantLogic.ApplySamePriceMode(Variants);
+            _differentPriceAbsolutesReady = false;
+        }
+        else
+        {
+            // Admin enters each price manually — start blank.
+            foreach (var variant in Variants)
+                variant.PriceAdjustment = 0;
+            _differentPriceAbsolutesReady = true;
+        }
+
+        await UseDifferentPricesChanged.InvokeAsync(different);
+        await NotifyVariantsAsync();
+    }
+
+    private void OpenGenerator()
+    {
+        _generatorOpen = true;
+        _generatorError = null;
+    }
+
+    private void CloseGenerator()
+    {
+        _generatorOpen = false;
+        _generatorError = null;
+    }
+
     private async Task OnColorNameChanged(int index, ChangeEventArgs e)
     {
         if (index < 0 || index >= Variants.Count) return;
-        var previous = Variants[index].ColorName;
-        Variants[index].ColorName = string.IsNullOrWhiteSpace(e.Value?.ToString())
-            ? null
-            : e.Value!.ToString()!.Trim();
-        if (string.IsNullOrWhiteSpace(Variants[index].ColorName))
-            Variants[index].ColorHex = null;
-        else if (string.IsNullOrWhiteSpace(Variants[index].ColorHex))
-        {
-            Variants[index].ColorHex = ProductVariantLogic.DefaultHex(Variants[index].ColorName);
-        }
-        ProductVariantLogic.ApplySuggestedSku(Variants[index], BaseSku, previous, Variants[index].Size);
+        var raw = (e.Value?.ToString() ?? string.Empty).Trim();
+        ApplyColorInput(Variants[index], raw);
+        Variants[index].Sku = ProductVariantLogic.SuggestSku(
+            BaseSku, Variants[index].ColorName, Variants[index].Size);
         await NotifyVariantsAsync();
     }
 
     private async Task OnColorHexPickerChanged(int index, ChangeEventArgs e)
     {
         if (index < 0 || index >= Variants.Count) return;
-        Variants[index].ColorHex = ProductVariantLogic.NormalizeHex(e.Value?.ToString());
+        var hex = ProductVariantLogic.NormalizeHex(e.Value?.ToString());
+        if (hex is null) return;
+
+        Variants[index].ColorHex = hex;
+        // Keep a readable name when possible; otherwise keep existing name or use hex.
+        var known = ProductVariantLogic.SuggestedColors.FirstOrDefault(c =>
+            string.Equals(c.Hex, hex, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrEmpty(known.Name))
+            Variants[index].ColorName = known.Name;
+        else if (string.IsNullOrWhiteSpace(Variants[index].ColorName)
+                 || ProductVariantLogic.NormalizeHex(Variants[index].ColorName) is not null)
+            Variants[index].ColorName = hex;
+
+        Variants[index].Sku = ProductVariantLogic.SuggestSku(
+            BaseSku, Variants[index].ColorName, Variants[index].Size);
         await NotifyVariantsAsync();
+    }
+
+    private static void ApplyColorInput(ProductVariant variant, string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            variant.ColorName = null;
+            variant.ColorHex = null;
+            return;
+        }
+
+        // Accept #RGB / #RRGGBB / RGB / RRGGBB color codes.
+        if (TryParseColorCode(raw, out var hex))
+        {
+            variant.ColorHex = hex;
+            var known = ProductVariantLogic.SuggestedColors.FirstOrDefault(c =>
+                string.Equals(c.Hex, hex, StringComparison.OrdinalIgnoreCase));
+            variant.ColorName = !string.IsNullOrEmpty(known.Name) ? known.Name : hex;
+            return;
+        }
+
+        variant.ColorName = raw;
+        // Always refresh swatch from the typed color name.
+        variant.ColorHex = ProductVariantLogic.DefaultHex(raw);
+    }
+
+    private static bool TryParseColorCode(string raw, out string hex)
+    {
+        hex = string.Empty;
+        var value = raw.Trim();
+        if (value.StartsWith('#'))
+            value = value[1..];
+
+        if (value.Length is not (3 or 6))
+            return false;
+        if (!value.All(c => Uri.IsHexDigit(c)))
+            return false;
+
+        var normalized = ProductVariantLogic.NormalizeHex("#" + value);
+        if (normalized is null || normalized.Length != 7)
+            return false;
+
+        hex = normalized;
+        return true;
     }
 
     private async Task OnSizeChanged(int index, ChangeEventArgs e)
     {
         if (index < 0 || index >= Variants.Count) return;
-        var previous = Variants[index].Size;
         Variants[index].Size = string.IsNullOrWhiteSpace(e.Value?.ToString())
             ? string.Empty
             : e.Value!.ToString()!.Trim();
-        ProductVariantLogic.ApplySuggestedSku(Variants[index], BaseSku, Variants[index].ColorName, previous);
+        Variants[index].Sku = ProductVariantLogic.SuggestSku(
+            BaseSku, Variants[index].ColorName, Variants[index].Size);
         await NotifyVariantsAsync();
     }
 
@@ -188,21 +615,21 @@
         await NotifyVariantsAsync();
     }
 
-    private async Task OnSkuChanged(int index, ChangeEventArgs e)
-    {
-        if (index < 0 || index >= Variants.Count) return;
-        Variants[index].Sku = string.IsNullOrWhiteSpace(e.Value?.ToString())
-            ? null
-            : e.Value!.ToString()!.Trim();
-        await NotifyVariantsAsync();
-    }
-
     private async Task OnStatusChanged(int index, ChangeEventArgs e)
     {
         if (index < 0 || index >= Variants.Count) return;
         Variants[index].Status = string.IsNullOrWhiteSpace(e.Value?.ToString())
             ? "Active"
             : e.Value!.ToString()!.Trim();
+        await NotifyVariantsAsync();
+    }
+
+    private async Task OnAbsolutePriceChanged(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= Variants.Count) return;
+        var absolute = ParsePrice(e.Value?.ToString());
+        // No shared starting price: store absolute amount directly on PriceAdjustment.
+        Variants[index].PriceAdjustment = Math.Max(0, absolute);
         await NotifyVariantsAsync();
     }
 
@@ -226,14 +653,184 @@
         var row = new ProductVariant
         {
             Status = "Active",
-            StockQuantity = 0
+            StockQuantity = 10,
+            PriceAdjustment = 0
         };
-        ProductVariantLogic.ApplySuggestedSku(row, BaseSku, null, null);
+        if (!UseDifferentPrices && ResolvedBasePrice > 0)
+            row.PriceAdjustment = 0;
+        row.Sku = ProductVariantLogic.SuggestSku(BaseSku, row.ColorName, row.Size);
         return row;
     }
 
+    private void ToggleSuggestedColor(string name, string hex)
+    {
+        var existing = _selectedColors.FirstOrDefault(c => c.Equals(name, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            _selectedColors.Remove(existing);
+            _colorHex.Remove(existing);
+            return;
+        }
+
+        _selectedColors.Add(name);
+        _colorHex[name] = hex;
+    }
+
+    private void RemoveSelectedColor(string color)
+    {
+        _selectedColors.RemoveAll(c => c.Equals(color, StringComparison.OrdinalIgnoreCase));
+        _colorHex.Remove(color);
+    }
+
+    private void AddCustomColor()
+    {
+        var name = _customColor.Trim();
+        if (string.IsNullOrWhiteSpace(name)) return;
+        if (!_selectedColors.Any(c => c.Equals(name, StringComparison.OrdinalIgnoreCase)))
+        {
+            _selectedColors.Add(name);
+            _colorHex[name] = ProductVariantLogic.DefaultHex(name);
+        }
+        _customColor = string.Empty;
+    }
+
+    private void OnCustomColorKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            AddCustomColor();
+    }
+
+    private void ToggleSize(string size)
+    {
+        var existing = _selectedSizes.FirstOrDefault(s => s.Equals(size, StringComparison.OrdinalIgnoreCase));
+        if (existing is not null)
+        {
+            _selectedSizes.Remove(existing);
+            return;
+        }
+
+        _selectedSizes.Add(size);
+    }
+
+    private void RemoveSelectedSize(string size) =>
+        _selectedSizes.RemoveAll(s => s.Equals(size, StringComparison.OrdinalIgnoreCase));
+
+    private void AddCustomSize()
+    {
+        var size = _customSize.Trim().ToUpperInvariant();
+        if (string.IsNullOrWhiteSpace(size)) return;
+        if (!_selectedSizes.Any(s => s.Equals(size, StringComparison.OrdinalIgnoreCase)))
+            _selectedSizes.Add(size);
+        _customSize = string.Empty;
+    }
+
+    private void OnCustomSizeKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            AddCustomSize();
+    }
+
+    private async Task GenerateVariants()
+    {
+        _generatorError = null;
+        var colors = _selectedColors.Select(c => c.Trim()).Where(c => c.Length > 0).ToList();
+        var sizes = _selectedSizes.Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+        if (colors.Count == 0 && sizes.Count == 0)
+        {
+            _generatorError = "Select at least one color or size.";
+            return;
+        }
+
+        var existing = Variants
+            .Where(v => !string.IsNullOrWhiteSpace(v.ColorName) || !string.IsNullOrWhiteSpace(v.Size))
+            .GroupBy(v => VariantKey(v.ColorName, v.Size), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
+        var generated = new List<ProductVariant>();
+        var basePrice = ResolvedBasePrice;
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        void AddCombo(string? color, string? size)
+        {
+            var key = VariantKey(color, size);
+            if (!seen.Add(key))
+                return;
+            generated.Add(BuildOrReuse(existing, color, size, basePrice));
+        }
+
+        if (colors.Count > 0 && sizes.Count > 0)
+        {
+            foreach (var color in colors)
+            foreach (var size in sizes)
+                AddCombo(color, size);
+        }
+        else if (colors.Count > 0)
+        {
+            foreach (var color in colors)
+                AddCombo(color, null);
+        }
+        else
+        {
+            foreach (var size in sizes)
+                AddCombo(null, size);
+        }
+
+        Variants.Clear();
+        Variants.AddRange(generated);
+        _generatorOpen = false;
+        _generatorError = null;
+        await NotifyVariantsAsync();
+    }
+
+    private ProductVariant BuildOrReuse(
+        Dictionary<string, ProductVariant> existing,
+        string? color,
+        string? size,
+        decimal basePrice)
+    {
+        var key = VariantKey(color, size);
+        if (existing.TryGetValue(key, out var prior))
+        {
+            var clone = prior.Clone();
+            if (string.IsNullOrWhiteSpace(clone.Sku)
+                || ProductVariantLogic.SkuLooksGenerated(clone.Sku, BaseSku, prior.ColorName, prior.Size))
+            {
+                clone.Sku = ProductVariantLogic.SuggestSku(BaseSku, color, size);
+            }
+
+            if (!UseDifferentPrices)
+                clone.PriceAdjustment = 0;
+            // Different-price: keep existing absolute price if any; otherwise leave 0 for Admin input.
+
+            return clone;
+        }
+
+        var row = new ProductVariant
+        {
+            ColorName = string.IsNullOrWhiteSpace(color) ? null : color.Trim(),
+            ColorHex = string.IsNullOrWhiteSpace(color)
+                ? null
+                : (_colorHex.TryGetValue(color, out var hex)
+                    ? ProductVariantLogic.NormalizeHex(hex)
+                    : ProductVariantLogic.DefaultHex(color)),
+            Size = string.IsNullOrWhiteSpace(size) ? string.Empty : size.Trim(),
+            StockQuantity = 10,
+            Status = "Active",
+            PriceAdjustment = 0
+        };
+
+        row.Sku = ProductVariantLogic.SuggestSku(BaseSku, row.ColorName, row.Size);
+        return row;
+    }
+
+    private static string VariantKey(string? color, string? size) =>
+        $"{(color ?? string.Empty).Trim()}|{(size ?? string.Empty).Trim()}";
+
     private static string ColorInputValue(string? hex, string? name) =>
         ProductVariantLogic.NormalizeHex(hex) ?? ProductVariantLogic.DefaultHex(name);
+
+    private static string FormatPriceInput(decimal price) =>
+        price.ToString("0.##", CultureInfo.InvariantCulture);
 
     private Task NotifyVariantsAsync() => VariantsChanged.InvokeAsync(Variants);
 }

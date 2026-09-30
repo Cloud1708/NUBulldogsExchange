@@ -9,6 +9,7 @@ public class AdminProduct
     public string Sku { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
     public decimal Price { get; set; }
+    public decimal? OriginalPrice { get; set; }
     public int Stock { get; set; }
     public int Sold { get; set; }
     public double Rating { get; set; }
@@ -52,6 +53,7 @@ public class AdminProduct
         Sku = Sku,
         Category = Category,
         Price = Price,
+        OriginalPrice = OriginalPrice,
         Stock = Stock,
         Sold = Sold,
         Rating = Rating,
@@ -73,6 +75,7 @@ public class AdminProduct
         Sku = product.Sku,
         Category = product.Category,
         Price = product.Price,
+        OriginalPrice = product.OriginalPrice,
         Stock = product.Stock,
         Sold = product.Sold,
         Rating = product.Rating,

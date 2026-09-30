@@ -129,7 +129,7 @@
                                         <strong title="@product.Name">@product.Name</strong>
                                     </td>
                                     <td class="col-category">@product.Category</td>
-                                    <td class="col-price"><strong>₱@product.Price.ToString("N0")</strong></td>
+                                    <td class="col-price"><strong>@ProductVariantLogic.FormatCatalogPrice(product.Price, product.Variants)</strong></td>
                                     <td class="col-stock">
                                         <div class="admin-stock-cell">
                                             <strong>@product.Stock</strong>
@@ -166,38 +166,50 @@
                                         </span>
                                     </td>
                                     <td class="col-actions">
-                                        <div class="admin-row-menu-wrap">
+                                        <div class="admin-products-row-actions">
                                             <button type="button"
-                                                    class="admin-row-action"
-                                                    title="Actions"
-                                                    aria-label="Product actions"
-                                                    @onclick="() => ToggleMenu(product.Id)"
-                                                    @onclick:stopPropagation="true">
-                                                <Icon Name="more-horizontal" Size="16" />
+                                                    class="btn btn-outline-navy admin-products-inline-btn"
+                                                    @onclick="() => EditProduct(product.Id)">
+                                                Edit
                                             </button>
+                                            <button type="button"
+                                                    class="btn btn-navy admin-products-inline-btn"
+                                                    @onclick="() => OpenAdjustPrice(product)">
+                                                Adjust Price
+                                            </button>
+                                            <div class="admin-row-menu-wrap">
+                                                <button type="button"
+                                                        class="admin-row-action"
+                                                        title="More actions"
+                                                        aria-label="Product actions"
+                                                        @onclick="() => ToggleMenu(product.Id)"
+                                                        @onclick:stopPropagation="true">
+                                                    <Icon Name="more-horizontal" Size="16" />
+                                                </button>
 
-                                            @if (_openMenuId == product.Id)
-                                            {
-                                                <div class="admin-row-menu" role="menu" @onclick:stopPropagation="true">
-                                                    <button type="button" class="admin-row-menu-item" @onclick="() => ViewProduct(product.Id)">
-                                                        <Icon Name="eye" Size="14" /> View Product
-                                                    </button>
-                                                    <button type="button" class="admin-row-menu-item" @onclick="() => EditProduct(product.Id)">
-                                                        <Icon Name="pencil" Size="14" /> Edit Product
-                                                    </button>
-                                                    <button type="button" class="admin-row-menu-item" @onclick="() => DuplicateProduct(product.Id)">
-                                                        <Icon Name="copy" Size="14" /> Duplicate Product
-                                                    </button>
-                                                    <button type="button" class="admin-row-menu-item" @onclick="() => ToggleStatus(product)">
-                                                        <Icon Name="refresh" Size="14" />
-                                                        @(product.IsActive ? "Set Inactive" : "Set Active")
-                                                    </button>
-                                                    <div class="admin-row-menu-sep"></div>
-                                                    <button type="button" class="admin-row-menu-item danger" @onclick="() => ConfirmDelete(product)">
-                                                        <Icon Name="trash" Size="14" /> Delete Product
-                                                    </button>
-                                                </div>
-                                            }
+                                                @if (_openMenuId == product.Id)
+                                                {
+                                                    <div class="admin-row-menu" role="menu" @onclick:stopPropagation="true">
+                                                        <button type="button" class="admin-row-menu-item" @onclick="() => ViewProduct(product.Id)">
+                                                            <Icon Name="eye" Size="14" /> View Product
+                                                        </button>
+                                                        <button type="button" class="admin-row-menu-item" @onclick="() => OpenPriceHistory(product)">
+                                                            <Icon Name="clock" Size="14" /> View Price History
+                                                        </button>
+                                                        <button type="button" class="admin-row-menu-item" @onclick="() => DuplicateProduct(product.Id)">
+                                                            <Icon Name="copy" Size="14" /> Duplicate Product
+                                                        </button>
+                                                        <button type="button" class="admin-row-menu-item" @onclick="() => ToggleStatus(product)">
+                                                            <Icon Name="refresh" Size="14" />
+                                                            @(product.IsActive ? "Set Inactive" : "Set Active")
+                                                        </button>
+                                                        <div class="admin-row-menu-sep"></div>
+                                                        <button type="button" class="admin-row-menu-item danger" @onclick="() => ConfirmDelete(product)">
+                                                            <Icon Name="trash" Size="14" /> Delete Product
+                                                        </button>
+                                                    </div>
+                                                }
+                                            </div>
                                         </div>
                                     </td>
                                 </tr>
@@ -300,26 +312,45 @@
                 </div>
 
                 <div class="admin-product-modal-grid">
-                    <label class="admin-field">
-                        <span>Price (₱)</span>
-                        <input type="number"
-                               min="0"
-                               step="1"
-                               value="@_formPriceText"
-                               @oninput="OnPriceInput"
-                               placeholder="499" />
-                        @if (_formErrors.ContainsKey("price"))
+                    @if (!_hasVariants)
+                    {
+                        @if (_isEditMode)
                         {
-                            <em>@_formErrors["price"]</em>
+                            <label class="admin-field">
+                                <span>Price (₱)</span>
+                                <input type="text"
+                                       value="@($"₱{_formPriceText}")"
+                                       disabled
+                                       readonly />
+                                <small class="ar-hint">Use <strong>Adjust Price</strong> to change pricing.</small>
+                            </label>
                         }
-                    </label>
+                        else
+                        {
+                            <label class="admin-field">
+                                <span>Price (₱)</span>
+                                <input type="number"
+                                       min="0.01"
+                                       step="0.01"
+                                       value="@_formPriceText"
+                                       @oninput="OnPriceInput"
+                                       placeholder="499" />
+                                @if (_formErrors.ContainsKey("price"))
+                                {
+                                    <em>@_formErrors["price"]</em>
+                                }
+                            </label>
+                        }
+                    }
 
                     <label class="admin-field">
                         <span>SKU</span>
                         <input type="text"
-                               value="@_formSku"
-                               @oninput="OnSkuInput"
-                               placeholder="NUBE-TS-XXX" />
+                               value="@(string.IsNullOrWhiteSpace(_formSku) ? "Auto-generated from category" : _formSku)"
+                               disabled
+                               readonly
+                               class="admin-sku-readonly" />
+                        <small class="ar-hint">Auto-generated from category. Variant SKUs are derived from this.</small>
                         @if (_formErrors.ContainsKey("sku"))
                         {
                             <em>@_formErrors["sku"]</em>
@@ -335,7 +366,15 @@
                                           StockTextChanged="OnStockTextChanged"
                                           StockError="@(_formErrors.GetValueOrDefault("stock"))"
                                           VariantsError="@(_formErrors.GetValueOrDefault("variants"))"
-                                          BaseSku="@_formSku" />
+                                          BaseSku="@_formSku"
+                                          BasePriceText="_formPriceText"
+                                          BasePriceTextChanged="OnPriceInputFromVariants"
+                                          BasePriceError="@(_formErrors.GetValueOrDefault("price"))"
+                                          BasePriceReadOnly="_isEditMode"
+                                          UseDifferentPrices="_useDifferentPrices"
+                                          UseDifferentPricesChanged="OnPricingModeChanged"
+                                          PriceModeLocked="_isEditMode"
+                                          PriceInputsReadOnly="_isEditMode" />
 
                 @if (_isEditMode && !_hasVariants)
                 {
@@ -477,7 +516,7 @@
 
 @if (_discardConfirm)
 {
-    <div class="admin-modal-backdrop admin-product-modal-backdrop" style="z-index: 90;" @onclick="KeepEditing">
+    <div class="admin-modal-backdrop admin-discard-confirm-backdrop" @onclick="KeepEditing">
         <div class="admin-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
             <h2>Discard unsaved changes?</h2>
             <p>Your changes will be lost if you close this form.</p>
@@ -516,6 +555,13 @@
                           OnClose="CloseProductReviews"
                           OnChanged="OnReviewsChanged" />
 
+<AdminAdjustPriceModal Product="_priceProduct"
+                       OnClose="CloseAdjustPrice"
+                       OnChanged="OnPriceChanged" />
+
+<AdminPriceHistoryModal Product="_priceHistoryProduct"
+                        OnClose="ClosePriceHistory" />
+
 @code {
     private const long MaxImageBytes = 10 * 1024 * 1024;
 
@@ -528,11 +574,12 @@
     private bool _bulkDelete;
     private readonly HashSet<int> _selectedIds = [];
     private AdminProduct? _reviewsProduct;
+    private AdminProduct? _priceProduct;
+    private AdminProduct? _priceHistoryProduct;
 
     private bool _productModalOpen;
     private bool _discardConfirm;
     private bool _isDragOver;
-    private bool _skuTouched;
     private bool _formDirty;
     private int? _editProductId;
     private string _originalCategory = string.Empty;
@@ -547,6 +594,7 @@
     private string _formStockText = string.Empty;
     private string _formColors = string.Empty;
     private bool _hasVariants;
+    private bool _useDifferentPrices;
     private List<ProductVariant> _formVariants = [];
     private readonly List<ImagePreview> _previewImages = [];
     private readonly Dictionary<string, string> _formErrors = new(StringComparer.Ordinal);
@@ -615,6 +663,29 @@
         Refresh();
     }
 
+    private void OpenAdjustPrice(AdminProduct product)
+    {
+        CloseMenu();
+        _priceProduct = ProductService.GetById(product.Id) ?? product;
+    }
+
+    private void CloseAdjustPrice() => _priceProduct = null;
+
+    private void OnPriceChanged()
+    {
+        if (_priceProduct is not null)
+            _priceProduct = ProductService.GetById(_priceProduct.Id) ?? _priceProduct;
+        Refresh();
+    }
+
+    private void OpenPriceHistory(AdminProduct product)
+    {
+        CloseMenu();
+        _priceHistoryProduct = ProductService.GetById(product.Id) ?? product;
+    }
+
+    private void ClosePriceHistory() => _priceHistoryProduct = null;
+
     private IEnumerable<string> FilterCategoryNames =>
         CategoryService.All
             .Select(c => c.Name)
@@ -653,6 +724,8 @@
     {
         SyncCategoryFromQuery();
         CloseMenu();
+        if (_productModalOpen || _discardConfirm)
+            _ = CloseProductModalAsync();
         InvokeAsync(StateHasChanged);
     }
 
@@ -774,14 +847,14 @@
         _formDescription = product.Description ?? string.Empty;
         _formCategory = product.Category;
         _formStatus = string.IsNullOrWhiteSpace(product.Status) ? "Active" : product.Status;
-        _formPriceText = product.Price.ToString("0");
+        _formPriceText = product.Price.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
         _formSku = product.Sku;
         _formStockText = product.Stock.ToString();
         _formSold = product.Sold;
         _formColors = string.Join(", ", product.Colors ?? []);
         _hasVariants = product.HasVariants;
+        _useDifferentPrices = ProductVariantLogic.HasVariablePricing(product.Variants);
         _formVariants = product.Variants.Select(v => v.Clone()).ToList();
-        _skuTouched = true;
 
         var images = product.Images is { Count: > 0 }
             ? product.Images
@@ -917,10 +990,10 @@
         _formStockText = string.Empty;
         _formColors = string.Empty;
         _hasVariants = false;
+        _useDifferentPrices = false;
         _formVariants = [];
         _previewImages.Clear();
         _formErrors.Clear();
-        _skuTouched = false;
         _formDirty = false;
         _isDragOver = false;
     }
@@ -945,8 +1018,11 @@
         _formCategory = e.Value?.ToString() ?? string.Empty;
         MarkDirty();
         _formErrors.Remove("category");
+        _formErrors.Remove("sku");
 
-        if (!_skuTouched && !string.IsNullOrWhiteSpace(_formCategory))
+        // Add mode: always regenerate product SKU from category.
+        // Edit mode: keep existing SKU (read-only).
+        if (!_isEditMode && !string.IsNullOrWhiteSpace(_formCategory))
             _formSku = ProductService.SuggestSku(_formCategory);
     }
 
@@ -962,14 +1038,27 @@
         _formPriceText = e.Value?.ToString() ?? string.Empty;
         MarkDirty();
         _formErrors.Remove("price");
+        if (_hasVariants && !_useDifferentPrices)
+            ProductVariantLogic.ApplySamePriceMode(_formVariants);
     }
 
-    private void OnSkuInput(ChangeEventArgs e)
+    private Task OnPriceInputFromVariants(string value)
     {
-        _formSku = e.Value?.ToString() ?? string.Empty;
-        _skuTouched = true;
+        _formPriceText = value ?? string.Empty;
         MarkDirty();
-        _formErrors.Remove("sku");
+        _formErrors.Remove("price");
+        if (_hasVariants && !_useDifferentPrices)
+            ProductVariantLogic.ApplySamePriceMode(_formVariants);
+        return Task.CompletedTask;
+    }
+
+    private Task OnPricingModeChanged(bool different)
+    {
+        _useDifferentPrices = different;
+        MarkDirty();
+        if (!different)
+            ProductVariantLogic.ApplySamePriceMode(_formVariants);
+        return Task.CompletedTask;
     }
 
     private void OnColorsInput(ChangeEventArgs e)
@@ -1106,26 +1195,41 @@
         if (string.IsNullOrWhiteSpace(_formStatus))
             _formErrors["status"] = "Status is required.";
 
-        if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
-            _formErrors["price"] = "Price must be greater than 0.";
-        else if (price <= 0)
-            _formErrors["price"] = "Price must be greater than 0.";
+        if (_hasVariants && _useDifferentPrices)
+        {
+            // PriceAdjustment holds absolute amount while editing (no starting price).
+            if (_formVariants.Any(v => v.PriceAdjustment <= 0))
+                _formErrors["variants"] = "Each variant price must be greater than 0.";
+            else
+            {
+                var variantError = ProductSizeVariantEditor.Validate(_formVariants);
+                if (variantError is not null)
+                    _formErrors["variants"] = variantError;
+            }
+        }
+        else
+        {
+            if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
+                _formErrors["price"] = "Price must be greater than 0.";
+            else if (price <= 0)
+                _formErrors["price"] = "Price must be greater than 0.";
+
+            if (_hasVariants)
+            {
+                var variantError = ProductSizeVariantEditor.Validate(_formVariants);
+                if (variantError is not null)
+                    _formErrors["variants"] = variantError;
+            }
+            else if (!int.TryParse(_formStockText, out var stock))
+                _formErrors["stock"] = "Stock quantity is required.";
+            else if (stock < 0)
+                _formErrors["stock"] = "Stock quantity cannot be negative.";
+        }
 
         if (string.IsNullOrWhiteSpace(_formSku))
             _formErrors["sku"] = "SKU is required.";
         else if (ProductService.SkuExists(_formSku, _editProductId))
             _formErrors["sku"] = "This SKU already exists.";
-
-        if (_hasVariants)
-        {
-            var variantError = ProductSizeVariantEditor.Validate(_formVariants);
-            if (variantError is not null)
-                _formErrors["variants"] = variantError;
-        }
-        else if (!int.TryParse(_formStockText, out var stock))
-            _formErrors["stock"] = "Stock quantity is required.";
-        else if (stock < 0)
-            _formErrors["stock"] = "Stock quantity cannot be negative.";
 
         return _formErrors.Count == 0;
     }
@@ -1284,7 +1388,28 @@
             : [];
 
         if (hasVariants)
+        {
             stock = variants.Sum(v => Math.Max(0, v.StockQuantity));
+            if (_useDifferentPrices)
+            {
+                // While editing, PriceAdjustment holds absolute variant prices.
+                // Persist as products.price = min absolute, with deltas on each variant.
+                var absolutePrices = variants
+                    .Select(v => v.PriceAdjustment)
+                    .Where(p => p > 0)
+                    .ToList();
+                price = absolutePrices.Count > 0 ? absolutePrices.Min() : 0;
+                foreach (var variant in variants)
+                {
+                    var absolute = variant.PriceAdjustment > 0 ? variant.PriceAdjustment : price;
+                    ProductVariantLogic.SetAbsolutePrice(variant, price, absolute);
+                }
+            }
+            else
+            {
+                ProductVariantLogic.ApplySamePriceMode(variants);
+            }
+        }
 
         var sku = string.IsNullOrWhiteSpace(_formSku)
             ? ProductService.SuggestSku(_formCategory)

@@ -40,7 +40,7 @@
                 <dl>
                     <div><dt>SKU</dt><dd><code>@Product.Sku</code></dd></div>
                     <div><dt>Category</dt><dd>@Product.Category</dd></div>
-                    <div><dt>Price</dt><dd><strong>₱@Product.Price.ToString("N0")</strong></dd></div>
+                    <div><dt>Price</dt><dd><strong>@ProductVariantLogic.FormatCatalogPrice(Product.Price, Product.Variants)</strong></dd></div>
                     <div><dt>Stock</dt><dd>@Product.Stock <span class="admin-stock-badge stock-@Product.StockStateKey">@Product.StockState</span></dd></div>
                     <div><dt>Sold</dt><dd>@Product.Sold.ToString("N0")</dd></div>
                     <div><dt>Status</dt><dd><span class="admin-product-status @(Product.IsActive ? "is-active" : "is-inactive")">@Product.Status</span></dd></div>

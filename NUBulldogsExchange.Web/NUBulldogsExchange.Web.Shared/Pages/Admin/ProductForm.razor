@@ -76,14 +76,17 @@
                     </select>
                 </label>
 
-                <label class="admin-field">
-                    <span>Price *</span>
-                    <input type="number" min="0" step="1" @bind="_price" @bind:event="oninput" />
-                    @if (_errors.ContainsKey(nameof(_price)))
-                    {
-                        <em>@_errors[nameof(_price)]</em>
-                    }
-                </label>
+                @if (!_hasVariants)
+                {
+                    <label class="admin-field">
+                        <span>Price *</span>
+                        <input type="number" min="0.01" step="0.01" @bind="_price" @bind:event="oninput" />
+                        @if (_errors.ContainsKey(nameof(_price)))
+                        {
+                            <em>@_errors[nameof(_price)]</em>
+                        }
+                    </label>
+                }
 
                 <label class="admin-field">
                     <span>SKU *</span>
@@ -103,7 +106,15 @@
                                               StockTextChanged="OnStockTextChanged"
                                               StockError="@(_errors.GetValueOrDefault(nameof(_stock)))"
                                               VariantsError="@(_errors.GetValueOrDefault("variants"))"
-                                              BaseSku="_sku" />
+                                              BaseSku="_sku"
+                                              BasePriceText="@_price.ToString(System.Globalization.CultureInfo.InvariantCulture)"
+                                              BasePriceTextChanged="OnBasePriceTextChanged"
+                                              BasePriceError="@(_errors.GetValueOrDefault(nameof(_price)))"
+                                              BasePriceReadOnly="IsEdit"
+                                              UseDifferentPrices="_useDifferentPrices"
+                                              UseDifferentPricesChanged="OnPricingModeChanged"
+                                              PriceModeLocked="IsEdit"
+                                              PriceInputsReadOnly="IsEdit" />
                 </div>
 
                 @if (!_hasVariants)
@@ -179,6 +190,7 @@
     private string _description = string.Empty;
     private string _colors = string.Empty;
     private bool _hasVariants;
+    private bool _useDifferentPrices;
     private List<ProductVariant> _variants = [];
     private int _sold;
     private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
@@ -214,6 +226,7 @@
             _description = string.Empty;
             _colors = string.Empty;
             _hasVariants = false;
+            _useDifferentPrices = false;
             _variants = [];
             return;
         }
@@ -237,7 +250,35 @@
         _description = product.Description;
         _colors = string.Join(", ", product.Colors);
         _hasVariants = product.HasVariants;
+        _useDifferentPrices = ProductVariantLogic.HasVariablePricing(product.Variants);
         _variants = product.Variants.Select(v => v.Clone()).ToList();
+    }
+
+    private Task OnBasePriceTextChanged(string value)
+    {
+        if (decimal.TryParse(value, System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out var price)
+            || decimal.TryParse(value, out price))
+        {
+            _price = Math.Max(0, price);
+        }
+        else
+        {
+            _price = 0;
+        }
+
+        _errors.Remove(nameof(_price));
+        if (_hasVariants && !_useDifferentPrices)
+            ProductVariantLogic.ApplySamePriceMode(_variants);
+        return Task.CompletedTask;
+    }
+
+    private Task OnPricingModeChanged(bool different)
+    {
+        _useDifferentPrices = different;
+        if (!different)
+            ProductVariantLogic.ApplySamePriceMode(_variants);
+        return Task.CompletedTask;
     }
 
     private Task OnHasVariantsChanged(bool value)
@@ -325,7 +366,10 @@
 
         if (_hasVariants)
         {
-            var variantError = ProductSizeVariantEditor.Validate(_variants);
+            var variantError = ProductSizeVariantEditor.Validate(
+                _variants,
+                requirePositivePrices: _useDifferentPrices,
+                productPrice: _price);
             if (variantError is not null)
                 _errors["variants"] = variantError;
         }
@@ -346,6 +390,23 @@
             ? _variants.Select(v => v.Clone()).ToList()
             : [];
 
+        if (hasVariants)
+        {
+            if (_useDifferentPrices)
+            {
+                foreach (var variant in variants)
+                {
+                    var absolute = ProductVariantLogic.ResolvePrice(_price, variant);
+                    if (absolute <= 0)
+                        absolute = _price;
+                    ProductVariantLogic.SetAbsolutePrice(variant, _price, absolute);
+                }
+            }
+            else
+            {
+                ProductVariantLogic.ApplySamePriceMode(variants);
+            }
+        }
         var model = new AdminProduct
         {
             Id = _editId,

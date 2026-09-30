@@ -60,7 +60,7 @@
 
         <div class="product-bottom">
             <div class="price-wrap">
-                <strong>₱@Product.Price.ToString("N0")</strong>
+                <strong>@ProductVariantLogic.FormatCatalogPrice(Product.Price, Product.Variants)</strong>
                 @if (Product.OriginalPrice is decimal original)
                 {
                     <s>₱@original.ToString("N0")</s>

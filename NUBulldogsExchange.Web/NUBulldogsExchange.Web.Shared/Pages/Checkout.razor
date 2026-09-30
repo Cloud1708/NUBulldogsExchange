@@ -546,7 +546,7 @@ else
                                         }
                                         <span>Qty: @item.Quantity</span>
                                     </div>
-                                    <strong class="checkout-summary-price">₱@((item.Product.Price * item.Quantity).ToString("N0"))</strong>
+                                    <strong class="checkout-summary-price">₱@((item.UnitPrice * item.Quantity).ToString("N0"))</strong>
                                 </li>
                             }
                         </ul>
@@ -1125,7 +1125,7 @@ else
             {
                 ProductId = i.Product.Id,
                 Quantity = i.Quantity,
-                UnitPrice = i.Product.Price,
+                UnitPrice = i.UnitPrice,
                 Category = i.Product.Category
             });
 
@@ -1327,7 +1327,7 @@ else
                             Name = i.Product.Name,
                             ImageUrl = i.Product.ImageUrl,
                             Quantity = i.Quantity,
-                            Price = i.Product.Price,
+                            Price = i.UnitPrice,
                             VariantId = variantId,
                             Size = size,
                             ColorName = color,
