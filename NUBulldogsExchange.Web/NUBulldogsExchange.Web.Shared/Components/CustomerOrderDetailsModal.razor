@@ -54,13 +54,9 @@
                                      onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                 <div class="od-item-copy">
                                     <strong>@item.Name</strong>
-                                    @if (item.HasDisplayColor)
+                                    @if (!string.IsNullOrWhiteSpace(item.VariantLabel))
                                     {
-                                        <span>Color: @item.Color</span>
-                                    }
-                                    @if (item.HasDisplaySize)
-                                    {
-                                        <span>Size: @item.Size</span>
+                                        <span>@item.VariantLabel</span>
                                     }
                                     <span>Qty: @item.Quantity × ₱@item.Price.ToString("N0")</span>
                                 </div>
@@ -71,7 +67,7 @@
                                         @if (item.IsReviewed)
                                         {
                                             <button type="button" class="btn btn-reviewed btn-reviewed-sm" disabled>
-                                                Reviewed ✓
+                                                ✓ Reviewed
                                             </button>
                                         }
                                         else

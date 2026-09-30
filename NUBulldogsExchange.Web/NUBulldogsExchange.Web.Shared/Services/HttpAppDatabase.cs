@@ -93,7 +93,8 @@ public sealed class HttpAppDatabase : IAppDatabase
         long orderItemId,
         int rating,
         string? title,
-        string comment)
+        string comment,
+        IReadOnlyList<string>? tags = null)
     {
         var response = await _http.PostAsJsonAsync("api/reviews", new
         {
@@ -101,7 +102,8 @@ public sealed class HttpAppDatabase : IAppDatabase
             orderItemId,
             rating,
             title,
-            comment
+            comment,
+            tags
         });
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<ProductReview>())

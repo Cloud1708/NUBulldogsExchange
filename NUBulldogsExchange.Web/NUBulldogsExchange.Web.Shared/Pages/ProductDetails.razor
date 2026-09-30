@@ -332,9 +332,18 @@ else
                                                 <h4 class="pdp-review-title">@review.Title</h4>
                                             }
                                             <p>@review.Comment</p>
+                                            @if (review.Tags.Count > 0)
+                                            {
+                                                <div class="pdp-review-tags">
+                                                    @foreach (var tag in review.Tags)
+                                                    {
+                                                        <span class="pdp-review-tag">@tag</span>
+                                                    }
+                                                </div>
+                                            }
                                             @if (review.IsVerifiedPurchase)
                                             {
-                                                <small class="pdp-review-verified">Verified Purchase</small>
+                                                <small class="pdp-review-verified">✓ Verified Purchase</small>
                                             }
                                         </div>
                                     </article>
@@ -463,8 +472,12 @@ else
         {
             if (_product is null) return [];
             var rows = _product.Variants.Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size));
-            if (HasColors)
+            // Color+size products: only show sizes for the selected color.
+            // Size-only products: show all size variants.
+            if (HasColors && !string.IsNullOrWhiteSpace(_selectedColor))
                 rows = rows.Where(v => ProductVariantLogic.SameText(v.ColorName, _selectedColor));
+            else if (HasColors)
+                rows = [];
             return rows;
         }
     }
@@ -572,7 +585,19 @@ else
         _selectedVariantId = null;
         _selectedSize = null;
         _sizeError = null;
-        _quantity = AvailableStock > 0 ? 1 : 0;
+        _quantity = 1;
+
+        // Pre-select first in-stock color so color+size products show size buttons
+        // (sizes are filtered by selected color — without this the size row stays empty).
+        var firstColor = ProductVariantLogic
+            .DistinctColors(product.Variants.Where(v => v.IsActive))
+            .FirstOrDefault(c => !ProductVariantLogic.ColorIsSoldOut(product.Variants, c));
+
+        if (!string.IsNullOrWhiteSpace(firstColor))
+            SelectColor(firstColor);
+
+        if (_quantity > AvailableStock || AvailableStock <= 0)
+            _quantity = AvailableStock > 0 ? 1 : 0;
     }
 
     private void UpdateStockClass()

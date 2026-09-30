@@ -420,7 +420,7 @@ public sealed partial class DatabaseService : IAppDatabase
         var list = new List<ProductReview>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, Id
+            SELECT Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, Id, TagsJson
             FROM ProductReviews WHERE ProductId = $productId ORDER BY Date DESC;
             """;
         command.Parameters.AddWithValue("$productId", productId);
@@ -468,7 +468,11 @@ public sealed partial class DatabaseService : IAppDatabase
         OrderId = reader.FieldCount > 6 && !reader.IsDBNull(6) ? reader.GetString(6) : null,
         OrderItemId = reader.FieldCount > 7 && !reader.IsDBNull(7) ? reader.GetInt64(7) : 0,
         AuthUserId = reader.FieldCount > 8 && !reader.IsDBNull(8) ? reader.GetString(8) : null,
-        Id = reader.FieldCount > 9 && !reader.IsDBNull(9) ? reader.GetInt64(9) : 0
+        Id = reader.FieldCount > 9 && !reader.IsDBNull(9) ? reader.GetInt64(9) : 0,
+        Tags = reader.FieldCount > 10 && !reader.IsDBNull(10)
+            ? ProductReviewStats.NormalizeTags(
+                JsonSerializer.Deserialize<List<string>>(reader.GetString(10), JsonOptions) ?? [])
+            : []
     };
 
     public async Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews)
@@ -548,7 +552,8 @@ public sealed partial class DatabaseService : IAppDatabase
         long orderItemId,
         int rating,
         string? title,
-        string comment)
+        string comment,
+        IReadOnlyList<string>? tags = null)
     {
         if (string.IsNullOrWhiteSpace(orderId))
             throw new InvalidOperationException("Order number is missing.");
@@ -560,6 +565,8 @@ public sealed partial class DatabaseService : IAppDatabase
         var body = comment?.Trim() ?? string.Empty;
         if (body.Length < ProductReviewStats.MinCommentLength)
             throw new InvalidOperationException("Please write a short review (at least 5 characters).");
+        if (body.Length > ProductReviewStats.MaxCommentLength)
+            throw new InvalidOperationException($"Review must be {ProductReviewStats.MaxCommentLength} characters or fewer.");
 
         var order = await GetOrderByIdAsync(orderId.Trim())
             ?? throw new InvalidOperationException("Order not found or not owned by the current user.");
@@ -601,13 +608,17 @@ public sealed partial class DatabaseService : IAppDatabase
         var initials = publicAuthor.Length > 0 ? publicAuthor[0].ToString().ToUpperInvariant() : "C";
         var now = DateTime.UtcNow;
         var trimmedTitle = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+        if (trimmedTitle is { Length: > ProductReviewStats.MaxTitleLength })
+            trimmedTitle = trimmedTitle[..ProductReviewStats.MaxTitleLength];
+        var safeTags = ProductReviewStats.NormalizeTags(tags);
+        var tagsJson = safeTags.Count == 0 ? null : JsonSerializer.Serialize(safeTags, JsonOptions);
 
         await using var insert = connection.CreateCommand();
         insert.CommandText = """
             INSERT INTO ProductReviews
-                (ProductId, Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId)
+                (ProductId, Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, TagsJson)
             VALUES
-                ($productId, $author, $initials, $rating, $date, $comment, $title, $orderId, $itemId, $user);
+                ($productId, $author, $initials, $rating, $date, $comment, $title, $orderId, $itemId, $user, $tags);
             SELECT last_insert_rowid();
             """;
         insert.Parameters.AddWithValue("$productId", item.ProductId);
@@ -620,6 +631,7 @@ public sealed partial class DatabaseService : IAppDatabase
         insert.Parameters.AddWithValue("$orderId", order.Id);
         insert.Parameters.AddWithValue("$itemId", orderItemId);
         insert.Parameters.AddWithValue("$user", order.AuthUserId ?? order.CustomerId ?? order.CustomerEmail);
+        insert.Parameters.AddWithValue("$tags", (object?)tagsJson ?? DBNull.Value);
         var newId = Convert.ToInt64(await insert.ExecuteScalarAsync());
 
         var reviews = await GetProductReviewsAsync(connection, item.ProductId);
@@ -642,6 +654,7 @@ public sealed partial class DatabaseService : IAppDatabase
             Date = now,
             Title = trimmedTitle,
             Comment = body,
+            Tags = safeTags,
             OrderId = order.Id,
             OrderItemId = orderItemId,
             AuthUserId = order.AuthUserId ?? order.CustomerId

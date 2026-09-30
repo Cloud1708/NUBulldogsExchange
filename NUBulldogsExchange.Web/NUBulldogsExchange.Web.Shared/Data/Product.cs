@@ -55,6 +55,7 @@ public class ProductReview
     public DateTime Date { get; set; }
     public string? Title { get; set; }
     public string Comment { get; set; } = string.Empty;
+    public List<string> Tags { get; set; } = [];
     public string? OrderId { get; set; }
     public long OrderItemId { get; set; }
     public string? AuthUserId { get; set; }
@@ -78,6 +79,36 @@ public class ProductReview
 public static class ProductReviewStats
 {
     public const int MinCommentLength = 5;
+    public const int MaxCommentLength = 500;
+    public const int MaxTitleLength = 100;
+
+    public static readonly string[] FeedbackTags =
+    [
+        "Good Quality",
+        "Comfortable",
+        "True to Size",
+        "Worth the Price",
+        "Nice Design"
+    ];
+
+    public static List<string> NormalizeTags(IEnumerable<string>? tags)
+    {
+        if (tags is null) return [];
+        var allowed = new HashSet<string>(FeedbackTags, StringComparer.OrdinalIgnoreCase);
+        var result = new List<string>();
+        foreach (var raw in tags)
+        {
+            var value = raw?.Trim();
+            if (string.IsNullOrWhiteSpace(value)) continue;
+            var match = FeedbackTags.FirstOrDefault(t => t.Equals(value, StringComparison.OrdinalIgnoreCase));
+            if (match is null || result.Contains(match, StringComparer.OrdinalIgnoreCase))
+                continue;
+            result.Add(match);
+            if (result.Count >= FeedbackTags.Length) break;
+        }
+
+        return result;
+    }
 
     public static void Apply(Product product, IReadOnlyList<ProductReview> reviews)
     {

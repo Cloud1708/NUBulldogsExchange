@@ -80,6 +80,7 @@ public static class DatabaseInitializer
         await AddColumnIfMissingAsync(connection, "ProductReviews", columns, "OrderId", "TEXT");
         await AddColumnIfMissingAsync(connection, "ProductReviews", columns, "OrderItemId", "INTEGER");
         await AddColumnIfMissingAsync(connection, "ProductReviews", columns, "AuthUserId", "TEXT");
+        await AddColumnIfMissingAsync(connection, "ProductReviews", columns, "TagsJson", "TEXT");
 
         await using var index = connection.CreateCommand();
         index.CommandText = """

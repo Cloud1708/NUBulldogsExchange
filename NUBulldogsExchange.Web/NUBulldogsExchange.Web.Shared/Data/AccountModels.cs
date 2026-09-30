@@ -14,6 +14,41 @@ public class MockOrderItem
 
     public bool HasDisplayColor => OrderFlow.HasDisplayColor(Color);
     public bool HasDisplaySize => OrderFlow.HasDisplaySize(Size);
+
+    /// <summary>
+    /// Purchased variant line for review UI, e.g. "Color: Navy • Size: M".
+    /// Empty when the item has no displayable color/size.
+    /// </summary>
+    public string VariantLabel
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (HasDisplayColor)
+                parts.Add($"Color: {Color!.Trim()}");
+            if (HasDisplaySize)
+                parts.Add($"Size: {Size.Trim()}");
+            return string.Join(" • ", parts);
+        }
+    }
+
+    /// <summary>
+    /// Purchase line including quantity, e.g. "Color: Navy • Size: M • Qty: 1".
+    /// Always includes Qty.
+    /// </summary>
+    public string PurchaseLabel
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (HasDisplayColor)
+                parts.Add($"Color: {Color!.Trim()}");
+            if (HasDisplaySize)
+                parts.Add($"Size: {Size.Trim()}");
+            parts.Add($"Qty: {Quantity}");
+            return string.Join(" • ", parts);
+        }
+    }
 }
 
 public class MockOrder

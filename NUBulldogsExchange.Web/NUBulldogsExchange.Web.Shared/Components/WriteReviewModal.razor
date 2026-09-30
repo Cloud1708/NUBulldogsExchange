@@ -2,150 +2,286 @@
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Services
 @inject OrderService OrderService
-@inject ToastService Toast
 
 @if (Order is not null)
 {
-    <div class="wr-backdrop" @onclick="Close">
+    <div class="wr-backdrop" @onclick="RequestClose">
         <div class="wr-modal" role="dialog" aria-modal="true" aria-labelledby="wr-title" @onclick:stopPropagation="true">
-            <header class="wr-header">
-                <h2 id="wr-title">Write a Review</h2>
-                <button type="button" class="wr-close" @onclick="Close" aria-label="Close">
-                    <Icon Name="x" Size="16" />
-                </button>
-            </header>
+            @if (_step == Step.Success && _submitted is not null)
+            {
+                <header class="wr-header wr-header-success">
+                    <span class="wr-header-spacer" aria-hidden="true"></span>
+                    <h2 id="wr-title" class="visually-hidden">Review submitted</h2>
+                    <button type="button" class="wr-close" @onclick="Close" aria-label="Close">
+                        <Icon Name="x" Size="16" />
+                    </button>
+                </header>
 
-            <div class="wr-body">
-                @if (_selected is null)
-                {
-                    <p class="wr-lead">Choose a product to review</p>
-                    <div class="wr-item-list">
-                        @foreach (var group in _groupedItems)
-                        {
-                            var representative = group.First();
-                            var isReviewed = group.Any(i => i.IsReviewed);
-                            <article class="wr-item">
-                                <img src="@representative.ImageUrl"
-                                     alt="@representative.Name"
-                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                                <div class="wr-item-copy">
-                                    <strong>@representative.Name</strong>
-                                    @if (representative.HasDisplayColor)
+                <div class="wr-success">
+                    <div class="wr-success-icon" aria-hidden="true">✓</div>
+                    <h2>Review submitted!</h2>
+                    <p>Thank you for sharing your feedback.</p>
+
+                    <article class="wr-success-preview">
+                        <img src="@_submitted.ImageUrl"
+                             alt="@_submitted.Name"
+                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                        <div class="wr-success-preview-copy">
+                            <strong>@_submitted.Name</strong>
+                            @if (!string.IsNullOrWhiteSpace(_submitted.VariantLabel))
+                            {
+                                <span>@_submitted.VariantLabel</span>
+                            }
+                            <div class="wr-stars wr-stars-readonly" aria-label="@($"{_submitted.Rating} out of 5")">
+                                @for (var i = 1; i <= 5; i++)
+                                {
+                                    <span class="wr-star @(_submitted.Rating >= i ? "filled" : "")">★</span>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(_submitted.Title))
+                            {
+                                <h3>@_submitted.Title</h3>
+                            }
+                            <p>@_submitted.Comment</p>
+                            @if (_submitted.Tags.Count > 0)
+                            {
+                                <div class="wr-tag-list is-readonly">
+                                    @foreach (var tag in _submitted.Tags)
                                     {
-                                        <span>Color: @representative.Color</span>
-                                    }
-                                    @if (representative.HasDisplaySize)
-                                    {
-                                        <span>Size: @representative.Size</span>
+                                        <span class="wr-tag is-selected">@tag</span>
                                     }
                                 </div>
-                                @if (isReviewed)
+                            }
+                        </div>
+                    </article>
+
+                    <div class="wr-success-actions">
+                        @if (HasUnreviewedItems)
+                        {
+                            <button type="button" class="btn btn-outline-navy" @onclick="ReviewAnother">
+                                Review Another Product
+                            </button>
+                        }
+                        <button type="button" class="btn btn-navy" @onclick="Close">Done</button>
+                    </div>
+                </div>
+            }
+            else
+            {
+                <header class="wr-header @(_step == Step.Form ? "has-back" : "")">
+                    @if (_step == Step.Form)
+                    {
+                        <button type="button" class="wr-back" @onclick="BackToList" disabled="@_saving" aria-label="Back">
+                            ← Back
+                        </button>
+                    }
+                    else
+                    {
+                        <span class="wr-header-spacer" aria-hidden="true"></span>
+                    }
+                    <h2 id="wr-title">Write a Review</h2>
+                    <button type="button" class="wr-close" @onclick="RequestClose" disabled="@_saving" aria-label="Close">
+                        <Icon Name="x" Size="16" />
+                    </button>
+                </header>
+
+                <div class="wr-body">
+                    @if (_step == Step.Select)
+                    {
+                        <p class="wr-lead">Choose a product to review</p>
+                        <div class="wr-item-list">
+                            @foreach (var item in Order.Items)
+                            {
+                                <article class="wr-item">
+                                    <img src="@item.ImageUrl"
+                                         alt="@item.Name"
+                                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                    <div class="wr-item-copy">
+                                        <strong>@item.Name</strong>
+                                        <span>@item.PurchaseLabel</span>
+                                    </div>
+                                    @if (item.IsReviewed)
+                                    {
+                                        <span class="wr-reviewed-badge">✓ Reviewed</span>
+                                    }
+                                    else
+                                    {
+                                        <button type="button"
+                                                class="btn btn-navy wr-item-action"
+                                                @onclick="() => SelectItem(item)">
+                                            Write Review
+                                        </button>
+                                    }
+                                </article>
+                            }
+                        </div>
+                        <div class="wr-footer">
+                            <button type="button" class="btn btn-outline-navy" @onclick="Close">Close</button>
+                        </div>
+                    }
+                    else if (_selected is not null)
+                    {
+                        <div class="wr-form-product">
+                            <img src="@_selected.ImageUrl"
+                                 alt="@_selected.Name"
+                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                            <div>
+                                <strong>@_selected.Name</strong>
+                                <span>@_selected.PurchaseLabel</span>
+                                @if (ShowVerifiedPurchase)
                                 {
-                                    <button type="button" class="btn btn-reviewed" disabled>Reviewed ✓</button>
+                                    <span class="wr-verified">✓ Verified Purchase</span>
                                 }
-                                else
+                            </div>
+                        </div>
+
+                        <div class="wr-field">
+                            <span>How would you rate this product? *</span>
+                            <div class="wr-stars-row">
+                                <div class="wr-stars" role="radiogroup" aria-label="Rating"
+                                     @onmouseleave="() => _hoverRating = 0">
+                                    @for (var i = 1; i <= 5; i++)
+                                    {
+                                        var star = i;
+                                        var active = (_hoverRating > 0 ? _hoverRating : _rating) >= star;
+                                        <button type="button"
+                                                class="wr-star @(active ? "filled" : "")"
+                                                aria-label="@($"{star} star{(star == 1 ? "" : "s")}")"
+                                                disabled="@_saving"
+                                                @onmouseenter="() => _hoverRating = star"
+                                                @onclick="() => SetRating(star)">★</button>
+                                    }
+                                </div>
+                                @if (_rating >= 1)
                                 {
-                                    <button type="button" class="btn btn-navy wr-item-action" @onclick="() => SelectItem(representative)">
-                                        Write Review
+                                    <small class="wr-rating-hint">@_rating out of 5</small>
+                                }
+                            </div>
+                        </div>
+
+                        <div class="wr-field">
+                            <span>What did you like? <em>(Optional)</em></span>
+                            <div class="wr-tag-list" role="group" aria-label="Feedback tags">
+                                @foreach (var tag in ProductReviewStats.FeedbackTags)
+                                {
+                                    var selected = _selectedTags.Contains(tag);
+                                    <button type="button"
+                                            class="wr-tag @(selected ? "is-selected" : "")"
+                                            disabled="@_saving"
+                                            aria-pressed="@selected"
+                                            @onclick="() => ToggleTag(tag)">
+                                        @tag
                                     </button>
                                 }
-                            </article>
+                            </div>
+                        </div>
+
+                        <label class="wr-field">
+                            <span>Review Title <em>(Optional)</em></span>
+                            <input type="text"
+                                   maxlength="@ProductReviewStats.MaxTitleLength"
+                                   placeholder="Great quality!"
+                                   disabled="@_saving"
+                                   @bind="_title"
+                                   @bind:event="oninput" />
+                            <small class="wr-counter @(_title.Length >= ProductReviewStats.MaxTitleLength ? "is-max" : "")">
+                                @_title.Length / @ProductReviewStats.MaxTitleLength
+                            </small>
+                        </label>
+
+                        <label class="wr-field">
+                            <span>Your Review *</span>
+                            <textarea rows="4"
+                                      maxlength="@ProductReviewStats.MaxCommentLength"
+                                      placeholder="Share your experience with this product..."
+                                      disabled="@_saving"
+                                      @bind="_comment"
+                                      @bind:event="oninput"></textarea>
+                            <small class="wr-counter @(_comment.Length >= ProductReviewStats.MaxCommentLength ? "is-max" : "")">
+                                @_comment.Length / @ProductReviewStats.MaxCommentLength
+                            </small>
+                        </label>
+
+                        <p class="wr-notice">ⓘ Your review will be visible to other customers.</p>
+
+                        @if (!string.IsNullOrWhiteSpace(_error))
+                        {
+                            <p class="wr-error">@_error</p>
                         }
-                    </div>
-                    <div class="wr-footer">
-                        <button type="button" class="btn btn-outline-navy" @onclick="Close">Close</button>
-                    </div>
-                }
-                else
-                {
-                    <div class="wr-form-product">
-                        <img src="@_selected.ImageUrl"
-                             alt="@_selected.Name"
-                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                        <div>
-                            <strong>@_selected.Name</strong>
-                            @if (_selected.HasDisplayColor)
-                            {
-                                <span>Color: @_selected.Color</span>
-                            }
-                            @if (_selected.HasDisplaySize)
-                            {
-                                <span>Size: @_selected.Size</span>
-                            }
+
+                        <div class="wr-footer">
+                            <button type="button" class="btn btn-outline-navy" disabled="@_saving" @onclick="BackToList">Cancel</button>
+                            <button type="button"
+                                    class="btn btn-navy"
+                                    disabled="@(!CanSubmit)"
+                                    @onclick="Submit">
+                                @(_saving ? "Submitting..." : "Submit Review")
+                            </button>
                         </div>
-                    </div>
-
-                    <label class="wr-field">
-                        <span>Rating *</span>
-                        <div class="wr-stars" role="radiogroup" aria-label="Rating">
-                            @for (var i = 1; i <= 5; i++)
-                            {
-                                var star = i;
-                                <button type="button"
-                                        class="wr-star @(_rating >= star ? "filled" : "")"
-                                        aria-label="@($"{star} star{(star == 1 ? "" : "s")}")"
-                                        @onclick="() => _rating = star">★</button>
-                            }
-                        </div>
-                    </label>
-
-                    <label class="wr-field">
-                        <span>Review Title</span>
-                        <input type="text"
-                               maxlength="80"
-                               placeholder="Optional"
-                               @bind="_title" />
-                    </label>
-
-                    <label class="wr-field">
-                        <span>Your Review *</span>
-                        <textarea rows="4"
-                                  maxlength="1000"
-                                  placeholder="Share your experience with this product..."
-                                  @bind="_comment"></textarea>
-                    </label>
-
-                    @if (!string.IsNullOrWhiteSpace(_error))
-                    {
-                        <p class="wr-error">@_error</p>
                     }
-
-                    <div class="wr-footer">
-                        <button type="button" class="btn btn-outline-navy" disabled="@_saving" @onclick="CancelForm">Cancel</button>
-                        <button type="button" class="btn btn-navy" disabled="@_saving" @onclick="Submit">
-                            @(_saving ? "Submitting..." : "Submit Review")
-                        </button>
-                    </div>
-                }
-            </div>
+                </div>
+            }
         </div>
     </div>
 }
 
 @code {
+    private enum Step { Select, Form, Success }
+
+    private sealed class SubmittedPreview
+    {
+        public string Name { get; init; } = string.Empty;
+        public string ImageUrl { get; init; } = string.Empty;
+        public string VariantLabel { get; init; } = string.Empty;
+        public int Rating { get; init; }
+        public string? Title { get; init; }
+        public string Comment { get; init; } = string.Empty;
+        public List<string> Tags { get; init; } = [];
+    }
+
     [Parameter] public MockOrder? Order { get; set; }
     [Parameter] public MockOrderItem? SelectedItem { get; set; }
     [Parameter] public EventCallback OnClose { get; set; }
     [Parameter] public EventCallback OnSubmitted { get; set; }
 
+    private Step _step = Step.Select;
     private MockOrderItem? _selected;
-    private int _rating = 5;
+    private SubmittedPreview? _submitted;
+    private int _rating;
+    private int _hoverRating;
     private string _title = string.Empty;
     private string _comment = string.Empty;
+    private readonly HashSet<string> _selectedTags = new(StringComparer.OrdinalIgnoreCase);
     private string? _error;
     private bool _saving;
     private bool _openedForItem;
     private string? _boundOrderId;
-    private List<IGrouping<int, MockOrderItem>> _groupedItems = [];
+
+    private bool HasUnreviewedItems =>
+        Order?.Items.Any(i => !i.IsReviewed) == true;
+
+    private bool ShowVerifiedPurchase =>
+        Order is not null
+        && _selected is not null
+        && OrderFlow.CanWriteReview(Order)
+        && Order.Items.Any(i => i.OrderItemId == _selected.OrderItemId);
+
+    private bool CanSubmit =>
+        !_saving
+        && _rating is >= 1 and <= 5
+        && _comment.Trim().Length >= ProductReviewStats.MinCommentLength
+        && _comment.Length <= ProductReviewStats.MaxCommentLength
+        && _title.Length <= ProductReviewStats.MaxTitleLength;
 
     protected override void OnParametersSet()
     {
         if (Order is null)
         {
             _selected = null;
+            _submitted = null;
             _openedForItem = false;
             _boundOrderId = null;
-            _groupedItems = [];
+            _step = Step.Select;
             return;
         }
 
@@ -153,67 +289,97 @@
         {
             _boundOrderId = Order.Id;
             _selected = null;
+            _submitted = null;
             _openedForItem = false;
+            _step = Step.Select;
             ResetFormFields();
         }
-
-        // Group items by ProductId so each product only appears once
-        _groupedItems = Order.Items
-            .GroupBy(i => i.ProductId)
-            .ToList();
 
         if (SelectedItem is not null
             && !SelectedItem.IsReviewed
             && !_openedForItem
+            && _step == Step.Select
             && Order.Items.Any(i => i.OrderItemId == SelectedItem.OrderItemId))
         {
-            SelectItem(SelectedItem);
+            var match = Order.Items.First(i => i.OrderItemId == SelectedItem.OrderItemId);
+            SelectItem(match);
             _openedForItem = true;
         }
     }
 
     private void SelectItem(MockOrderItem item)
     {
+        if (item.IsReviewed) return;
         _selected = item;
+        _submitted = null;
+        _step = Step.Form;
         ResetFormFields();
+    }
+
+    private void SetRating(int star)
+    {
+        if (_saving) return;
+        _rating = star;
+        _error = null;
+    }
+
+    private void ToggleTag(string tag)
+    {
+        if (_saving) return;
+        if (!_selectedTags.Add(tag))
+            _selectedTags.Remove(tag);
     }
 
     private void ResetFormFields()
     {
-        _rating = 5;
+        _rating = 0;
+        _hoverRating = 0;
         _title = string.Empty;
         _comment = string.Empty;
+        _selectedTags.Clear();
         _error = null;
+    }
+
+    private void BackToList()
+    {
+        if (_saving) return;
+        _selected = null;
+        _step = Step.Select;
+        _error = null;
+        _openedForItem = false;
+        ResetFormFields();
+    }
+
+    private void ReviewAnother()
+    {
+        _selected = null;
+        _submitted = null;
+        _step = Step.Select;
+        ResetFormFields();
+        _openedForItem = false;
+    }
+
+    private async Task RequestClose()
+    {
+        if (_saving) return;
+        await Close();
     }
 
     private async Task Close()
     {
         if (_saving) return;
         _selected = null;
+        _submitted = null;
         _openedForItem = false;
         _boundOrderId = null;
+        _step = Step.Select;
+        ResetFormFields();
         await OnClose.InvokeAsync();
     }
 
-    private async Task CancelForm()
-    {
-        if (_saving) return;
-        _error = null;
-        if (_openedForItem)
-        {
-            await Close();
-            return;
-        }
-
-        _selected = null;
-    }
-
-    private bool AllGroupsReviewed =>
-        _groupedItems.Count > 0 && _groupedItems.All(g => g.Any(i => i.IsReviewed));
-
     private async Task Submit()
     {
-        if (Order is null || _selected is null || _saving)
+        if (Order is null || _selected is null || !CanSubmit)
             return;
 
         if (_rating is < 1 or > 5)
@@ -225,7 +391,13 @@
         var text = _comment.Trim();
         if (text.Length < ProductReviewStats.MinCommentLength)
         {
-            _error = "Please write a short review (at least 5 characters).";
+            _error = $"Please write a short review (at least {ProductReviewStats.MinCommentLength} characters).";
+            return;
+        }
+
+        if (text.Length > ProductReviewStats.MaxCommentLength)
+        {
+            _error = $"Review must be {ProductReviewStats.MaxCommentLength} characters or fewer.";
             return;
         }
 
@@ -233,29 +405,34 @@
         _error = null;
         try
         {
+            var title = string.IsNullOrWhiteSpace(_title) ? null : _title.Trim();
+            if (title is { Length: > ProductReviewStats.MaxTitleLength })
+                title = title[..ProductReviewStats.MaxTitleLength];
+
+            var tags = ProductReviewStats.NormalizeTags(_selectedTags);
+
             await OrderService.SubmitProductReviewAsync(
                 Order.Id,
                 _selected.OrderItemId,
                 _rating,
-                _title,
-                text);
+                title,
+                text,
+                tags);
 
-            // Mark all sibling items with the same ProductId as reviewed
-            foreach (var sibling in Order.Items
-                         .Where(i => i.ProductId == _selected.ProductId))
+            _submitted = new SubmittedPreview
             {
-                sibling.IsReviewed = true;
-            }
+                Name = _selected.Name,
+                ImageUrl = _selected.ImageUrl,
+                VariantLabel = _selected.VariantLabel,
+                Rating = _rating,
+                Title = title,
+                Comment = text,
+                Tags = tags
+            };
 
-            Toast.Show("Review submitted successfully.");
+            _selected.IsReviewed = true;
             await OnSubmitted.InvokeAsync();
-
-            if (_openedForItem || AllGroupsReviewed)
-            {
-                await Close();
-                return;
-            }
-
+            _step = Step.Success;
             _selected = null;
         }
         catch (Exception ex)

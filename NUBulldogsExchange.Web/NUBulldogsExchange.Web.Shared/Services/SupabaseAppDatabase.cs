@@ -258,7 +258,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         long orderItemId,
         int rating,
         string? title,
-        string comment)
+        string comment,
+        IReadOnlyList<string>? tags = null)
     {
         RequireAuth();
         if (string.IsNullOrWhiteSpace(orderId))
@@ -269,18 +270,44 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             throw new InvalidOperationException("Please choose a rating from 1 to 5 stars.");
         if (string.IsNullOrWhiteSpace(comment) || comment.Trim().Length < ProductReviewStats.MinCommentLength)
             throw new InvalidOperationException("Please write a short review (at least 5 characters).");
+        if (comment.Trim().Length > ProductReviewStats.MaxCommentLength)
+            throw new InvalidOperationException($"Review must be {ProductReviewStats.MaxCommentLength} characters or fewer.");
 
-        var row = await SendForSingleAsync<ProductReviewRow>(
-            HttpMethod.Post,
-            "rest/v1/rpc/submit_product_review",
-            new
-            {
-                p_order_id = orderId.Trim(),
-                p_order_item_id = orderItemId,
-                p_rating = rating,
-                p_title = string.IsNullOrWhiteSpace(title) ? null : title.Trim(),
-                p_review = comment.Trim()
-            });
+        var safeTitle = string.IsNullOrWhiteSpace(title) ? null : title.Trim();
+        if (safeTitle is { Length: > ProductReviewStats.MaxTitleLength })
+            safeTitle = safeTitle[..ProductReviewStats.MaxTitleLength];
+
+        var safeTags = ProductReviewStats.NormalizeTags(tags);
+        var payload = new Dictionary<string, object?>
+        {
+            ["p_order_id"] = orderId.Trim(),
+            ["p_order_item_id"] = orderItemId,
+            ["p_rating"] = rating,
+            ["p_title"] = safeTitle,
+            ["p_review"] = comment.Trim(),
+            ["p_tags"] = safeTags.Count == 0 ? null : safeTags.ToArray()
+        };
+
+        ProductReviewRow? row;
+        try
+        {
+            row = await SendForSingleAsync<ProductReviewRow>(
+                HttpMethod.Post,
+                "rest/v1/rpc/submit_product_review",
+                payload);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("p_tags", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("review_tags", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("Could not find the function", StringComparison.OrdinalIgnoreCase))
+        {
+            // SQL 017 not applied yet — submit without tags.
+            payload.Remove("p_tags");
+            row = await SendForSingleAsync<ProductReviewRow>(
+                HttpMethod.Post,
+                "rest/v1/rpc/submit_product_review",
+                payload);
+        }
 
         if (row is null || row.Id <= 0)
             throw new InvalidOperationException("Review could not be saved.");
@@ -304,6 +331,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             Date = date,
             Title = r.Title,
             Comment = r.Comment,
+            Tags = ProductReviewStats.NormalizeTags(r.ReviewTags),
             OrderId = r.OrderId,
             OrderItemId = r.OrderItemId,
             AuthUserId = r.AuthUserId
@@ -2894,6 +2922,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         public DateTime CreatedAt { get; set; }
         public string? Title { get; set; }
         public string Comment { get; set; } = string.Empty;
+        public string[]? ReviewTags { get; set; }
         public string? OrderId { get; set; }
         public long OrderItemId { get; set; }
         public string? AuthUserId { get; set; }

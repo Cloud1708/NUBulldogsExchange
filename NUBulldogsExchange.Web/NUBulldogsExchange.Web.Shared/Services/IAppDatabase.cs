@@ -24,7 +24,8 @@ public interface IAppDatabase
         long orderItemId,
         int rating,
         string? title,
-        string comment);
+        string comment,
+        IReadOnlyList<string>? tags = null);
 
     // Product variants (size and/or color sellable combinations)
     Task<List<ProductVariant>> GetProductVariantsAsync(int productId);

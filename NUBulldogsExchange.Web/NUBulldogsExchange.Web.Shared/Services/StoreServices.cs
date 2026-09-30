@@ -465,7 +465,8 @@ public class OrderService
         long orderItemId,
         int rating,
         string? title,
-        string comment)
+        string comment,
+        IReadOnlyList<string>? tags = null)
     {
         var order = _orders.FirstOrDefault(o => o.Id.Equals(orderId, StringComparison.OrdinalIgnoreCase));
         if (order is null || !OrderFlow.CanWriteReview(order))
@@ -477,7 +478,7 @@ public class OrderService
         if (item.IsReviewed)
             throw new InvalidOperationException("You already reviewed this item.");
 
-        var saved = await _db.SubmitProductReviewAsync(orderId, orderItemId, rating, title, comment);
+        var saved = await _db.SubmitProductReviewAsync(orderId, orderItemId, rating, title, comment, tags);
         _reviewedItemIds.Add(orderItemId);
         item.IsReviewed = true;
 
