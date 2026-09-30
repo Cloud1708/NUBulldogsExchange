@@ -420,7 +420,7 @@ public sealed partial class DatabaseService : IAppDatabase
         var list = new List<ProductReview>();
         await using var command = connection.CreateCommand();
         command.CommandText = """
-            SELECT Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, Id, TagsJson
+            SELECT Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, Id, TagsJson, IsVisible, ProductId
             FROM ProductReviews WHERE ProductId = $productId ORDER BY Date DESC;
             """;
         command.Parameters.AddWithValue("$productId", productId);
@@ -472,8 +472,110 @@ public sealed partial class DatabaseService : IAppDatabase
         Tags = reader.FieldCount > 10 && !reader.IsDBNull(10)
             ? ProductReviewStats.NormalizeTags(
                 JsonSerializer.Deserialize<List<string>>(reader.GetString(10), JsonOptions) ?? [])
-            : []
+            : [],
+        IsVisible = reader.FieldCount <= 11 || reader.IsDBNull(11) || reader.GetInt32(11) != 0,
+        ProductId = reader.FieldCount > 12 && !reader.IsDBNull(12) ? reader.GetInt32(12) : 0
     };
+
+    public async Task<List<ProductReview>> GetAllProductReviewsAsync()
+    {
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        var list = new List<ProductReview>();
+        await using var command = connection.CreateCommand();
+        command.CommandText = """
+            SELECT Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, Id, TagsJson, IsVisible, ProductId
+            FROM ProductReviews
+            ORDER BY Date DESC, Id DESC;
+            """;
+        try
+        {
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+                list.Add(ReadProductReview(reader));
+        }
+        catch (SqliteException)
+        {
+            command.CommandText = """
+                SELECT Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, Id
+                FROM ProductReviews
+                ORDER BY Date DESC, Id DESC;
+                """;
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                var review = ReadProductReview(reader);
+                review.IsVisible = true;
+                list.Add(review);
+            }
+        }
+
+        return list;
+    }
+
+    public async Task<ProductReview> SetProductReviewVisibilityAsync(long reviewId, bool isVisible)
+    {
+        if (reviewId <= 0)
+            throw new InvalidOperationException("Review id is missing.");
+
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+
+        await using (var update = connection.CreateCommand())
+        {
+            update.CommandText = """
+                UPDATE ProductReviews
+                SET IsVisible = $visible
+                WHERE Id = $id;
+                """;
+            update.Parameters.AddWithValue("$visible", isVisible ? 1 : 0);
+            update.Parameters.AddWithValue("$id", reviewId);
+            try
+            {
+                var affected = await update.ExecuteNonQueryAsync();
+                if (affected == 0)
+                    throw new InvalidOperationException("Review not found.");
+            }
+            catch (SqliteException ex) when (ex.Message.Contains("IsVisible", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException("Review visibility column is missing. Restart the app to apply local migrations.");
+            }
+        }
+
+        ProductReview? found = null;
+        int productId = 0;
+        await using (var read = connection.CreateCommand())
+        {
+            read.CommandText = """
+                SELECT Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, Id, TagsJson, IsVisible, ProductId
+                FROM ProductReviews WHERE Id = $id;
+                """;
+            read.Parameters.AddWithValue("$id", reviewId);
+            await using var reader = await read.ExecuteReaderAsync();
+            if (await reader.ReadAsync())
+            {
+                found = ReadProductReview(reader);
+                productId = found.ProductId;
+            }
+        }
+
+        if (found is null)
+            throw new InvalidOperationException("Review not found.");
+
+        if (productId > 0)
+        {
+            var reviews = await GetProductReviewsAsync(connection, productId);
+            var visible = reviews.Where(r => r.IsVisible).ToList();
+            await using var productUpdate = connection.CreateCommand();
+            productUpdate.CommandText = "UPDATE Products SET Rating = $rating, Reviews = $reviews WHERE Id = $id;";
+            productUpdate.Parameters.AddWithValue("$rating", visible.Count == 0 ? 0 : Math.Round(visible.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero));
+            productUpdate.Parameters.AddWithValue("$reviews", visible.Count);
+            productUpdate.Parameters.AddWithValue("$id", productId);
+            await productUpdate.ExecuteNonQueryAsync();
+        }
+
+        return found;
+    }
 
     public async Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews)
     {
@@ -616,9 +718,9 @@ public sealed partial class DatabaseService : IAppDatabase
         await using var insert = connection.CreateCommand();
         insert.CommandText = """
             INSERT INTO ProductReviews
-                (ProductId, Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, TagsJson)
+                (ProductId, Author, Initials, Rating, Date, Comment, Title, OrderId, OrderItemId, AuthUserId, TagsJson, IsVisible)
             VALUES
-                ($productId, $author, $initials, $rating, $date, $comment, $title, $orderId, $itemId, $user, $tags);
+                ($productId, $author, $initials, $rating, $date, $comment, $title, $orderId, $itemId, $user, $tags, 1);
             SELECT last_insert_rowid();
             """;
         insert.Parameters.AddWithValue("$productId", item.ProductId);
@@ -635,11 +737,12 @@ public sealed partial class DatabaseService : IAppDatabase
         var newId = Convert.ToInt64(await insert.ExecuteScalarAsync());
 
         var reviews = await GetProductReviewsAsync(connection, item.ProductId);
+        var visible = reviews.Where(r => r.IsVisible).ToList();
         await using (var update = connection.CreateCommand())
         {
             update.CommandText = "UPDATE Products SET Rating = $rating, Reviews = $reviews WHERE Id = $id;";
-            update.Parameters.AddWithValue("$rating", reviews.Count == 0 ? 0 : Math.Round(reviews.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero));
-            update.Parameters.AddWithValue("$reviews", reviews.Count);
+            update.Parameters.AddWithValue("$rating", visible.Count == 0 ? 0 : Math.Round(visible.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero));
+            update.Parameters.AddWithValue("$reviews", visible.Count);
             update.Parameters.AddWithValue("$id", item.ProductId);
             await update.ExecuteNonQueryAsync();
         }
@@ -657,7 +760,8 @@ public sealed partial class DatabaseService : IAppDatabase
             Tags = safeTags,
             OrderId = order.Id,
             OrderItemId = orderItemId,
-            AuthUserId = order.AuthUserId ?? order.CustomerId
+            AuthUserId = order.AuthUserId ?? order.CustomerId,
+            IsVisible = true
         };
     }
 

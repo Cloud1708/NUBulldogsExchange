@@ -1,0 +1,175 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using System.Globalization
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminReviewService Reviews
+@inject ToastService Toast
+
+@if (Review is not null)
+{
+    <div class="admin-modal-backdrop ar-backdrop" @onclick="Cancel">
+        <div class="ar-details-modal" role="dialog" aria-modal="true" aria-labelledby="ar-details-title" @onclick:stopPropagation="true">
+            <header class="ar-modal-header">
+                <h2 id="ar-details-title">Review Details</h2>
+                <button type="button" class="admin-product-modal-close" aria-label="Close" @onclick="Cancel">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </header>
+
+            <div class="ar-modal-body">
+                <div class="ar-details-layout">
+                    <aside class="ar-details-left">
+                        <div class="ar-details-product">
+                            <img class="ar-details-thumb"
+                                 src="@(Review.ProductImageUrl ?? CatalogHelpers.PlaceholderImage)"
+                                 alt="@(Review.ProductName ?? "Product")"
+                                 width="88"
+                                 height="88"
+                                 style="width:88px;height:88px;max-width:88px;object-fit:cover;border-radius:10px;flex-shrink:0;"
+                                 onerror="this.onerror=null;this.src='@CatalogHelpers.PlaceholderImage';" />
+                            <div class="ar-details-product-copy">
+                                <strong>@(Review.ProductName ?? "Product")</strong>
+                                @if (!string.IsNullOrWhiteSpace(Review.VariantLabel))
+                                {
+                                    <p>@Review.VariantLabel</p>
+                                }
+                                @if (Review.IsVerifiedPurchase)
+                                {
+                                    <span class="ar-verified-badge">✓ Verified Purchase</span>
+                                }
+                            </div>
+                        </div>
+
+                        <dl class="ar-details-meta">
+                            <div class="ar-details-meta-row">
+                                <dt>Customer</dt>
+                                <dd>@Review.PublicAuthor</dd>
+                            </div>
+                            <div class="ar-details-meta-row">
+                                <dt>Order</dt>
+                                <dd>@(string.IsNullOrWhiteSpace(Review.OrderId) ? "—" : Review.OrderId)</dd>
+                            </div>
+                            <div class="ar-details-meta-row">
+                                <dt>Submitted</dt>
+                                <dd>@Review.Date.ToString("MMMM d, yyyy, h:mm tt", CultureInfo.InvariantCulture)</dd>
+                            </div>
+                        </dl>
+                    </aside>
+
+                    <section class="ar-details-right">
+                        <div class="ar-details-field">
+                            <span class="ar-details-label">Rating</span>
+                            <div class="ar-details-rating-row">
+                                <div class="ar-stars ar-stars-sm" aria-hidden="true">
+                                    @for (var i = 1; i <= 5; i++)
+                                    {
+                                        <span class="@(i <= Review.Rating ? "filled" : "")">★</span>
+                                    }
+                                </div>
+                                <span>@Review.Rating out of 5</span>
+                            </div>
+                        </div>
+
+                        <div class="ar-details-field">
+                            <span class="ar-details-label">Review Title</span>
+                            <p class="ar-details-title-text">@(string.IsNullOrWhiteSpace(Review.Title) ? "—" : Review.Title)</p>
+                        </div>
+
+                        <div class="ar-details-field">
+                            <span class="ar-details-label">Review</span>
+                            <div class="ar-details-body-box">@Review.Comment</div>
+                        </div>
+
+                        @if (Review.Tags.Count > 0)
+                        {
+                            <div class="ar-details-field">
+                                <span class="ar-details-label">Feedback Tags</span>
+                                <div class="pdp-review-tags">
+                                    @foreach (var tag in Review.Tags)
+                                    {
+                                        <span class="pdp-review-tag">@tag</span>
+                                    }
+                                </div>
+                            </div>
+                        }
+
+                        <label class="ar-details-field ar-details-status">
+                            <span class="ar-details-label">Review Status</span>
+                            <select class="admin-products-select ar-details-select" @bind="_draftVisible">
+                                <option value="true">Visible</option>
+                                <option value="false">Hidden</option>
+                            </select>
+                            <small class="ar-hint">Hidden reviews will not be shown to customers.</small>
+                        </label>
+                    </section>
+                </div>
+
+                <div class="ar-details-footer">
+                    <button type="button" class="btn btn-outline-navy" disabled="@_saving" @onclick="Cancel">Cancel</button>
+                    <button type="button" class="btn btn-navy" disabled="@(_saving || !IsDirty)" @onclick="Save">
+                        @(_saving ? "Saving..." : "Save Changes")
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public ProductReview? Review { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string _draftVisible = "true";
+    private bool _saving;
+    private long? _boundId;
+
+    private bool IsDirty =>
+        Review is not null &&
+        bool.TryParse(_draftVisible, out var visible) &&
+        visible != Review.IsVisible;
+
+    protected override void OnParametersSet()
+    {
+        if (Review is null)
+        {
+            _boundId = null;
+            return;
+        }
+
+        if (_boundId != Review.Id)
+        {
+            _boundId = Review.Id;
+            _draftVisible = Review.IsVisible ? "true" : "false";
+        }
+    }
+
+    private async Task Cancel()
+    {
+        if (_saving) return;
+        await OnClose.InvokeAsync();
+    }
+
+    private async Task Save()
+    {
+        if (Review is null || _saving || !IsDirty) return;
+        if (!bool.TryParse(_draftVisible, out var visible)) return;
+
+        _saving = true;
+        try
+        {
+            await Reviews.SetVisibilityAsync(Review.Id, visible);
+            Toast.Show(visible ? "Review is now Visible." : "Review is now Hidden.");
+            await OnChanged.InvokeAsync();
+            await OnClose.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message) ? "Unable to update review." : ex.Message);
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+}

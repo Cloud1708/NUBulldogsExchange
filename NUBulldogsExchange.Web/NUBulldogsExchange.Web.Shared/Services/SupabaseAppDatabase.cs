@@ -228,6 +228,42 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         return rows.Select(MapProductReview).ToList();
     }
 
+    public async Task<List<ProductReview>> GetAllProductReviewsAsync()
+    {
+        RequireAuth();
+        var rows = await GetListAsync<ProductReviewRow>(
+            "rest/v1/product_reviews?select=*&order=created_at.desc,review_date.desc,id.desc");
+        return rows.Select(MapProductReview).ToList();
+    }
+
+    public async Task<ProductReview> SetProductReviewVisibilityAsync(long reviewId, bool isVisible)
+    {
+        RequireAuth();
+        if (reviewId <= 0)
+            throw new InvalidOperationException("Review id is missing.");
+
+        try
+        {
+            var row = await SendForSingleAsync<ProductReviewRow>(
+                HttpMethod.Post,
+                "rest/v1/rpc/set_product_review_visibility",
+                new { p_review_id = reviewId, p_is_visible = isVisible });
+
+            if (row is null || row.Id <= 0)
+                throw new InvalidOperationException("Review could not be updated.");
+
+            return MapProductReview(row);
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("set_product_review_visibility", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("is_visible", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("Could not find the function", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Review moderation requires SQL migration 018_product_review_visibility.sql. Run it in Supabase, then retry.");
+        }
+    }
+
     public async Task<List<long>> GetReviewedOrderItemIdsAsync(IReadOnlyCollection<string> orderIds)
     {
         if (!_session.IsAuthenticated || string.IsNullOrWhiteSpace(_session.AuthUserId))
@@ -334,7 +370,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             Tags = ProductReviewStats.NormalizeTags(r.ReviewTags),
             OrderId = r.OrderId,
             OrderItemId = r.OrderItemId,
-            AuthUserId = r.AuthUserId
+            AuthUserId = r.AuthUserId,
+            IsVisible = r.IsVisible != false
         };
     }
 
@@ -2926,6 +2963,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         public string? OrderId { get; set; }
         public long OrderItemId { get; set; }
         public string? AuthUserId { get; set; }
+        public bool? IsVisible { get; set; }
     }
 
     private sealed class SupabaseAuthResponse

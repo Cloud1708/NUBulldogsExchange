@@ -56,6 +56,7 @@ namespace NUBulldogsExchange.Web
             builder.Services.AddSingleton<AdminPromotionService>();
             builder.Services.AddSingleton<AdminReportService>();
             builder.Services.AddSingleton<AdminNotificationService>();
+            builder.Services.AddSingleton<AdminReviewService>();
 
             builder.Services.AddMauiBlazorWebView();
 

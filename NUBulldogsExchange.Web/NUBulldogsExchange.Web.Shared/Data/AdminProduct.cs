@@ -11,6 +11,8 @@ public class AdminProduct
     public decimal Price { get; set; }
     public int Stock { get; set; }
     public int Sold { get; set; }
+    public double Rating { get; set; }
+    public int Reviews { get; set; }
     public string Status { get; set; } = "Active";
     public string ImageUrl { get; set; } = string.Empty;
     public List<string> Images { get; set; } = [];
@@ -52,6 +54,8 @@ public class AdminProduct
         Price = Price,
         Stock = Stock,
         Sold = Sold,
+        Rating = Rating,
+        Reviews = Reviews,
         Status = Status,
         ImageUrl = ImageUrl,
         Images = [.. Images],
@@ -71,6 +75,8 @@ public class AdminProduct
         Price = product.Price,
         Stock = product.Stock,
         Sold = product.Sold,
+        Rating = product.Rating,
+        Reviews = product.Reviews,
         Status = !string.IsNullOrWhiteSpace(product.Status)
             ? product.Status
             : product.Stock == 0 && !product.InStock ? "Inactive" : "Active",

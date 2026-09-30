@@ -1,0 +1,283 @@
+@page "/admin/reviews"
+@layout AdminLayout
+@using System.Globalization
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Layout
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminReviewService ReviewService
+@inject AdminProductService ProductService
+@inject ToastService Toast
+@implements IDisposable
+
+<PageTitle>Reviews | Admin | NU Bulldogs Exchange</PageTitle>
+
+<div class="admin-reviews">
+    <header class="admin-products-header">
+        <div>
+            <h1>Reviews</h1>
+            <p>View and manage all customer reviews.</p>
+        </div>
+    </header>
+
+    <div class="admin-reviews-stats">
+        <article class="admin-staff-stat">
+            <strong>@ReviewService.TotalReviews</strong>
+            <span>Total Reviews</span>
+        </article>
+        <article class="admin-staff-stat">
+            <strong>@(ReviewService.TotalReviews == 0 ? "—" : ReviewService.AverageRating.ToString("0.0"))</strong>
+            <span>Average Rating</span>
+        </article>
+        <article class="admin-staff-stat">
+            <strong>@ReviewService.ProductsReviewed</strong>
+            <span>Products Reviewed</span>
+        </article>
+        <article class="admin-staff-stat">
+            <strong>@ReviewService.HiddenCount</strong>
+            <span>Hidden</span>
+        </article>
+    </div>
+
+    <section class="admin-products-toolbar">
+        <div class="admin-products-search">
+            <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+            <input type="search"
+                   placeholder="Search reviews..."
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+        </div>
+        <select class="admin-products-select" value="@_rating" @onchange="OnRatingChange">
+            <option value="0">All Ratings</option>
+            <option value="5">5 Stars</option>
+            <option value="4">4 Stars</option>
+            <option value="3">3 Stars</option>
+            <option value="2">2 Stars</option>
+            <option value="1">1 Star</option>
+        </select>
+        <select class="admin-products-select" value="@_productId" @onchange="OnProductChange">
+            <option value="0">All Products</option>
+            @foreach (var product in ProductService.All.OrderBy(p => p.Name))
+            {
+                <option value="@product.Id">@product.Name</option>
+            }
+        </select>
+        <select class="admin-products-select" value="@_status" @onchange="OnStatusChange">
+            <option value="All">All Status</option>
+            <option value="Visible">Visible</option>
+            <option value="Hidden">Hidden</option>
+        </select>
+        <button type="button" class="btn btn-outline-navy" @onclick="ResetFilters">Reset</button>
+    </section>
+
+    <section class="admin-products-table-card">
+        @{
+            var filtered = Filtered.ToList();
+        }
+        @if (filtered.Count == 0)
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="star" Size="36" />
+                </div>
+                <h2>No reviews found.</h2>
+                <p>Try changing your search or filters.</p>
+                <button type="button" class="btn btn-navy" @onclick="ResetFilters">Clear Filters</button>
+            </div>
+        }
+        else
+        {
+            <div class="admin-products-table-wrap">
+                <table class="admin-products-table admin-reviews-table">
+                    <thead>
+                        <tr>
+                            <th>Product</th>
+                            <th>Customer</th>
+                            <th>Rating</th>
+                            <th>Review</th>
+                            <th>Date</th>
+                            <th>Status</th>
+                            <th class="col-actions">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var review in Paged)
+                        {
+                            <tr>
+                                <td>
+                                    <div class="ar-table-product">
+                                        <img src="@(review.ProductImageUrl ?? CatalogHelpers.PlaceholderImage)"
+                                             alt="@(review.ProductName ?? "Product")"
+                                             onerror="this.onerror=null;this.src='@CatalogHelpers.PlaceholderImage';" />
+                                        <strong title="@review.ProductName">@(review.ProductName ?? "—")</strong>
+                                    </div>
+                                </td>
+                                <td>@review.PublicAuthor</td>
+                                <td>
+                                    <span class="ar-table-rating">
+                                        @for (var i = 1; i <= 5; i++)
+                                        {
+                                            <span class="@(i <= review.Rating ? "filled" : "")">★</span>
+                                        }
+                                    </span>
+                                </td>
+                                <td class="ar-table-review" title="@review.Comment">@review.ReviewPreview</td>
+                                <td>@review.Date.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</td>
+                                <td>
+                                    <span class="ar-status @review.StatusCssClass">@review.StatusLabel</span>
+                                </td>
+                                <td class="col-actions">
+                                    <button type="button"
+                                            class="btn btn-outline-navy ar-view-btn"
+                                            @onclick="() => OpenDetails(review)">
+                                        View
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="admin-products-footer">
+                <span>Showing @StartIndex to @EndIndex of @filtered.Count reviews</span>
+                <div class="admin-pagination">
+                    <button type="button"
+                            class="admin-page-btn"
+                            disabled="@(_currentPage <= 1)"
+                            @onclick="() => GoToPage(_currentPage - 1)">&lt;</button>
+                    @for (var page = 1; page <= TotalPages; page++)
+                    {
+                        var pageNumber = page;
+                        <button type="button"
+                                class="admin-page-btn @(_currentPage == pageNumber ? "active" : "")"
+                                @onclick="() => GoToPage(pageNumber)">
+                            @pageNumber
+                        </button>
+                    }
+                    <button type="button"
+                            class="admin-page-btn"
+                            disabled="@(_currentPage >= TotalPages)"
+                            @onclick="() => GoToPage(_currentPage + 1)">&gt;</button>
+                </div>
+            </div>
+        }
+    </section>
+</div>
+
+<AdminReviewDetailsModal Review="_selected"
+                         OnClose="CloseDetails"
+                         OnChanged="OnReviewChanged" />
+
+@code {
+    private string _search = string.Empty;
+    private string _rating = "0";
+    private string _productId = "0";
+    private string _status = "All";
+    private int _currentPage = 1;
+    private ProductReview? _selected;
+
+    private IEnumerable<ProductReview> Filtered
+    {
+        get
+        {
+            int? rating = int.TryParse(_rating, out var r) && r > 0 ? r : null;
+            int? productId = int.TryParse(_productId, out var p) && p > 0 ? p : null;
+            return ReviewService.Filter(_search, rating, productId, _status);
+        }
+    }
+
+    private int TotalPages
+    {
+        get
+        {
+            var count = Filtered.Count();
+            return Math.Max(1, (int)Math.Ceiling(count / (double)AdminReviewService.PageSize));
+        }
+    }
+
+    private IEnumerable<ProductReview> Paged =>
+        Filtered.Skip((_currentPage - 1) * AdminReviewService.PageSize)
+                .Take(AdminReviewService.PageSize);
+
+    private int StartIndex
+    {
+        get
+        {
+            var count = Filtered.Count();
+            return count == 0 ? 0 : ((_currentPage - 1) * AdminReviewService.PageSize) + 1;
+        }
+    }
+
+    private int EndIndex
+    {
+        get
+        {
+            var count = Filtered.Count();
+            return Math.Min(count, _currentPage * AdminReviewService.PageSize);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        ReviewService.OnChange += Refresh;
+        ProductService.OnChange += Refresh;
+        await ReviewService.EnsureLoadedAsync();
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _currentPage = 1;
+    }
+
+    private void OnRatingChange(ChangeEventArgs e)
+    {
+        _rating = e.Value?.ToString() ?? "0";
+        _currentPage = 1;
+    }
+
+    private void OnProductChange(ChangeEventArgs e)
+    {
+        _productId = e.Value?.ToString() ?? "0";
+        _currentPage = 1;
+    }
+
+    private void OnStatusChange(ChangeEventArgs e)
+    {
+        _status = e.Value?.ToString() ?? "All";
+        _currentPage = 1;
+    }
+
+    private void ResetFilters()
+    {
+        _search = string.Empty;
+        _rating = "0";
+        _productId = "0";
+        _status = "All";
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, TotalPages);
+    }
+
+    private void OpenDetails(ProductReview review) => _selected = review;
+
+    private void CloseDetails() => _selected = null;
+
+    private void OnReviewChanged()
+    {
+        if (_selected is not null)
+            _selected = ReviewService.GetById(_selected.Id) ?? _selected;
+    }
+
+    public void Dispose()
+    {
+        ReviewService.OnChange -= Refresh;
+        ProductService.OnChange -= Refresh;
+    }
+}

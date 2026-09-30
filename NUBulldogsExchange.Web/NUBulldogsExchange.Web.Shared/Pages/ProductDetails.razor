@@ -565,7 +565,7 @@ else
         {
             var reviews = await Db.GetProductReviewsAsync(_product.Id);
             ProductReviewStats.Apply(_product, reviews);
-            _displayReviews = [.. reviews];
+            _displayReviews = [.. _product.ProductReviews];
         }
         catch
         {

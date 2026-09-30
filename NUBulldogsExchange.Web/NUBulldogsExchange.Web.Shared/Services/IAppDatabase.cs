@@ -17,6 +17,7 @@ public interface IAppDatabase
     Task<Product> UpsertProductAsync(Product product);
     Task<bool> DeleteProductAsync(int id);
     Task<List<ProductReview>> GetProductReviewsAsync(int productId);
+    Task<List<ProductReview>> GetAllProductReviewsAsync();
     Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews);
     Task<List<long>> GetReviewedOrderItemIdsAsync(IReadOnlyCollection<string> orderIds);
     Task<ProductReview> SubmitProductReviewAsync(
@@ -26,6 +27,7 @@ public interface IAppDatabase
         string? title,
         string comment,
         IReadOnlyList<string>? tags = null);
+    Task<ProductReview> SetProductReviewVisibilityAsync(long reviewId, bool isVisible);
 
     // Product variants (size and/or color sellable combinations)
     Task<List<ProductVariant>> GetProductVariantsAsync(int productId);

@@ -69,6 +69,7 @@ builder.Services.AddScoped<AdminStaffService>();
 builder.Services.AddScoped<AdminPromotionService>();
 builder.Services.AddScoped<AdminReportService>();
 builder.Services.AddScoped<AdminNotificationService>();
+builder.Services.AddScoped<AdminReviewService>();
 
 var app = builder.Build();
 

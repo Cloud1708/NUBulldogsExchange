@@ -66,10 +66,21 @@ public sealed class HttpAppDatabase : IAppDatabase
     public async Task<List<ProductReview>> GetProductReviewsAsync(int productId) =>
         await _http.GetFromJsonAsync<List<ProductReview>>($"api/products/{productId}/reviews") ?? [];
 
+    public async Task<List<ProductReview>> GetAllProductReviewsAsync() =>
+        await _http.GetFromJsonAsync<List<ProductReview>>("api/reviews/all") ?? [];
+
     public async Task SaveProductReviewsAsync(int productId, IEnumerable<ProductReview> reviews)
     {
         var response = await _http.PutAsJsonAsync($"api/products/{productId}/reviews", reviews.ToList());
         response.EnsureSuccessStatusCode();
+    }
+
+    public async Task<ProductReview> SetProductReviewVisibilityAsync(long reviewId, bool isVisible)
+    {
+        var response = await _http.PostAsJsonAsync("api/reviews/visibility", new { reviewId, isVisible });
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<ProductReview>())
+            ?? throw new InvalidOperationException("Review could not be updated.");
     }
 
     public async Task<List<long>> GetReviewedOrderItemIdsAsync(IReadOnlyCollection<string> orderIds)

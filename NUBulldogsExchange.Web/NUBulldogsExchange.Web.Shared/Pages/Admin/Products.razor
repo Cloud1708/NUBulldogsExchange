@@ -1,12 +1,14 @@
 @page "/admin/products"
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components.Forms
+@using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Components.Admin
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminProductService ProductService
 @inject AdminCategoryService CategoryService
+@inject AdminReviewService ReviewService
 @inject ToastService Toast
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -92,6 +94,8 @@
                             <th class="col-price">Price</th>
                             <th class="col-stock">Stock</th>
                             <th class="col-sold">Sold</th>
+                            <th class="col-rating">Rating</th>
+                            <th class="col-reviews">Reviews</th>
                             <th class="col-status">Status</th>
                             <th class="col-actions">Actions</th>
                         </tr>
@@ -100,7 +104,7 @@
                         @if (!Paged.Any())
                         {
                             <tr>
-                                <td colspan="10" class="admin-products-empty-page">No products on this page.</td>
+                                <td colspan="12" class="admin-products-empty-page">No products on this page.</td>
                             </tr>
                         }
                         else
@@ -133,6 +137,29 @@
                                         </div>
                                     </td>
                                     <td class="col-sold">@product.Sold.ToString("N0")</td>
+                                    <td class="col-rating">
+                                        <button type="button"
+                                                class="ar-rating-link"
+                                                title="View reviews"
+                                                @onclick="() => OpenProductReviews(product)">
+                                            @if (product.Reviews <= 0)
+                                            {
+                                                <span class="ar-rating-empty">—</span>
+                                            }
+                                            else
+                                            {
+                                                <span class="ar-rating-value"><span class="ar-star-icon">★</span> @product.Rating.ToString("0.0")</span>
+                                            }
+                                        </button>
+                                    </td>
+                                    <td class="col-reviews">
+                                        <button type="button"
+                                                class="ar-reviews-link"
+                                                title="View reviews"
+                                                @onclick="() => OpenProductReviews(product)">
+                                            @product.Reviews
+                                        </button>
+                                    </td>
                                     <td class="col-status">
                                         <span class="admin-product-status @product.StatusCssClass">
                                             @product.Status
@@ -485,6 +512,10 @@
     </div>
 }
 
+<AdminProductReviewsModal Product="_reviewsProduct"
+                          OnClose="CloseProductReviews"
+                          OnChanged="OnReviewsChanged" />
+
 @code {
     private const long MaxImageBytes = 10 * 1024 * 1024;
 
@@ -496,6 +527,7 @@
     private AdminProduct? _deleteTarget;
     private bool _bulkDelete;
     private readonly HashSet<int> _selectedIds = [];
+    private AdminProduct? _reviewsProduct;
 
     private bool _productModalOpen;
     private bool _discardConfirm;
@@ -561,8 +593,26 @@
     {
         ProductService.OnChange += Refresh;
         CategoryService.OnChange += Refresh;
+        ReviewService.OnChange += Refresh;
         Navigation.LocationChanged += OnLocationChanged;
         SyncCategoryFromQuery();
+        _ = ReviewService.EnsureLoadedAsync();
+    }
+
+    private async Task OpenProductReviews(AdminProduct product)
+    {
+        CloseMenu();
+        await ReviewService.EnsureLoadedAsync();
+        _reviewsProduct = product;
+    }
+
+    private void CloseProductReviews() => _reviewsProduct = null;
+
+    private void OnReviewsChanged()
+    {
+        if (_reviewsProduct is not null)
+            _reviewsProduct = ProductService.GetById(_reviewsProduct.Id) ?? _reviewsProduct;
+        Refresh();
     }
 
     private IEnumerable<string> FilterCategoryNames =>
@@ -1320,6 +1370,7 @@
     {
         ProductService.OnChange -= Refresh;
         CategoryService.OnChange -= Refresh;
+        ReviewService.OnChange -= Refresh;
         Navigation.LocationChanged -= OnLocationChanged;
         _ = SetBodyScrollLock(false);
     }

@@ -59,8 +59,35 @@ public class ProductReview
     public string? OrderId { get; set; }
     public long OrderItemId { get; set; }
     public string? AuthUserId { get; set; }
+    public bool IsVisible { get; set; } = true;
+
+    /// <summary>Enriched from order_items for admin/display — not a review table column.</summary>
+    public string? PurchasedColor { get; set; }
+    /// <summary>Enriched from order_items for admin/display — not a review table column.</summary>
+    public string? PurchasedSize { get; set; }
+    /// <summary>Enriched product name for admin lists.</summary>
+    public string? ProductName { get; set; }
+    /// <summary>Enriched product image for admin lists.</summary>
+    public string? ProductImageUrl { get; set; }
+    /// <summary>Enriched product category for admin lists.</summary>
+    public string? ProductCategory { get; set; }
 
     public bool IsVerifiedPurchase => OrderItemId > 0 && !string.IsNullOrWhiteSpace(OrderId);
+    public string StatusLabel => IsVisible ? "Visible" : "Hidden";
+    public string StatusCssClass => IsVisible ? "is-visible" : "is-hidden";
+
+    public string VariantLabel
+    {
+        get
+        {
+            var parts = new List<string>();
+            if (OrderFlow.HasDisplayColor(PurchasedColor))
+                parts.Add($"Color: {PurchasedColor!.Trim()}");
+            if (OrderFlow.HasDisplaySize(PurchasedSize))
+                parts.Add($"Size: {PurchasedSize!.Trim()}");
+            return string.Join(" • ", parts);
+        }
+    }
 
     /// <summary>Public display name. Never shows an email address.</summary>
     public string PublicAuthor
@@ -72,6 +99,18 @@ public class ProductReview
             if (at > 0)
                 source = source[..at].Trim();
             return string.IsNullOrWhiteSpace(source) ? "Customer" : source;
+        }
+    }
+
+    public string ReviewPreview
+    {
+        get
+        {
+            var title = string.IsNullOrWhiteSpace(Title) ? string.Empty : Title.Trim() + " ";
+            var body = Comment?.Trim() ?? string.Empty;
+            var text = (title + body).Trim();
+            if (text.Length <= 80) return text;
+            return text[..77].TrimEnd() + "...";
         }
     }
 }
@@ -112,12 +151,27 @@ public static class ProductReviewStats
 
     public static void Apply(Product product, IReadOnlyList<ProductReview> reviews)
     {
-        product.ProductReviews = reviews.ToList();
-        product.Reviews = reviews.Count;
-        product.Rating = reviews.Count == 0
+        var visible = reviews.Where(r => r.IsVisible).ToList();
+        product.ProductReviews = visible;
+        product.Reviews = visible.Count;
+        product.Rating = visible.Count == 0
             ? 0
-            : Math.Round(reviews.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero);
+            : Math.Round(visible.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero);
 
+        var counts = new int[5];
+        foreach (var review in visible)
+        {
+            if (review.Rating is >= 1 and <= 5)
+                counts[5 - review.Rating]++;
+        }
+
+        product.RatingBreakdown = visible.Count == 0
+            ? [0, 0, 0, 0, 0]
+            : counts.Select(c => (int)Math.Round(100.0 * c / visible.Count, MidpointRounding.AwayFromZero)).ToArray();
+    }
+
+    public static int[] CountByStar(IEnumerable<ProductReview> reviews)
+    {
         var counts = new int[5];
         foreach (var review in reviews)
         {
@@ -125,9 +179,7 @@ public static class ProductReviewStats
                 counts[5 - review.Rating]++;
         }
 
-        product.RatingBreakdown = reviews.Count == 0
-            ? [0, 0, 0, 0, 0]
-            : counts.Select(c => (int)Math.Round(100.0 * c / reviews.Count, MidpointRounding.AwayFromZero)).ToArray();
+        return counts;
     }
 }
 

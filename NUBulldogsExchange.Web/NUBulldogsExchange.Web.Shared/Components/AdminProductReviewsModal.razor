@@ -1,0 +1,307 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using System.Globalization
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminReviewService Reviews
+@inject ToastService Toast
+
+@if (Product is not null)
+{
+    var productReviews = Reviews.ForProduct(Product.Id).ToList();
+    var visible = productReviews.Where(r => r.IsVisible).ToList();
+    var avg = visible.Count == 0
+        ? 0
+        : Math.Round(visible.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero);
+    var starCounts = ProductReviewStats.CountByStar(visible);
+    var filtered = FilterReviews(productReviews).ToList();
+    var totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)PageSize));
+    if (_page > totalPages) _page = totalPages;
+    var paged = filtered.Skip((_page - 1) * PageSize).Take(PageSize).ToList();
+    var start = filtered.Count == 0 ? 0 : ((_page - 1) * PageSize) + 1;
+    var end = Math.Min(filtered.Count, _page * PageSize);
+
+    <div class="admin-modal-backdrop ar-backdrop" @onclick="Close">
+        <div class="ar-product-modal" role="dialog" aria-modal="true" aria-labelledby="ar-product-title" @onclick:stopPropagation="true">
+            <header class="ar-modal-header">
+                <h2 id="ar-product-title">@Product.Name — Reviews</h2>
+                <button type="button" class="admin-product-modal-close" aria-label="Close" @onclick="Close">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </header>
+
+            <div class="ar-modal-body">
+                <section class="ar-summary-panel">
+                    <div class="ar-summary-col ar-summary-product">
+                        <img class="ar-product-thumb"
+                             src="@Product.ImageUrl"
+                             alt="@Product.Name"
+                             width="96"
+                             height="96"
+                             style="width:96px;height:96px;max-width:96px;object-fit:cover;border-radius:10px;flex-shrink:0;"
+                             onerror="this.onerror=null;this.src='@CatalogHelpers.PlaceholderImage';" />
+                        <div class="ar-product-summary-copy">
+                            <strong>@Product.Name</strong>
+                            <p>Category: @Product.Category</p>
+                            @if (!string.IsNullOrWhiteSpace(Product.Sku))
+                            {
+                                <p>SKU: @Product.Sku</p>
+                            }
+                            <p>Total Reviews: @visible.Count</p>
+                            <span class="admin-product-status @Product.StatusCssClass">@Product.Status</span>
+                        </div>
+                    </div>
+
+                    <div class="ar-summary-col ar-summary-rating">
+                        <div class="ar-overall-label">Overall Rating</div>
+                        <div class="ar-avg">@(visible.Count == 0 ? "—" : avg.ToString("0.0"))</div>
+                        <div class="ar-stars" aria-hidden="true">
+                            @for (var i = 1; i <= 5; i++)
+                            {
+                                <span class="@(i <= Math.Round(avg) ? "filled" : "")">★</span>
+                            }
+                        </div>
+                        <p>@(visible.Count == 0 ? "No ratings yet" : $"{visible.Count} review{(visible.Count == 1 ? "" : "s")}")</p>
+                    </div>
+
+                    <div class="ar-summary-col ar-summary-breakdown">
+                        <div class="ar-overall-label">Rating Breakdown</div>
+                        @for (var star = 5; star >= 1; star--)
+                        {
+                            var count = starCounts[5 - star];
+                            var pct = visible.Count == 0 ? 0 : (int)Math.Round(100.0 * count / visible.Count);
+                            <div class="ar-bar-row">
+                                <span>@star ★</span>
+                                <div class="ar-bar-track"><div class="ar-bar-fill" style="width:@pct%"></div></div>
+                                <span>@count</span>
+                            </div>
+                        }
+                    </div>
+                </section>
+
+                <section class="ar-list-section">
+                    <div class="ar-list-toolbar">
+                        <h3>Customer Reviews (@filtered.Count)</h3>
+                        <div class="ar-list-filters">
+                            <div class="admin-products-search ar-search">
+                                <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+                                <input type="search"
+                                       placeholder="Search reviews..."
+                                       value="@_search"
+                                       @oninput="OnSearchInput" />
+                            </div>
+                            <select class="admin-products-select" value="@_ratingFilter" @onchange="OnRatingChange">
+                                <option value="0">All Ratings</option>
+                                <option value="5">5 Stars</option>
+                                <option value="4">4 Stars</option>
+                                <option value="3">3 Stars</option>
+                                <option value="2">2 Stars</option>
+                                <option value="1">1 Star</option>
+                            </select>
+                            <select class="admin-products-select" value="@_statusFilter" @onchange="OnStatusChange">
+                                <option value="All">All Status</option>
+                                <option value="Visible">Visible</option>
+                                <option value="Hidden">Hidden</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    @if (filtered.Count == 0)
+                    {
+                        <div class="ar-empty">No reviews match this filter.</div>
+                    }
+                    else
+                    {
+                        <div class="ar-review-list">
+                            @foreach (var review in paged)
+                            {
+                                var avatar = string.IsNullOrWhiteSpace(review.Initials)
+                                    ? review.PublicAuthor[..1].ToUpperInvariant()
+                                    : review.Initials.Trim()[..1].ToUpperInvariant();
+                                var showBody = !string.IsNullOrWhiteSpace(review.Comment)
+                                    && !string.Equals(review.Comment.Trim(), review.Title?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+                                <article class="ar-review-card">
+                                    <div class="ar-review-row-top">
+                                        <div class="ar-review-identity">
+                                            <div class="ar-avatar" aria-hidden="true">@avatar</div>
+                                            <div class="ar-review-identity-copy">
+                                                <div class="ar-review-name-row">
+                                                    <strong>@review.PublicAuthor</strong>
+                                                    <div class="ar-stars ar-stars-sm">
+                                                        @for (var i = 1; i <= 5; i++)
+                                                        {
+                                                            <span class="@(i <= review.Rating ? "filled" : "")">★</span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                                @if (!string.IsNullOrWhiteSpace(review.Title))
+                                                {
+                                                    <h4>@review.Title</h4>
+                                                }
+                                            </div>
+                                        </div>
+                                        <div class="ar-review-top-right">
+                                            <span class="ar-review-date">@review.Date.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</span>
+                                            <span class="ar-status @review.StatusCssClass">@review.StatusLabel</span>
+                                        </div>
+                                    </div>
+
+                                    @if (showBody)
+                                    {
+                                        <p class="ar-review-body">@review.Comment</p>
+                                    }
+
+                                    <div class="ar-review-row-bottom">
+                                        <div class="ar-review-meta">
+                                            @if (!string.IsNullOrWhiteSpace(review.VariantLabel))
+                                            {
+                                                <span class="ar-variant">@review.VariantLabel</span>
+                                            }
+                                            @if (review.IsVerifiedPurchase)
+                                            {
+                                                <span class="ar-verified">✓ Verified Purchase</span>
+                                            }
+                                            @if (!string.IsNullOrWhiteSpace(review.OrderId))
+                                            {
+                                                <span class="ar-order">Order #@review.OrderId</span>
+                                            }
+                                        </div>
+                                        <button type="button"
+                                                class="btn @(review.IsVisible ? "btn-outline-navy" : "btn-navy") ar-mod-btn"
+                                                disabled="@_savingId == review.Id"
+                                                @onclick="() => ToggleVisibility(review)">
+                                            @(review.IsVisible ? "Hide Review" : "Show Review")
+                                        </button>
+                                    </div>
+                                </article>
+                            }
+                        </div>
+
+                        <div class="ar-modal-footer">
+                            <span>Showing @start to @end of @filtered.Count reviews</span>
+                            <div class="admin-pagination">
+                                <button type="button"
+                                        class="admin-page-btn"
+                                        disabled="@(_page <= 1)"
+                                        @onclick="() => GoToPage(_page - 1)">‹</button>
+                                @for (var page = 1; page <= totalPages; page++)
+                                {
+                                    var pageNumber = page;
+                                    <button type="button"
+                                            class="admin-page-btn @(_page == pageNumber ? "active" : "")"
+                                            @onclick="() => GoToPage(pageNumber)">
+                                        @pageNumber
+                                    </button>
+                                }
+                                <button type="button"
+                                        class="admin-page-btn"
+                                        disabled="@(_page >= totalPages)"
+                                        @onclick="() => GoToPage(_page + 1)">›</button>
+                            </div>
+                        </div>
+                    }
+                </section>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private const int PageSize = 5;
+
+    [Parameter] public AdminProduct? Product { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private string _search = string.Empty;
+    private string _ratingFilter = "0";
+    private string _statusFilter = "All";
+    private int _page = 1;
+    private long? _savingId;
+    private int? _boundProductId;
+
+    protected override void OnParametersSet()
+    {
+        if (Product is null)
+        {
+            _boundProductId = null;
+            return;
+        }
+
+        if (_boundProductId != Product.Id)
+        {
+            _boundProductId = Product.Id;
+            _search = string.Empty;
+            _ratingFilter = "0";
+            _statusFilter = "All";
+            _page = 1;
+        }
+    }
+
+    private IEnumerable<ProductReview> FilterReviews(IEnumerable<ProductReview> source)
+    {
+        var query = source;
+        if (!string.IsNullOrWhiteSpace(_search))
+        {
+            var q = _search.Trim();
+            query = query.Where(r =>
+                r.PublicAuthor.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || (r.Title?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.Comment?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
+                || (r.OrderId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
+        }
+
+        if (int.TryParse(_ratingFilter, out var rating) && rating is >= 1 and <= 5)
+            query = query.Where(r => r.Rating == rating);
+
+        if (_statusFilter.Equals("Visible", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(r => r.IsVisible);
+        else if (_statusFilter.Equals("Hidden", StringComparison.OrdinalIgnoreCase))
+            query = query.Where(r => !r.IsVisible);
+
+        return query.OrderByDescending(r => r.Date).ThenByDescending(r => r.Id);
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _page = 1;
+    }
+
+    private void OnRatingChange(ChangeEventArgs e)
+    {
+        _ratingFilter = e.Value?.ToString() ?? "0";
+        _page = 1;
+    }
+
+    private void OnStatusChange(ChangeEventArgs e)
+    {
+        _statusFilter = e.Value?.ToString() ?? "All";
+        _page = 1;
+    }
+
+    private void GoToPage(int page) => _page = Math.Max(1, page);
+
+    private async Task ToggleVisibility(ProductReview review)
+    {
+        if (_savingId is not null) return;
+        _savingId = review.Id;
+        try
+        {
+            var makeVisible = !review.IsVisible;
+            await Reviews.SetVisibilityAsync(review.Id, makeVisible);
+            Toast.Show(makeVisible ? "Review is now Visible." : "Review is now Hidden.");
+            await OnChanged.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message) ? "Unable to update review." : ex.Message);
+        }
+        finally
+        {
+            _savingId = null;
+        }
+    }
+
+    private Task Close() => OnClose.InvokeAsync();
+}

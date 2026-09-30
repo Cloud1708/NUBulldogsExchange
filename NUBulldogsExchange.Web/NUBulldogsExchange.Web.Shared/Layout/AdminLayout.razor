@@ -12,6 +12,7 @@
 @inject AdminPromotionService Promotions
 @inject AdminInventoryService Inventory
 @inject AdminNotificationService AdminNotifications
+@inject AdminReviewService Reviews
 @implements IDisposable
 
 <AuthSessionRestorer />
@@ -63,6 +64,7 @@ else if (_ready)
             await Promotions.EnsureLoadedAsync();
             await Inventory.EnsureLoadedAsync();
             await AdminNotifications.EnsureLoadedAsync();
+            await Reviews.EnsureLoadedAsync();
         }
         catch (Exception ex)
         {
@@ -111,6 +113,7 @@ else if (_ready)
         if (path.Contains("/admin/customers")) return "customers";
         if (path.Contains("/admin/staff")) return "staff";
         if (path.Contains("/admin/promotions")) return "promotions";
+        if (path.Contains("/admin/reviews")) return "reviews";
         if (path.Contains("/admin/reports")) return "reports";
         if (path.Contains("/admin/notifications")) return "notifications";
         if (path.Contains("/admin/settings")) return "settings";
