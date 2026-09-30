@@ -53,15 +53,34 @@ public class CartService
         var colorKey = Normalize(color);
         var sizeKey = Normalize(size);
 
-        if (variantId is null && product.HasVariants)
+        if (product.HasVariants)
         {
-            variantId = ProductVariantLogic
-                .Find(product.Variants, color, size)
-                ?.Id;
+            var matchedVariant = (variantId is int vid ? product.Variants.FirstOrDefault(v => v.Id == vid) : null)
+                ?? ProductVariantLogic.Find(product.Variants, color, size)
+                ?? (!string.IsNullOrWhiteSpace(size)
+                    ? product.Variants.FirstOrDefault(v => v.IsActive && string.Equals(v.Size?.Trim(), size.Trim(), StringComparison.OrdinalIgnoreCase))
+                    : null)
+                ?? (!string.IsNullOrWhiteSpace(color)
+                    ? product.Variants.FirstOrDefault(v => v.IsActive && string.Equals(v.ColorName?.Trim(), color.Trim(), StringComparison.OrdinalIgnoreCase))
+                    : null)
+                ?? product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity >= quantity)
+                ?? product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity > 0)
+                ?? product.Variants.FirstOrDefault(v => v.IsActive);
+
+            if (matchedVariant is not null)
+            {
+                variantId ??= matchedVariant.Id;
+                if (string.IsNullOrWhiteSpace(color) && !string.IsNullOrWhiteSpace(matchedVariant.ColorName))
+                    color = matchedVariant.ColorName;
+                if (string.IsNullOrWhiteSpace(size) && !string.IsNullOrWhiteSpace(matchedVariant.Size))
+                    size = matchedVariant.Size;
+                colorKey = Normalize(color);
+                sizeKey = Normalize(size);
+            }
         }
 
-        var existing = variantId is int vid
-            ? _items.FirstOrDefault(i => i.Product.Id == product.Id && i.VariantId == vid)
+        var existing = variantId is int vId
+            ? _items.FirstOrDefault(i => i.Product.Id == product.Id && i.VariantId == vId)
             : _items.FirstOrDefault(i =>
                 i.Product.Id == product.Id &&
                 i.VariantId is null &&
@@ -83,6 +102,52 @@ public class CartService
         }
 
         OnChange?.Invoke();
+    }
+
+    public bool EnsureVariantsResolved()
+    {
+        var changed = false;
+        foreach (var item in _items)
+        {
+            if (item.Product.HasVariants)
+            {
+                var variant = (item.VariantId is int vid ? item.Product.Variants.FirstOrDefault(v => v.Id == vid) : null)
+                    ?? ProductVariantLogic.Find(item.Product.Variants, item.SelectedColor, item.SelectedSize)
+                    ?? (!string.IsNullOrWhiteSpace(item.SelectedSize)
+                        ? item.Product.Variants.FirstOrDefault(v => v.IsActive && string.Equals(v.Size?.Trim(), item.SelectedSize.Trim(), StringComparison.OrdinalIgnoreCase))
+                        : null)
+                    ?? (!string.IsNullOrWhiteSpace(item.SelectedColor)
+                        ? item.Product.Variants.FirstOrDefault(v => v.IsActive && string.Equals(v.ColorName?.Trim(), item.SelectedColor.Trim(), StringComparison.OrdinalIgnoreCase))
+                        : null)
+                    ?? item.Product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity >= item.Quantity)
+                    ?? item.Product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity > 0)
+                    ?? item.Product.Variants.FirstOrDefault(v => v.IsActive);
+
+                if (variant is not null)
+                {
+                    if (item.VariantId != variant.Id)
+                    {
+                        item.VariantId = variant.Id;
+                        changed = true;
+                    }
+                    if (string.IsNullOrWhiteSpace(item.SelectedColor) && !string.IsNullOrWhiteSpace(variant.ColorName))
+                    {
+                        item.SelectedColor = variant.ColorName;
+                        changed = true;
+                    }
+                    if (string.IsNullOrWhiteSpace(item.SelectedSize) && !string.IsNullOrWhiteSpace(variant.Size))
+                    {
+                        item.SelectedSize = variant.Size;
+                        changed = true;
+                    }
+                }
+            }
+        }
+
+        if (changed)
+            OnChange?.Invoke();
+
+        return changed;
     }
 
     public void Remove(string key)
@@ -146,6 +211,7 @@ public class CartService
                 });
             }
 
+            EnsureVariantsResolved();
             OnChange?.Invoke();
         }
         catch

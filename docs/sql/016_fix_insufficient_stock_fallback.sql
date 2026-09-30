@@ -1,67 +1,11 @@
--- NUBulldogsExchange: Deduct stock once at successful order placement;
--- restore once on eligible cancellation.
--- Run in Supabase SQL Editor AFTER 001/009/012 as needed.
--- Reuses public.orders, public.order_items, public.products, public.product_variants.
--- Does NOT create a new inventory table. Does NOT grant extra customer UPDATE.
+-- NUBulldogsExchange: Fix stock deduction so Pending orders do NOT deduct stock
+-- Run this script in the Supabase SQL Editor.
 --
--- Why a deferred INSERT trigger AND apply_checkout_order_stock:
--- place_checkout_order lives only in Supabase (not in this repo) and does not
--- deduct variant stock. The deferred trigger deducts in the same transaction
--- when order_items already exist. The Web app also calls
--- apply_checkout_order_stock after checkout so stock is deducted even if the
--- trigger fired too early (no items yet) or was not created.
---
--- YOU MUST RUN THIS SCRIPT IN SUPABASE SQL EDITOR or stock will not move.
---
--- If place_checkout_order already deducts stock, DROP trigger
--- trg_nube_order_stock_insert before using this script, or checkout will fail
--- on insufficient stock (double deduct). Observed Web app behavior is that
--- status changes do not deduct, and overselling is possible — so this trigger
--- is the intended deduction point.
---
--- Cancellation restore uses AFTER UPDATE OF status so both:
---   cancel_order RPC (customer)
---   admin PATCH to Cancelled
--- restore exactly once via orders.stock_applied.
-
-ALTER TABLE public.orders
-    ADD COLUMN IF NOT EXISTS stock_applied boolean NOT NULL DEFAULT false;
-
--- App column is products.stock (not stock_quantity). Ignore if the check already exists
--- or if legacy negative rows prevent adding it.
-DO $$
-BEGIN
-    ALTER TABLE public.products
-        ADD CONSTRAINT products_stock_nonnegative CHECK (stock >= 0);
-EXCEPTION
-    WHEN duplicate_object THEN NULL;
-    WHEN check_violation THEN NULL;
-    WHEN others THEN NULL;
-END $$;
-
-CREATE OR REPLACE FUNCTION public.nube_sync_product_aggregate_stock(p_product_id bigint)
-RETURNS void
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-    v_total integer;
-BEGIN
-    IF EXISTS (SELECT 1 FROM public.product_variants WHERE product_id = p_product_id) THEN
-        SELECT COALESCE(SUM(stock_quantity), 0)
-          INTO v_total
-          FROM public.product_variants
-         WHERE product_id = p_product_id;
-
-        UPDATE public.products
-           SET stock = v_total,
-               in_stock = v_total > 0,
-               updated_at = now()
-         WHERE id = p_product_id;
-    END IF;
-END;
-$$;
+-- Rule:
+-- 1) When an order is "Pending", stocks must NOT be deducted yet.
+-- 2) Stocks are deducted only when the order is confirmed / moves out of "Pending" (e.g. Confirmed, Processing).
+-- 3) Stocks are restored if a previously confirmed order is Cancelled.
+-- 4) Uses robust size/color and in-stock variant resolution fallbacks.
 
 CREATE OR REPLACE FUNCTION public.nube_insufficient_stock_message(
     p_name text,
@@ -86,12 +30,16 @@ BEGIN
     IF v_color IS NOT NULL THEN
         RETURN format('%s - %s is no longer available.', v_name, v_color);
     END IF;
+    IF v_name IS DISTINCT FROM 'Selected item' THEN
+        RETURN format('%s is out of stock.', v_name);
+    END IF;
     RETURN format('Insufficient stock for the selected item.');
 END;
 $$;
 
 -- p_restore = false → deduct; true → restore.
 -- Idempotent via orders.stock_applied.
+-- Skips deduction if order is Pending.
 CREATE OR REPLACE FUNCTION public.nube_apply_order_stock(p_order_id text, p_restore boolean)
 RETURNS void
 LANGUAGE plpgsql
@@ -124,6 +72,7 @@ BEGIN
     END IF;
 
     IF p_restore THEN
+        -- Only restore if stock was actually applied
         IF NOT COALESCE(v_order.stock_applied, false) THEN
             RETURN;
         END IF;
@@ -133,6 +82,7 @@ BEGIN
             RETURN;
         END IF;
 
+        -- If stock was already applied, do not double-deduct
         IF COALESCE(v_order.stock_applied, false) THEN
             RETURN;
         END IF;
@@ -320,8 +270,6 @@ BEGIN
         v_processed := v_processed + 1;
     END LOOP;
 
-    -- If items were not present yet (trigger fired too early), leave stock_applied
-    -- false so apply_checkout_order_stock can deduct after order_items exist.
     IF v_processed = 0 AND NOT p_restore THEN
         RETURN;
     END IF;
@@ -329,51 +277,6 @@ BEGIN
     UPDATE public.orders
        SET stock_applied = NOT p_restore
      WHERE id = p_order_id;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.apply_checkout_order_stock(p_order_id text)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = public
-AS $$
-DECLARE
-    v_order public.orders;
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'Not authenticated';
-    END IF;
-
-    IF p_order_id IS NULL OR btrim(p_order_id) = '' THEN
-        RAISE EXCEPTION 'Order number is missing.';
-    END IF;
-
-    SELECT *
-      INTO v_order
-      FROM public.orders
-     WHERE id = p_order_id
-     LIMIT 1;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'Order not found.';
-    END IF;
-
-    IF v_order.auth_user_id::text IS DISTINCT FROM auth.uid()::text
-       AND NOT EXISTS (
-            SELECT 1
-              FROM public.users_with_roles u
-             WHERE u.id::text = auth.uid()::text
-               AND lower(u.role) IN ('admin', 'staff')
-       ) THEN
-        RAISE EXCEPTION 'Order not found.';
-    -- If the order is Pending, do NOT deduct stock
-    IF lower(btrim(coalesce(v_order.status, ''))) = 'pending' THEN
-        RETURN jsonb_build_object('id', p_order_id, 'ok', true, 'pending', true);
-    END IF;
-
-    PERFORM public.nube_apply_order_stock(p_order_id, false);
-    RETURN jsonb_build_object('id', p_order_id, 'ok', true);
 END;
 $$;
 
@@ -428,16 +331,53 @@ AFTER UPDATE OF status ON public.orders
 FOR EACH ROW
 EXECUTE PROCEDURE public.nube_orders_apply_stock_on_status_change();
 
-REVOKE ALL ON FUNCTION public.nube_sync_product_aggregate_stock(bigint) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.nube_apply_order_stock(text, boolean) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.nube_orders_apply_stock_on_insert() FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.nube_orders_restore_stock_on_cancel() FROM PUBLIC;
+-- apply_checkout_order_stock RPC helper
+CREATE OR REPLACE FUNCTION public.apply_checkout_order_stock(p_order_id text)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+    v_order public.orders;
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Not authenticated';
+    END IF;
+
+    IF p_order_id IS NULL OR btrim(p_order_id) = '' THEN
+        RAISE EXCEPTION 'Order number is missing.';
+    END IF;
+
+    SELECT *
+      INTO v_order
+      FROM public.orders
+     WHERE id = p_order_id
+     LIMIT 1;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'Order not found.';
+    END IF;
+
+    IF v_order.auth_user_id::text IS DISTINCT FROM auth.uid()::text
+       AND NOT EXISTS (
+            SELECT 1
+              FROM public.users_with_roles u
+             WHERE u.id::text = auth.uid()::text
+               AND lower(u.role) IN ('admin', 'staff')
+       ) THEN
+        RAISE EXCEPTION 'Order not found.';
+    END IF;
+
+    -- If the order is Pending, do NOT deduct stock
+    IF lower(btrim(coalesce(v_order.status, ''))) = 'pending' THEN
+        RETURN jsonb_build_object('id', p_order_id, 'ok', true, 'pending', true);
+    END IF;
+
+    PERFORM public.nube_apply_order_stock(p_order_id, false);
+    RETURN jsonb_build_object('id', p_order_id, 'ok', true);
+END;
+$$;
 
 GRANT EXECUTE ON FUNCTION public.nube_insufficient_stock_message(text, text, text) TO authenticated, service_role;
 GRANT EXECUTE ON FUNCTION public.apply_checkout_order_stock(text) TO authenticated, service_role;
-
--- Optional backfill for orders placed before this script (skip cancelled):
--- SELECT public.nube_apply_order_stock(id, false)
---   FROM public.orders
---  WHERE COALESCE(stock_applied, false) = false
---    AND status IS DISTINCT FROM 'Cancelled';

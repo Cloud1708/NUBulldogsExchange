@@ -101,6 +101,12 @@
 
     private void AddToCart()
     {
+        if (Product.HasSizeVariants)
+        {
+            Navigation.NavigateTo($"/product/{Product.Id}");
+            return;
+        }
+
         Cart.Add(Product);
         Toast.Show("Product added to cart.");
     }

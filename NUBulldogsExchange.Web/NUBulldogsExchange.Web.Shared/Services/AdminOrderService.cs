@@ -200,8 +200,19 @@ public class AdminOrderService
             }
         }
 
-        if (statusChanged && status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+        var wasPending = oldStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase);
+        var isPending = status.Equals("Pending", StringComparison.OrdinalIgnoreCase);
+        var isCancelled = status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase);
+
+        if (statusChanged && wasPending && !isPending && !isCancelled)
+        {
+            _catalog.ApplyPurchase(order.Items);
+            _products.ApplyPurchase(order.Items);
+        }
+        else if (statusChanged && isCancelled && !wasPending)
+        {
             ApplyLocalCancellation(order);
+        }
 
         if (notifyCustomer && statusChanged)
             await TryNotifyCustomerAsync(order, status, remarksValue);
@@ -226,8 +237,19 @@ public class AdminOrderService
         await _db.UpdateOrderStatusAsync(order.Id, status);
         order.Status = status;
 
-        if (status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+        var wasPending = oldStatus.Equals("Pending", StringComparison.OrdinalIgnoreCase);
+        var isPending = status.Equals("Pending", StringComparison.OrdinalIgnoreCase);
+        var isCancelled = status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase);
+
+        if (wasPending && !isPending && !isCancelled)
+        {
+            _catalog.ApplyPurchase(order.Items);
+            _products.ApplyPurchase(order.Items);
+        }
+        else if (isCancelled && !wasPending)
+        {
             ApplyLocalCancellation(order);
+        }
 
         try
         {
@@ -253,8 +275,11 @@ public class AdminOrderService
         _orders.RemoveAll(o => o.Id.Equals(order.Id, StringComparison.OrdinalIgnoreCase));
         var saved = await _db.GetOrderByIdAsync(order.Id) ?? order;
         _orders.Add(saved);
-        _catalog.ApplyPurchase(saved.Items);
-        _products.ApplyPurchase(saved.Items);
+        if (!string.Equals(saved.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+        {
+            _catalog.ApplyPurchase(saved.Items);
+            _products.ApplyPurchase(saved.Items);
+        }
         OnChange?.Invoke();
         return saved;
     }

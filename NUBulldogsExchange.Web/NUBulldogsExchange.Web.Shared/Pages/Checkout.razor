@@ -883,6 +883,7 @@ else
     {
         Auth.OnChange += Refresh;
         Cart.OnChange += Refresh;
+        Cart.EnsureVariantsResolved();
 
         if (!string.IsNullOrWhiteSpace(Cart.AppliedPromoCode))
         {
@@ -1288,19 +1289,50 @@ else
                     ShippingCity = isDelivery ? _shipCity.Trim() : null,
                     ShippingProvince = isDelivery ? _shipProvince.Trim() : null,
                     ShippingPostalCode = isDelivery ? _shipPostal.Trim() : null,
-                    Items = Cart.Items.Select(i => new AdminOrderItem
+                    Items = Cart.Items.Select(i =>
                     {
-                        ProductId = i.Product.Id,
-                        Name = i.Product.Name,
-                        ImageUrl = i.Product.ImageUrl,
-                        Quantity = i.Quantity,
-                        Price = i.Product.Price,
-                        VariantId = i.VariantId,
-                        Size = i.SelectedSize,
-                        ColorName = i.SelectedColor,
-                        VariantSku = i.VariantId is int vid
-                            ? i.Product.Variants.FirstOrDefault(v => v.Id == vid)?.Sku
-                            : null
+                        var variantId = i.VariantId;
+                        var color = i.SelectedColor;
+                        var size = i.SelectedSize;
+
+                        if (i.Product.HasVariants)
+                        {
+                            var variant = (variantId is int vid ? i.Product.Variants.FirstOrDefault(v => v.Id == vid) : null)
+                                ?? ProductVariantLogic.Find(i.Product.Variants, color, size)
+                                ?? (!string.IsNullOrWhiteSpace(size)
+                                    ? i.Product.Variants.FirstOrDefault(v => v.IsActive && string.Equals(v.Size?.Trim(), size.Trim(), StringComparison.OrdinalIgnoreCase))
+                                    : null)
+                                ?? (!string.IsNullOrWhiteSpace(color)
+                                    ? i.Product.Variants.FirstOrDefault(v => v.IsActive && string.Equals(v.ColorName?.Trim(), color.Trim(), StringComparison.OrdinalIgnoreCase))
+                                    : null)
+                                ?? i.Product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity >= i.Quantity)
+                                ?? i.Product.Variants.FirstOrDefault(v => v.IsActive && v.StockQuantity > 0)
+                                ?? i.Product.Variants.FirstOrDefault(v => v.IsActive);
+
+                            if (variant is not null)
+                            {
+                                variantId ??= variant.Id;
+                                if (string.IsNullOrWhiteSpace(color)) color = variant.ColorName;
+                                if (string.IsNullOrWhiteSpace(size)) size = variant.Size;
+                            }
+                        }
+
+                        var sku = variantId is int vId
+                            ? i.Product.Variants.FirstOrDefault(v => v.Id == vId)?.Sku
+                            : null;
+
+                        return new AdminOrderItem
+                        {
+                            ProductId = i.Product.Id,
+                            Name = i.Product.Name,
+                            ImageUrl = i.Product.ImageUrl,
+                            Quantity = i.Quantity,
+                            Price = i.Product.Price,
+                            VariantId = variantId,
+                            Size = size,
+                            ColorName = color,
+                            VariantSku = sku
+                        };
                     }).ToList()
                 };
 

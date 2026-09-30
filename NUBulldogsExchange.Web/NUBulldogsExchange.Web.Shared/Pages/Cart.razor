@@ -227,6 +227,7 @@ else
         CartService.OnChange += Refresh;
         Wishlist.OnChange += Refresh;
         Auth.OnChange += Refresh;
+        CartService.EnsureVariantsResolved();
         SyncSelection();
 
         if (!string.IsNullOrWhiteSpace(CartService.AppliedPromoCode))
@@ -421,6 +422,8 @@ else
     {
         if (!SelectedItems.Any())
             return;
+
+        CartService.EnsureVariantsResolved();
 
         if (!Auth.IsLoggedIn)
         {

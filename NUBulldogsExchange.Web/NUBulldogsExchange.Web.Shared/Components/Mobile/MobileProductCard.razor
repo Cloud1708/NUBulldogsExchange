@@ -97,6 +97,12 @@
 
     private async Task AddToCart()
     {
+        if (Product.HasSizeVariants)
+        {
+            Navigation.NavigateTo($"/product/{Product.Id}");
+            return;
+        }
+
         var defaultSize = Product.Sizes.FirstOrDefault();
         var defaultColor = Product.Colors.FirstOrDefault();
         Cart.Add(Product, 1, defaultColor, defaultSize);

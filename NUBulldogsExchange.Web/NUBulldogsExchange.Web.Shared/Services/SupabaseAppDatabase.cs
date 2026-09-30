@@ -654,6 +654,12 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             if (updated.Count == 0)
                 throw new InvalidOperationException(
                     "Order status could not be saved. The admin account may not have permission to update public.orders.");
+
+            if (!status.Trim().Equals("Pending", StringComparison.OrdinalIgnoreCase)
+                && !status.Trim().Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                try { await ApplyCheckoutOrderStockAsync(orderId); } catch { /* best-effort fallback if triggers not active */ }
+            }
         }
         catch (InvalidOperationException ex)
         {
@@ -685,6 +691,12 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             if (updated.Count == 0)
                 throw new InvalidOperationException(
                     "Order could not be saved. The admin account may not have permission to update public.orders.");
+
+            if (!status.Trim().Equals("Pending", StringComparison.OrdinalIgnoreCase)
+                && !status.Trim().Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                try { await ApplyCheckoutOrderStockAsync(orderId); } catch { /* best-effort fallback if triggers not active */ }
+            }
         }
         catch (InvalidOperationException ex)
         {
@@ -808,7 +820,10 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         // Best-effort snapshot write if RPC does not yet persist these columns.
         await TryPatchOrderCheckoutSnapshotAsync(order);
         await TryPatchOrderItemColorSnapshotsAsync(order);
-        await ApplyCheckoutOrderStockAsync(order.Id);
+        if (!string.Equals(order.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyCheckoutOrderStockAsync(order.Id);
+        }
 
         var persisted = await PersistCheckoutPaymentAsync(
             order.Id,
@@ -839,7 +854,10 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         var current = await GetOrderByIdAsync(orderId)
             ?? throw new InvalidOperationException("Order not found after checkout.");
 
-        await ApplyCheckoutOrderStockAsync(orderId);
+        if (!string.Equals(current.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+        {
+            await ApplyCheckoutOrderStockAsync(orderId);
+        }
 
         if (OrderFlow.PaymentSnapshotMatches(current, method, status))
             return current;
@@ -954,25 +972,58 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         {
             foreach (var source in order.Items)
             {
-                if (string.IsNullOrWhiteSpace(source.ColorName))
+                // Only patch items that carry variant-level data — skip plain
+                // (no-variant) items so we don't accidentally clear their rows.
+                var hasVariantData = source.VariantId is int
+                    || !string.IsNullOrWhiteSpace(source.ColorName)
+                    || !string.IsNullOrWhiteSpace(source.Size);
+
+                if (!hasVariantData)
                     continue;
 
-                using var response = await SendAsync(
-                    HttpMethod.Patch,
-                    $"rest/v1/order_items?order_id=eq.{Esc(order.Id)}&product_id=eq.{source.ProductId}" +
-                    (source.VariantId is int vid ? $"&variant_id=eq.{vid}" : string.Empty),
-                    new Dictionary<string, object?>
-                    {
-                        ["color_name"] = source.ColorName.Trim()
-                    });
+                var patchBody = new Dictionary<string, object?>();
+
+                if (!string.IsNullOrWhiteSpace(source.ColorName))
+                    patchBody["color_name"] = source.ColorName.Trim();
+
+                if (!string.IsNullOrWhiteSpace(source.Size))
+                    patchBody["size"] = source.Size.Trim();
+
+                // Writing variant_id lets nube_apply_order_stock look up the
+                // variant by ID instead of falling back to color+size matching.
+                if (source.VariantId is int vid)
+                    patchBody["variant_id"] = vid;
+
+                if (patchBody.Count == 0)
+                    continue;
+
+                var filter = $"rest/v1/order_items?order_id=eq.{Esc(order.Id)}&product_id=eq.{source.ProductId}";
+                if (source.VariantId is int variantId)
+                {
+                    filter += $"&variant_id=eq.{variantId}";
+                }
+                else
+                {
+                    // Fall back to matching by size/color so we don't accidentally
+                    // overwrite a different variant row for the same product.
+                    if (!string.IsNullOrWhiteSpace(source.Size))
+                        filter += $"&size=eq.{Uri.EscapeDataString(source.Size.Trim())}";
+                    if (!string.IsNullOrWhiteSpace(source.ColorName))
+                        filter += $"&color_name=eq.{Uri.EscapeDataString(source.ColorName.Trim())}";
+                }
+
+                using var response = await SendAsync(HttpMethod.Patch, filter, patchBody);
                 _ = response.IsSuccessStatusCode;
+
             }
         }
         catch
         {
-            // color_name may not exist until 009_product_variant_colors.sql is applied.
+            // color_name / size / variant_id may not exist until the relevant
+            // migration scripts are applied — silently skip.
         }
     }
+
 
     private async Task TryPatchOrderCheckoutSnapshotAsync(AdminOrder order)
     {

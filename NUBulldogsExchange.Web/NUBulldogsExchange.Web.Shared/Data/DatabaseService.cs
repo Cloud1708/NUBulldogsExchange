@@ -895,12 +895,24 @@ public sealed partial class DatabaseService : IAppDatabase
         await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
         var now = DateTime.UtcNow.ToString("O");
 
+        var wasPending = string.Equals(previousStatus, "Pending", StringComparison.OrdinalIgnoreCase);
+        var isCancelled = string.Equals(order.Status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+        var isPending = string.Equals(order.Status, "Pending", StringComparison.OrdinalIgnoreCase);
+
         if (previousStatus is not null
-            && order.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
-            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            && isCancelled
+            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+            && !wasPending)
         {
             var persistedItems = await GetOrderItemsAsync(connection, order.Id, tx);
-            await ApplySqliteOrderStockAsync(connection, tx, persistedItems, restore: true, now);
+            await ApplySqliteOrderStockAsync(connection, tx, persistedItems, restore: true, now, order.Id);
+        }
+        else if (wasPending && !isPending && !isCancelled)
+        {
+            var persistedItems = await GetOrderItemsAsync(connection, order.Id, tx);
+            if (persistedItems.Count == 0 && order.Items.Count > 0)
+                persistedItems = order.Items;
+            await ApplySqliteOrderStockAsync(connection, tx, persistedItems, restore: false, now, order.Id);
         }
 
         await using (var command = connection.CreateCommand())
@@ -1013,12 +1025,22 @@ public sealed partial class DatabaseService : IAppDatabase
         await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
         var now = DateTime.UtcNow.ToString("O");
 
-        if (status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+        var wasPending = string.Equals(previousStatus, "Pending", StringComparison.OrdinalIgnoreCase);
+        var isCancelled = string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+        var isPending = string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase);
+
+        if (isCancelled
             && previousStatus is not null
-            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+            && !wasPending)
         {
             var items = await GetOrderItemsAsync(connection, orderId, tx);
-            await ApplySqliteOrderStockAsync(connection, tx, items, restore: true, now);
+            await ApplySqliteOrderStockAsync(connection, tx, items, restore: true, now, orderId);
+        }
+        else if (wasPending && !isPending && !isCancelled)
+        {
+            var items = await GetOrderItemsAsync(connection, orderId, tx);
+            await ApplySqliteOrderStockAsync(connection, tx, items, restore: false, now, orderId);
         }
 
         await using (var command = connection.CreateCommand())
@@ -1070,12 +1092,22 @@ public sealed partial class DatabaseService : IAppDatabase
         await using var tx = (SqliteTransaction)await connection.BeginTransactionAsync();
         var now = DateTime.UtcNow.ToString("O");
 
-        if (status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+        var wasPending = string.Equals(previousStatus, "Pending", StringComparison.OrdinalIgnoreCase);
+        var isCancelled = string.Equals(status, "Cancelled", StringComparison.OrdinalIgnoreCase);
+        var isPending = string.Equals(status, "Pending", StringComparison.OrdinalIgnoreCase);
+
+        if (isCancelled
             && previousStatus is not null
-            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            && !previousStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)
+            && !wasPending)
         {
             var items = await GetOrderItemsAsync(connection, orderId, tx);
-            await ApplySqliteOrderStockAsync(connection, tx, items, restore: true, now);
+            await ApplySqliteOrderStockAsync(connection, tx, items, restore: true, now, orderId);
+        }
+        else if (wasPending && !isPending && !isCancelled)
+        {
+            var items = await GetOrderItemsAsync(connection, orderId, tx);
+            await ApplySqliteOrderStockAsync(connection, tx, items, restore: false, now, orderId);
         }
 
         await using (var command = connection.CreateCommand())
@@ -2167,7 +2199,114 @@ public sealed partial class DatabaseService : IAppDatabase
         if (qty <= 0)
             throw new InvalidOperationException("Invalid order quantity.");
 
-        if (item.VariantId is int variantId)
+        // Resolve the variant ID — prefer the explicit VariantId, then fall back to
+        // matching by ColorName + Size (mirrors the Supabase nube_apply_order_stock logic).
+        int? resolvedVariantId = item.VariantId;
+
+        if (resolvedVariantId is null)
+        {
+            var hasVariants = false;
+            await using (var countCmd = connection.CreateCommand())
+            {
+                countCmd.Transaction = tx;
+                countCmd.CommandText = "SELECT COUNT(*) FROM ProductVariants WHERE ProductId = $id;";
+                countCmd.Parameters.AddWithValue("$id", item.ProductId);
+                hasVariants = Convert.ToInt32(await countCmd.ExecuteScalarAsync()) > 0;
+            }
+
+            if (hasVariants)
+            {
+                // 1) Try to resolve by color + size
+                await using var lookupCmd = connection.CreateCommand();
+                lookupCmd.Transaction = tx;
+                lookupCmd.CommandText = """
+                    SELECT Id FROM ProductVariants
+                     WHERE ProductId = $productId
+                       AND lower(trim(coalesce(ColorName, ''))) = lower(trim(coalesce($color, '')))
+                       AND lower(trim(coalesce(Size, '')))      = lower(trim(coalesce($size, '')))
+                     ORDER BY Id
+                     LIMIT 1;
+                    """;
+                lookupCmd.Parameters.AddWithValue("$productId", item.ProductId);
+                lookupCmd.Parameters.AddWithValue("$color", (object?)item.ColorName ?? DBNull.Value);
+                lookupCmd.Parameters.AddWithValue("$size",  (object?)item.Size      ?? DBNull.Value);
+                var lookupResult = await lookupCmd.ExecuteScalarAsync();
+
+                // 2) Try matching by size alone if size provided
+                if ((lookupResult is null or DBNull) && !string.IsNullOrWhiteSpace(item.Size))
+                {
+                    await using var sizeCmd = connection.CreateCommand();
+                    sizeCmd.Transaction = tx;
+                    sizeCmd.CommandText = """
+                        SELECT Id FROM ProductVariants
+                         WHERE ProductId = $productId
+                           AND lower(trim(coalesce(Size, ''))) = lower(trim($size))
+                         ORDER BY StockQuantity DESC, Id
+                         LIMIT 1;
+                        """;
+                    sizeCmd.Parameters.AddWithValue("$productId", item.ProductId);
+                    sizeCmd.Parameters.AddWithValue("$size", item.Size.Trim());
+                    lookupResult = await sizeCmd.ExecuteScalarAsync();
+                }
+
+                // 3) Try matching by color alone if color provided
+                if ((lookupResult is null or DBNull) && !string.IsNullOrWhiteSpace(item.ColorName))
+                {
+                    await using var colorCmd = connection.CreateCommand();
+                    colorCmd.Transaction = tx;
+                    colorCmd.CommandText = """
+                        SELECT Id FROM ProductVariants
+                         WHERE ProductId = $productId
+                           AND lower(trim(coalesce(ColorName, ''))) = lower(trim($color))
+                         ORDER BY StockQuantity DESC, Id
+                         LIMIT 1;
+                        """;
+                    colorCmd.Parameters.AddWithValue("$productId", item.ProductId);
+                    colorCmd.Parameters.AddWithValue("$color", item.ColorName.Trim());
+                    lookupResult = await colorCmd.ExecuteScalarAsync();
+                }
+
+                // 4) Fallback to any variant of this product that has enough stock
+                if (lookupResult is null or DBNull)
+                {
+                    await using var fallbackCmd = connection.CreateCommand();
+                    fallbackCmd.Transaction = tx;
+                    fallbackCmd.CommandText = """
+                        SELECT Id FROM ProductVariants
+                         WHERE ProductId = $productId
+                           AND StockQuantity >= $qty
+                         ORDER BY StockQuantity DESC, Id
+                         LIMIT 1;
+                        """;
+                    fallbackCmd.Parameters.AddWithValue("$productId", item.ProductId);
+                    fallbackCmd.Parameters.AddWithValue("$qty", qty);
+                    lookupResult = await fallbackCmd.ExecuteScalarAsync();
+                }
+
+                // 5) Fallback to the variant with the most stock
+                if (lookupResult is null or DBNull)
+                {
+                    await using var anyCmd = connection.CreateCommand();
+                    anyCmd.Transaction = tx;
+                    anyCmd.CommandText = """
+                        SELECT Id FROM ProductVariants
+                         WHERE ProductId = $productId
+                         ORDER BY StockQuantity DESC, Id
+                         LIMIT 1;
+                        """;
+                    anyCmd.Parameters.AddWithValue("$productId", item.ProductId);
+                    lookupResult = await anyCmd.ExecuteScalarAsync();
+                }
+
+                if (lookupResult is not null and not DBNull)
+                {
+                    resolvedVariantId = Convert.ToInt32(lookupResult);
+                    item.VariantId ??= resolvedVariantId;
+                }
+            }
+        }
+
+        if (resolvedVariantId is int variantId)
         {
             await using var variantRead = connection.CreateCommand();
             variantRead.Transaction = tx;
@@ -2175,24 +2314,21 @@ public sealed partial class DatabaseService : IAppDatabase
             variantRead.Parameters.AddWithValue("$id", variantId);
             var value = await variantRead.ExecuteScalarAsync();
             if (value is null or DBNull || Convert.ToInt32(value) < qty)
-                throw new InvalidOperationException(
-                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+            {
+                // Only throw if total aggregate stock is also insufficient
+                await using var totalRead = connection.CreateCommand();
+                totalRead.Transaction = tx;
+                totalRead.CommandText = "SELECT COALESCE(SUM(StockQuantity), 0) FROM ProductVariants WHERE ProductId = $id;";
+                totalRead.Parameters.AddWithValue("$id", item.ProductId);
+                var total = Convert.ToInt32(await totalRead.ExecuteScalarAsync());
+                if (total < qty)
+                    throw new InvalidOperationException(
+                        ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+            }
             return;
         }
 
-        var hasVariants = false;
-        await using (var countCmd = connection.CreateCommand())
-        {
-            countCmd.Transaction = tx;
-            countCmd.CommandText = "SELECT COUNT(*) FROM ProductVariants WHERE ProductId = $id;";
-            countCmd.Parameters.AddWithValue("$id", item.ProductId);
-            hasVariants = Convert.ToInt32(await countCmd.ExecuteScalarAsync()) > 0;
-        }
-
-        if (hasVariants)
-            throw new InvalidOperationException(
-                ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
-
+        // No variants or variant table empty — validate against the product's flat stock.
         await using var read = connection.CreateCommand();
         read.Transaction = tx;
         read.CommandText = "SELECT Stock FROM Products WHERE Id = $id;";
@@ -2241,7 +2377,100 @@ public sealed partial class DatabaseService : IAppDatabase
             sold = reader.GetInt32(2);
         }
 
-        if (item.VariantId is int variantId)
+        // If explicit VariantId is absent, resolve it from ColorName + Size (same fallback as validate).
+        int? resolvedVariantId2 = item.VariantId;
+        if (resolvedVariantId2 is null && hasVariants)
+        {
+            // 1) Match color + size
+            await using var lookupCmd2 = connection.CreateCommand();
+            lookupCmd2.Transaction = tx;
+            lookupCmd2.CommandText = """
+                SELECT Id FROM ProductVariants
+                 WHERE ProductId = $productId
+                   AND lower(trim(coalesce(ColorName, ''))) = lower(trim(coalesce($color, '')))
+                   AND lower(trim(coalesce(Size, '')))      = lower(trim(coalesce($size, '')))
+                 ORDER BY Id
+                 LIMIT 1;
+                """;
+            lookupCmd2.Parameters.AddWithValue("$productId", item.ProductId);
+            lookupCmd2.Parameters.AddWithValue("$color", (object?)item.ColorName ?? DBNull.Value);
+            lookupCmd2.Parameters.AddWithValue("$size",  (object?)item.Size      ?? DBNull.Value);
+            var lookupResult2 = await lookupCmd2.ExecuteScalarAsync();
+
+            // 2) Match size alone
+            if ((lookupResult2 is null or DBNull) && !string.IsNullOrWhiteSpace(item.Size))
+            {
+                await using var sizeCmd2 = connection.CreateCommand();
+                sizeCmd2.Transaction = tx;
+                sizeCmd2.CommandText = """
+                    SELECT Id FROM ProductVariants
+                     WHERE ProductId = $productId
+                       AND lower(trim(coalesce(Size, ''))) = lower(trim($size))
+                     ORDER BY StockQuantity DESC, Id
+                     LIMIT 1;
+                    """;
+                sizeCmd2.Parameters.AddWithValue("$productId", item.ProductId);
+                sizeCmd2.Parameters.AddWithValue("$size", item.Size.Trim());
+                lookupResult2 = await sizeCmd2.ExecuteScalarAsync();
+            }
+
+            // 3) Match color alone
+            if ((lookupResult2 is null or DBNull) && !string.IsNullOrWhiteSpace(item.ColorName))
+            {
+                await using var colorCmd2 = connection.CreateCommand();
+                colorCmd2.Transaction = tx;
+                colorCmd2.CommandText = """
+                    SELECT Id FROM ProductVariants
+                     WHERE ProductId = $productId
+                       AND lower(trim(coalesce(ColorName, ''))) = lower(trim($color))
+                     ORDER BY StockQuantity DESC, Id
+                     LIMIT 1;
+                    """;
+                colorCmd2.Parameters.AddWithValue("$productId", item.ProductId);
+                colorCmd2.Parameters.AddWithValue("$color", item.ColorName.Trim());
+                lookupResult2 = await colorCmd2.ExecuteScalarAsync();
+            }
+
+            // 4) Fallback to variant with sufficient stock
+            if (lookupResult2 is null or DBNull)
+            {
+                await using var fallbackCmd2 = connection.CreateCommand();
+                fallbackCmd2.Transaction = tx;
+                fallbackCmd2.CommandText = """
+                    SELECT Id FROM ProductVariants
+                     WHERE ProductId = $productId
+                       AND StockQuantity >= $qty
+                     ORDER BY StockQuantity DESC, Id
+                     LIMIT 1;
+                    """;
+                fallbackCmd2.Parameters.AddWithValue("$productId", item.ProductId);
+                fallbackCmd2.Parameters.AddWithValue("$qty", qty);
+                lookupResult2 = await fallbackCmd2.ExecuteScalarAsync();
+            }
+
+            // 5) Fallback to variant with highest stock
+            if (lookupResult2 is null or DBNull)
+            {
+                await using var anyCmd2 = connection.CreateCommand();
+                anyCmd2.Transaction = tx;
+                anyCmd2.CommandText = """
+                    SELECT Id FROM ProductVariants
+                     WHERE ProductId = $productId
+                     ORDER BY StockQuantity DESC, Id
+                     LIMIT 1;
+                    """;
+                anyCmd2.Parameters.AddWithValue("$productId", item.ProductId);
+                lookupResult2 = await anyCmd2.ExecuteScalarAsync();
+            }
+
+            if (lookupResult2 is not null and not DBNull)
+            {
+                resolvedVariantId2 = Convert.ToInt32(lookupResult2);
+                item.VariantId ??= resolvedVariantId2;
+            }
+        }
+
+        if (resolvedVariantId2 is int variantId)
         {
             int variantStock;
             await using (var variantRead = connection.CreateCommand())
@@ -2258,8 +2487,17 @@ public sealed partial class DatabaseService : IAppDatabase
 
             previousStock = variantStock;
             if (!restore && variantStock < qty)
-                throw new InvalidOperationException(
-                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+            {
+                // If variant has less than qty, verify total product stock
+                await using var totalRead2 = connection.CreateCommand();
+                totalRead2.Transaction = tx;
+                totalRead2.CommandText = "SELECT COALESCE(SUM(StockQuantity), 0) FROM ProductVariants WHERE ProductId = $id;";
+                totalRead2.Parameters.AddWithValue("$id", item.ProductId);
+                var total2 = Convert.ToInt32(await totalRead2.ExecuteScalarAsync());
+                if (total2 < qty)
+                    throw new InvalidOperationException(
+                        ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+            }
 
             await using var deduct = connection.CreateCommand();
             deduct.Transaction = tx;
@@ -2271,18 +2509,15 @@ public sealed partial class DatabaseService : IAppDatabase
                     """
                 : """
                     UPDATE ProductVariants
-                    SET StockQuantity = StockQuantity - $qty, UpdatedAt = $updatedAt
-                    WHERE Id = $id AND StockQuantity >= $qty;
+                    SET StockQuantity = MAX(0, StockQuantity - $qty), UpdatedAt = $updatedAt
+                    WHERE Id = $id;
                     """;
             deduct.Parameters.AddWithValue("$qty", qty);
             deduct.Parameters.AddWithValue("$updatedAt", nowText);
             deduct.Parameters.AddWithValue("$id", variantId);
-            var rows = await deduct.ExecuteNonQueryAsync();
-            if (!restore && rows <= 0)
-                throw new InvalidOperationException(
-                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
+            await deduct.ExecuteNonQueryAsync();
 
-            newStock = restore ? variantStock + qty : variantStock - qty;
+            newStock = restore ? variantStock + qty : Math.Max(0, variantStock - qty);
 
             await using var recap = connection.CreateCommand();
             recap.Transaction = tx;
@@ -2309,10 +2544,6 @@ public sealed partial class DatabaseService : IAppDatabase
         }
         else
         {
-            if (hasVariants)
-                throw new InvalidOperationException(
-                    ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
-
             if (!restore && previousStock < qty)
                 throw new InvalidOperationException(
                     ProductVariantLogic.FormatInsufficientStock(item.Name, item.ColorName, item.Size));
@@ -2351,10 +2582,79 @@ public sealed partial class DatabaseService : IAppDatabase
         SqliteTransaction tx,
         IEnumerable<AdminOrderItem> items,
         bool restore,
-        string nowText)
+        string nowText,
+        string? orderId = null,
+        string? performedBy = null)
     {
+        var adminName = string.IsNullOrWhiteSpace(performedBy) ? "System" : performedBy;
         foreach (var item in items)
-            await ApplySqliteOrderItemStockAsync(connection, tx, item, restore, nowText);
+        {
+            var (previousStock, newStock, productName) =
+                await ApplySqliteOrderItemStockAsync(connection, tx, item, restore, nowText);
+
+            if (item.VariantId is int vid)
+            {
+                await using var inv = connection.CreateCommand();
+                inv.Transaction = tx;
+                inv.CommandText = """
+                    UPDATE Inventory
+                    SET QuantityOnHand = $qty, UpdatedAt = $updatedAt
+                    WHERE ProductId = $productId AND VariantId = $variantId;
+                    """;
+                inv.Parameters.AddWithValue("$qty", newStock);
+                inv.Parameters.AddWithValue("$updatedAt", nowText);
+                inv.Parameters.AddWithValue("$productId", item.ProductId);
+                inv.Parameters.AddWithValue("$variantId", vid);
+                await inv.ExecuteNonQueryAsync();
+            }
+
+            if (!string.IsNullOrWhiteSpace(orderId))
+            {
+                await using var hist = connection.CreateCommand();
+                hist.Transaction = tx;
+                hist.CommandText = """
+                    INSERT INTO InventoryHistory (
+                        Id, ProductId, ProductName, Type, Quantity, PreviousStock, NewStock, Reason, Notes, Date, AdminName
+                    ) VALUES (
+                        $id, $productId, $productName, $type, $quantity, $previous, $new, 'Order', $notes, $date, $admin
+                    );
+                    """;
+                hist.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
+                hist.Parameters.AddWithValue("$productId", item.ProductId);
+                hist.Parameters.AddWithValue("$productName", productName);
+                hist.Parameters.AddWithValue("$type", restore ? "Restock" : "Sale");
+                hist.Parameters.AddWithValue("$quantity", item.Quantity);
+                hist.Parameters.AddWithValue("$previous", previousStock);
+                hist.Parameters.AddWithValue("$new", newStock);
+                hist.Parameters.AddWithValue("$notes", $"Order {orderId}");
+                hist.Parameters.AddWithValue("$date", nowText);
+                hist.Parameters.AddWithValue("$admin", adminName);
+                await hist.ExecuteNonQueryAsync();
+
+                await using var move = connection.CreateCommand();
+                move.Transaction = tx;
+                move.CommandText = """
+                    INSERT INTO InventoryMovements (
+                        ProductId, VariantId, MovementType, Quantity, PreviousQuantity, NewQuantity,
+                        ReferenceType, ReferenceId, Notes, PerformedBy, CreatedAt
+                    ) VALUES (
+                        $productId, $variantId, $moveType, $quantity, $previous, $new,
+                        'Order', $orderId, $notes, $performedBy, $createdAt
+                    );
+                    """;
+                move.Parameters.AddWithValue("$productId", item.ProductId);
+                move.Parameters.AddWithValue("$variantId", (object?)item.VariantId ?? DBNull.Value);
+                move.Parameters.AddWithValue("$moveType", restore ? "Restock" : "Sale");
+                move.Parameters.AddWithValue("$quantity", restore ? item.Quantity : -item.Quantity);
+                move.Parameters.AddWithValue("$previous", previousStock);
+                move.Parameters.AddWithValue("$new", newStock);
+                move.Parameters.AddWithValue("$orderId", orderId);
+                move.Parameters.AddWithValue("$notes", $"{(restore ? "Restock for" : "Order deduction for")} {productName}");
+                move.Parameters.AddWithValue("$performedBy", adminName);
+                move.Parameters.AddWithValue("$createdAt", nowText);
+                await move.ExecuteNonQueryAsync();
+            }
+        }
     }
 
     public async Task PlaceCheckoutOrderAsync(AdminOrder order, string? promoCode, decimal discountAmount, string userEmail)
@@ -2483,70 +2783,11 @@ public sealed partial class DatabaseService : IAppDatabase
                 itemCmd.Parameters.AddWithValue("$variantSku", (object?)item.VariantSku ?? DBNull.Value);
                 await itemCmd.ExecuteNonQueryAsync();
 
-                var (previousStock, newStock, productName) =
-                    await ApplySqliteOrderItemStockAsync(connection, tx, item, restore: false, nowText);
+            }
 
-                await using (var hist = connection.CreateCommand())
-                {
-                    hist.Transaction = tx;
-                    hist.CommandText = """
-                        INSERT INTO InventoryHistory (
-                            Id, ProductId, ProductName, Type, Quantity, PreviousStock, NewStock, Reason, Notes, Date, AdminName
-                        ) VALUES (
-                            $id, $productId, $productName, 'Sale', $quantity, $previous, $new, 'Order', $notes, $date, $admin
-                        );
-                        """;
-                    hist.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
-                    hist.Parameters.AddWithValue("$productId", item.ProductId);
-                    hist.Parameters.AddWithValue("$productName", productName);
-                    hist.Parameters.AddWithValue("$quantity", item.Quantity);
-                    hist.Parameters.AddWithValue("$previous", previousStock);
-                    hist.Parameters.AddWithValue("$new", newStock);
-                    hist.Parameters.AddWithValue("$notes", $"Order {order.Id}");
-                    hist.Parameters.AddWithValue("$date", nowText);
-                    hist.Parameters.AddWithValue("$admin", emailKey);
-                    await hist.ExecuteNonQueryAsync();
-                }
-
-                await using (var move = connection.CreateCommand())
-                {
-                    move.Transaction = tx;
-                    move.CommandText = """
-                        INSERT INTO InventoryMovements (
-                            ProductId, VariantId, MovementType, Quantity, PreviousQuantity, NewQuantity,
-                            ReferenceType, ReferenceId, Notes, PerformedBy, CreatedAt
-                        ) VALUES (
-                            $productId, $variantId, 'Sale', $quantity, $previous, $new,
-                            'Order', $orderId, $notes, $performedBy, $createdAt
-                        );
-                        """;
-                    move.Parameters.AddWithValue("$productId", item.ProductId);
-                    move.Parameters.AddWithValue("$variantId", (object?)item.VariantId ?? DBNull.Value);
-                    move.Parameters.AddWithValue("$quantity", -item.Quantity);
-                    move.Parameters.AddWithValue("$previous", previousStock);
-                    move.Parameters.AddWithValue("$new", newStock);
-                    move.Parameters.AddWithValue("$orderId", order.Id);
-                    move.Parameters.AddWithValue("$notes", $"Checkout sale for {productName}");
-                    move.Parameters.AddWithValue("$performedBy", emailKey);
-                    move.Parameters.AddWithValue("$createdAt", nowText);
-                    await move.ExecuteNonQueryAsync();
-                }
-
-                if (item.VariantId is int vid)
-                {
-                    await using var inv = connection.CreateCommand();
-                    inv.Transaction = tx;
-                    inv.CommandText = """
-                        UPDATE Inventory
-                        SET QuantityOnHand = $qty, UpdatedAt = $updatedAt
-                        WHERE ProductId = $productId AND VariantId = $variantId;
-                        """;
-                    inv.Parameters.AddWithValue("$qty", newStock);
-                    inv.Parameters.AddWithValue("$updatedAt", nowText);
-                    inv.Parameters.AddWithValue("$productId", item.ProductId);
-                    inv.Parameters.AddWithValue("$variantId", vid);
-                    await inv.ExecuteNonQueryAsync();
-                }
+            if (!string.Equals(order.Status, "Pending", StringComparison.OrdinalIgnoreCase))
+            {
+                await ApplySqliteOrderStockAsync(connection, tx, order.Items, restore: false, nowText, order.Id, emailKey);
             }
 
             await AppendOrderStatusHistoryCoreAsync(connection, tx, order.Id, null, order.Status, "Order placed", emailKey);

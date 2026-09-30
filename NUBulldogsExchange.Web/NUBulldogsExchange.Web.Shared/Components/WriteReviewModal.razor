@@ -20,30 +20,32 @@
                 {
                     <p class="wr-lead">Choose a product to review</p>
                     <div class="wr-item-list">
-                        @foreach (var item in Order.Items)
+                        @foreach (var group in _groupedItems)
                         {
+                            var representative = group.First();
+                            var isReviewed = group.Any(i => i.IsReviewed);
                             <article class="wr-item">
-                                <img src="@item.ImageUrl"
-                                     alt="@item.Name"
+                                <img src="@representative.ImageUrl"
+                                     alt="@representative.Name"
                                      onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                 <div class="wr-item-copy">
-                                    <strong>@item.Name</strong>
-                                    @if (item.HasDisplayColor)
+                                    <strong>@representative.Name</strong>
+                                    @if (representative.HasDisplayColor)
                                     {
-                                        <span>Color: @item.Color</span>
+                                        <span>Color: @representative.Color</span>
                                     }
-                                    @if (item.HasDisplaySize)
+                                    @if (representative.HasDisplaySize)
                                     {
-                                        <span>Size: @item.Size</span>
+                                        <span>Size: @representative.Size</span>
                                     }
                                 </div>
-                                @if (item.IsReviewed)
+                                @if (isReviewed)
                                 {
                                     <button type="button" class="btn btn-reviewed" disabled>Reviewed ✓</button>
                                 }
                                 else
                                 {
-                                    <button type="button" class="btn btn-navy wr-item-action" @onclick="() => SelectItem(item)">
+                                    <button type="button" class="btn btn-navy wr-item-action" @onclick="() => SelectItem(representative)">
                                         Write Review
                                     </button>
                                 }
@@ -134,6 +136,7 @@
     private bool _saving;
     private bool _openedForItem;
     private string? _boundOrderId;
+    private List<IGrouping<int, MockOrderItem>> _groupedItems = [];
 
     protected override void OnParametersSet()
     {
@@ -142,6 +145,7 @@
             _selected = null;
             _openedForItem = false;
             _boundOrderId = null;
+            _groupedItems = [];
             return;
         }
 
@@ -152,6 +156,11 @@
             _openedForItem = false;
             ResetFormFields();
         }
+
+        // Group items by ProductId so each product only appears once
+        _groupedItems = Order.Items
+            .GroupBy(i => i.ProductId)
+            .ToList();
 
         if (SelectedItem is not null
             && !SelectedItem.IsReviewed
@@ -199,6 +208,9 @@
         _selected = null;
     }
 
+    private bool AllGroupsReviewed =>
+        _groupedItems.Count > 0 && _groupedItems.All(g => g.Any(i => i.IsReviewed));
+
     private async Task Submit()
     {
         if (Order is null || _selected is null || _saving)
@@ -227,10 +239,18 @@
                 _rating,
                 _title,
                 text);
+
+            // Mark all sibling items with the same ProductId as reviewed
+            foreach (var sibling in Order.Items
+                         .Where(i => i.ProductId == _selected.ProductId))
+            {
+                sibling.IsReviewed = true;
+            }
+
             Toast.Show("Review submitted successfully.");
             await OnSubmitted.InvokeAsync();
 
-            if (_openedForItem || Order.AllItemsReviewed)
+            if (_openedForItem || AllGroupsReviewed)
             {
                 await Close();
                 return;

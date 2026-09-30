@@ -188,7 +188,9 @@ public static class ProductVariantLogic
             return $"{name} - Size {size!.Trim()} is no longer available.";
         if (hasColor)
             return $"{name} - {colorName!.Trim()} is no longer available.";
-        return "Insufficient stock for the selected item.";
+        return !string.IsNullOrWhiteSpace(productName)
+            ? $"{name} is out of stock."
+            : "Insufficient stock for the selected item.";
     }
 
     public static void ApplyOrderItemStock(Product product, AdminOrderItem item, bool restore)
