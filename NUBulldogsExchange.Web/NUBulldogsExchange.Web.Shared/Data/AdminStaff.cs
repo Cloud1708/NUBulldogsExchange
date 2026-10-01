@@ -52,8 +52,9 @@ public class AdminStaffMember
     public string Email { get; set; } = string.Empty;
     public string Role { get; set; } = "Staff";
     public string Status { get; set; } = "Active";
-    public DateTime LastLogin { get; set; }
+    public DateTime? LastLogin { get; set; }
     public bool IsPrimaryAdmin { get; set; }
+    public bool MustChangePassword { get; set; }
     public AdminStaffPermissions Permissions { get; set; } = AdminStaffPermissions.DefaultStaff();
 
     public string FullName => $"{FirstName} {LastName}".Trim();
@@ -64,6 +65,7 @@ public class AdminStaffMember
             : char.ToUpperInvariant(FullName.Trim()[0]).ToString();
 
     public bool IsAdmin => Role.Equals("Admin", StringComparison.OrdinalIgnoreCase);
+    public bool IsStaff => Role.Equals("Staff", StringComparison.OrdinalIgnoreCase);
     public bool IsActive => Status.Equals("Active", StringComparison.OrdinalIgnoreCase);
 
     public string RoleKey => IsAdmin ? "admin" : "staff";
@@ -75,5 +77,8 @@ public class AdminStaffMember
         _ => "inactive"
     };
 
-    public string LastLoginLabel => LastLogin.ToString("MMM d, yyyy h:mm tt");
+    public string LastLoginLabel =>
+        LastLogin is null || LastLogin == DateTime.MinValue
+            ? "Never"
+            : LastLogin.Value.ToLocalTime().ToString("MMM d, yyyy h:mm tt");
 }

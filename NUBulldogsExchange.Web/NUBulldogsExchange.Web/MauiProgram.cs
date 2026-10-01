@@ -19,6 +19,9 @@ namespace NUBulldogsExchange.Web
 
             builder.Services.AddSingleton<IFormFactor, FormFactor>();
 
+            // SMTP is Web.Web server-only. MAUI uses a no-op sender.
+            builder.Services.AddSingleton<IAppEmailSender, NullAppEmailSender>();
+
             // Direct SQLite database connection for desktop/Windows with instant sync,
             // or HTTP client for Android/iOS mobile devices connecting to Web API.
             if (DeviceInfo.Platform == DevicePlatform.WinUI)

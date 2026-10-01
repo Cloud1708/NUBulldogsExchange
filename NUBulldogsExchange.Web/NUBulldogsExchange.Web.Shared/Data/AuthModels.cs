@@ -35,6 +35,23 @@ public sealed class ChangePasswordRequest
     public string ConfirmNewPassword { get; set; } = "";
 }
 
+public sealed class ForcedPasswordChangeRequest
+{
+    public string NewPassword { get; set; } = "";
+    public string ConfirmNewPassword { get; set; } = "";
+}
+
+public sealed class CreateStaffAccountRequest
+{
+    public string FirstName { get; set; } = "";
+    public string LastName { get; set; } = "";
+    public string Email { get; set; } = "";
+    public string TemporaryPassword { get; set; } = "";
+    public string ConfirmPassword { get; set; } = "";
+    public string Status { get; set; } = "Active";
+    public bool MustChangePassword { get; set; } = true;
+}
+
 public sealed class AuthResult
 {
     public bool Success { get; set; }

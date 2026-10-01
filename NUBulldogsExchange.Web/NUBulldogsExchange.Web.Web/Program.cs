@@ -14,10 +14,13 @@ var supabaseUrl = builder.Configuration["Supabase:Url"]
     ?? throw new InvalidOperationException("Missing Supabase:Url in appsettings.json.");
 var supabasePublishableKey = builder.Configuration["Supabase:PublishableKey"]
     ?? throw new InvalidOperationException("Missing Supabase:PublishableKey in appsettings.json.");
+// Server-only. Optional. Never expose to browsers or Mobile.
+var supabaseServiceRoleKey = builder.Configuration["Supabase:ServiceRoleKey"];
 
 builder.Services.AddSingleton(new SupabaseOptions(
     supabaseUrl,
-    supabasePublishableKey));
+    supabasePublishableKey,
+    supabaseServiceRoleKey));
 
 // IMPORTANT: scoped on Web so one logged-in browser circuit never shares
 // its Supabase access token with another user.
@@ -47,6 +50,12 @@ builder.Services.AddScoped<SupabaseAppDatabase>(sp =>
 
 builder.Services.AddScoped<IAppDatabase>(sp =>
     sp.GetRequiredService<SupabaseAppDatabase>());
+
+// ============================================================
+// Mail (server-only SMTP — Hostinger / NU-Secure)
+// ============================================================
+builder.Services.Configure<MailOptions>(builder.Configuration.GetSection(MailOptions.SectionName));
+builder.Services.AddSingleton<IAppEmailSender, SmtpEmailSender>();
 
 // ============================================================
 // Existing application services

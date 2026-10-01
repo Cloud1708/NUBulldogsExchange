@@ -18,6 +18,7 @@ public class MockUser
     public string ProfileImage { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
     public DateTime? LastLoginAt { get; set; }
+    public bool MustChangePassword { get; set; }
     public string SessionToken { get; set; } = string.Empty;
     public bool RememberMe { get; set; }
 
@@ -39,4 +40,9 @@ public class MockUser
         Role.Equals("user", StringComparison.OrdinalIgnoreCase);
 
     public bool IsAdmin => Role.Equals("admin", StringComparison.OrdinalIgnoreCase);
+
+    public bool IsStaff => Role.Equals("staff", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Admin or Staff may use the Web Admin Portal (subject to RBAC).</summary>
+    public bool CanAccessAdmin => IsAdmin || IsStaff;
 }

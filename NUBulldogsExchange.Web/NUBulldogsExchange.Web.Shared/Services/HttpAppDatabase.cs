@@ -419,6 +419,26 @@ public sealed class HttpAppDatabase : IAppDatabase
         }
     }
 
+    public async Task<AuthResult> CompleteForcedPasswordChangeAsync(
+        string sessionToken,
+        ForcedPasswordChangeRequest request)
+    {
+        try
+        {
+            using var message = new HttpRequestMessage(HttpMethod.Post, "api/auth/force-change-password")
+            {
+                Content = JsonContent.Create(request)
+            };
+            ApplySession(message, sessionToken);
+            var response = await _http.SendAsync(message);
+            return await ReadAuthResultAsync(response, "Unable to update your password. Please try again.");
+        }
+        catch (HttpRequestException)
+        {
+            return new AuthResult { Success = false, Error = "Cannot connect to server." };
+        }
+    }
+
     private static void ApplySession(HttpRequestMessage message, string sessionToken)
     {
         if (!string.IsNullOrWhiteSpace(sessionToken))
@@ -482,6 +502,13 @@ public sealed class HttpAppDatabase : IAppDatabase
     public async Task<AdminStaffMember> UpsertStaffAsync(AdminStaffMember staff)
     {
         var response = await _http.PostAsJsonAsync("api/staff", staff);
+        response.EnsureSuccessStatusCode();
+        return (await response.Content.ReadFromJsonAsync<AdminStaffMember>())!;
+    }
+
+    public async Task<AdminStaffMember> CreateStaffAccountAsync(CreateStaffAccountRequest request)
+    {
+        var response = await _http.PostAsJsonAsync("api/staff/create", request);
         response.EnsureSuccessStatusCode();
         return (await response.Content.ReadFromJsonAsync<AdminStaffMember>())!;
     }

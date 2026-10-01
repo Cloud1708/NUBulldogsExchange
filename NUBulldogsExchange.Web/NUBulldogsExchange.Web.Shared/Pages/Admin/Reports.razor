@@ -154,9 +154,16 @@
                             <strong>₱@((cat.Revenue / 1000m).ToString("0"))K</strong>
                         </div>
                     }
-                    <div class="admin-reports-hbar-axis">
-                        <span>₱0K</span><span>₱15K</span><span>₱30K</span><span>₱45K</span><span>₱60K</span>
-                    </div>
+                    @if (_snapshot.RevenueByCategory.Count == 0)
+                    {
+                        <p class="admin-reports-section-empty">No completed sales in this period.</p>
+                    }
+                    else
+                    {
+                        <div class="admin-reports-hbar-axis">
+                            <span>₱0K</span><span>₱15K</span><span>₱30K</span><span>₱45K</span><span>₱60K</span>
+                        </div>
+                    }
                 </div>
             </section>
 
@@ -198,64 +205,178 @@
             </section>
         </div>
 
-        <section class="admin-card admin-reports-best">
-            <div class="admin-card-head">
-                <div>
-                    <h2>Best Sellers Report</h2>
-                    <p>Top performing products</p>
+        <div class="admin-reports-product-analytics">
+            <section class="admin-card admin-reports-top-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Top Selling Products</h2>
+                        <p>Based on units sold (@_snapshot.RangeLabel)</p>
+                    </div>
+                    <button type="button" class="admin-view-all" @onclick='() => ViewAllProducts("units")'>
+                        View All
+                    </button>
                 </div>
-                <button type="button" class="btn btn-outline-navy admin-reports-filter-btn" @onclick="ToggleFilter">
-                    <Icon Name="filter" Size="14" />
-                    Filter
-                </button>
+                @if (_snapshot.TopSellingProducts.Count == 0)
+                {
+                    <p class="admin-reports-section-empty">No completed sales in this period.</p>
+                }
+                else
+                {
+                    <ol class="admin-reports-rank-list">
+                        @foreach (var row in _snapshot.TopSellingProducts)
+                        {
+                            <li>
+                                <span class="admin-reports-rank-num">@row.Rank</span>
+                                <img src="@row.ImageUrl"
+                                     alt="@row.Name"
+                                     loading="lazy"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="admin-reports-rank-body">
+                                    <strong title="@row.Name">@row.Name</strong>
+                                    <div class="admin-reports-rank-bar">
+                                        <span style="@($"width:{row.ProgressPct:0.##}%")"></span>
+                                    </div>
+                                    <div class="admin-reports-rank-meta">
+                                        <em>@row.UnitsSold.ToString("N0") sold</em>
+                                        <span>₱@row.Revenue.ToString("N2")</span>
+                                    </div>
+                                </div>
+                            </li>
+                        }
+                    </ol>
+                }
+            </section>
+
+            <section class="admin-card admin-reports-top-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Top Selling Variants</h2>
+                        <p>Based on units sold (@_snapshot.RangeLabel)</p>
+                    </div>
+                    <button type="button" class="admin-view-all" @onclick='() => ViewAllProducts("units")'>
+                        View All
+                    </button>
+                </div>
+                @if (_snapshot.TopSellingVariants.Count == 0)
+                {
+                    <p class="admin-reports-section-empty">No variant sales in this period.</p>
+                }
+                else
+                {
+                    <ol class="admin-reports-rank-list variants">
+                        @foreach (var row in _snapshot.TopSellingVariants)
+                        {
+                            <li>
+                                <span class="admin-reports-rank-num">@row.Rank</span>
+                                <img src="@row.ImageUrl"
+                                     alt="@row.ProductName"
+                                     loading="lazy"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="admin-reports-rank-body">
+                                    <strong title="@row.ProductName">@row.ProductName</strong>
+                                    <small>@row.VariantLabel</small>
+                                    <div class="admin-reports-rank-meta">
+                                        <em>@row.UnitsSold.ToString("N0") sold</em>
+                                        <span>₱@row.Revenue.ToString("N2")</span>
+                                    </div>
+                                </div>
+                            </li>
+                        }
+                    </ol>
+                }
+            </section>
+
+            <section class="admin-card admin-reports-top-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Top Products by Revenue</h2>
+                        <p>Total sales amount (@_snapshot.RangeLabel)</p>
+                    </div>
+                    <button type="button" class="admin-view-all" @onclick='() => ViewAllProducts("revenue")'>
+                        View All
+                    </button>
+                </div>
+                @if (_snapshot.TopProductsByRevenue.Count == 0)
+                {
+                    <p class="admin-reports-section-empty">No sales data in this period.</p>
+                }
+                else
+                {
+                    <ol class="admin-reports-rank-list revenue">
+                        @foreach (var row in _snapshot.TopProductsByRevenue)
+                        {
+                            <li>
+                                <span class="admin-reports-rank-num">@row.Rank</span>
+                                <img src="@row.ImageUrl"
+                                     alt="@row.Name"
+                                     loading="lazy"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="admin-reports-rank-body">
+                                    <strong title="@row.Name">@row.Name</strong>
+                                    <div class="admin-reports-revenue-value">₱@row.Revenue.ToString("N2")</div>
+                                    <em>@row.UnitsSold.ToString("N0") sold</em>
+                                </div>
+                            </li>
+                        }
+                    </ol>
+                }
+            </section>
+        </div>
+
+        <section class="admin-card admin-reports-performance" @ref="_performanceSection">
+            <div class="admin-card-head admin-reports-perf-head">
+                <div>
+                    <h2>Product Performance</h2>
+                    <p>Detailed performance of all products (@_snapshot.RangeLabel)</p>
+                </div>
+                <div class="admin-reports-perf-tools">
+                    <label class="admin-reports-search">
+                        <Icon Name="search" Size="14" />
+                        <input type="search"
+                               placeholder="Search products..."
+                               @bind="_perfSearch"
+                               @bind:event="oninput" />
+                    </label>
+                    <button type="button" class="btn btn-outline-navy admin-reports-export" @onclick="ExportCsv">
+                        <Icon Name="download" Size="15" />
+                        Export
+                    </button>
+                </div>
             </div>
 
-            @if (_showFilter)
-            {
-                <div class="admin-reports-filter-panel">
-                    <label class="admin-field">
-                        <span>Category</span>
-                        <select @bind="_filterCategory">
-                            <option value="All">All Categories</option>
-                            @foreach (var category in FilteredCategories)
-                            {
-                                <option value="@category">@category</option>
-                            }
-                        </select>
-                    </label>
-                    <label class="admin-field">
-                        <span>Minimum Units Sold</span>
-                        <input type="number" min="0" @bind="_minUnits" @bind:event="oninput" />
-                    </label>
-                    <label class="admin-field">
-                        <span>Sort By</span>
-                        <select @bind="_sortBy">
-                            <option value="units">Units Sold</option>
-                            <option value="revenue">Revenue</option>
-                            <option value="stock">Stock Left</option>
-                        </select>
-                    </label>
-                    <div class="admin-modal-actions">
-                        <button type="button" class="btn btn-outline-navy" @onclick="ResetFilter">Reset</button>
-                        <button type="button" class="btn btn-navy" @onclick="ApplyFilter">Apply</button>
-                    </div>
-                </div>
-            }
-
             <div class="admin-reports-table-wrap">
-                <table class="admin-reports-table">
+                <table class="admin-reports-table admin-reports-perf-table">
                     <thead>
                         <tr>
-                            <th>Rank</th>
+                            <th>#</th>
                             <th>Product</th>
                             <th>Category</th>
-                            <th>Units Sold</th>
-                            <th>Revenue</th>
-                            <th>Stock Left</th>
+                            <th>
+                                <button type="button" class="admin-reports-sort" @onclick='() => SetPerfSort("units")'>
+                                    Units Sold
+                                </button>
+                            </th>
+                            <th>
+                                <button type="button" class="admin-reports-sort" @onclick='() => SetPerfSort("revenue")'>
+                                    Revenue (₱)
+                                </button>
+                            </th>
+                            <th>Avg. Price (₱)</th>
+                            <th>
+                                <button type="button" class="admin-reports-sort" @onclick='() => SetPerfSort("orders")'>
+                                    Orders
+                                </button>
+                            </th>
+                            <th>
+                                <button type="button" class="admin-reports-sort" @onclick='() => SetPerfSort("stock")'>
+                                    Current Stock
+                                </button>
+                            </th>
+                            <th>Performance</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var row in VisibleBestSellers)
+                        @foreach (var row in VisiblePerformance)
                         {
                             <tr>
                                 <td>
@@ -270,10 +391,23 @@
                                         <strong title="@row.Name">@row.Name</strong>
                                     </div>
                                 </td>
-                                <td>@row.Category</td>
+                                <td>@(string.IsNullOrWhiteSpace(row.Category) ? "—" : row.Category)</td>
                                 <td><strong>@row.UnitsSold.ToString("N0")</strong></td>
-                                <td><strong>₱@row.Revenue.ToString("N0")</strong></td>
-                                <td>@row.StockLeft</td>
+                                <td><strong>₱@row.Revenue.ToString("N2")</strong></td>
+                                <td>@(row.UnitsSold <= 0 ? "—" : $"₱{row.AvgPrice:N2}")</td>
+                                <td>@row.Orders.ToString("N0")</td>
+                                <td>@row.CurrentStock.ToString("N0")</td>
+                                <td>
+                                    <span class="admin-reports-perf-badge @row.PerformanceKey">@row.Performance</span>
+                                </td>
+                            </tr>
+                        }
+                        @if (!VisiblePerformance.Any())
+                        {
+                            <tr>
+                                <td colspan="9" class="admin-reports-table-empty">
+                                    No products match your search.
+                                </td>
                             </tr>
                         }
                     </tbody>
@@ -314,48 +448,52 @@
     private string _range = "30days";
     private ReportSnapshot _snapshot = new();
     private bool _showCustom;
-    private bool _showFilter;
     private DateTime _customStart = new(2026, 8, 1);
     private DateTime _customEnd = new(2026, 8, 14);
     private string? _customError;
 
-    private string _filterCategory = "All";
-    private int _minUnits;
-    private string _sortBy = "units";
-    private string _appliedCategory = "All";
-    private int _appliedMinUnits;
-    private string _appliedSortBy = "units";
+    private string _perfSearch = string.Empty;
+    private string _perfSort = "units";
+    private ElementReference _performanceSection;
 
-    private IEnumerable<string> FilteredCategories =>
-        _snapshot.BestSellers.Select(b => b.Category).Distinct().OrderBy(c => c);
-
-    private IEnumerable<ReportBestSeller> VisibleBestSellers
+    private IEnumerable<ReportProductPerformance> VisiblePerformance
     {
         get
         {
-            IEnumerable<ReportBestSeller> query = _snapshot.BestSellers;
-            if (!_appliedCategory.Equals("All", StringComparison.OrdinalIgnoreCase))
-                query = query.Where(b => b.Category.Equals(_appliedCategory, StringComparison.OrdinalIgnoreCase));
-            if (_appliedMinUnits > 0)
-                query = query.Where(b => b.UnitsSold >= _appliedMinUnits);
+            IEnumerable<ReportProductPerformance> query = _snapshot.ProductPerformance;
 
-            query = _appliedSortBy switch
+            if (!string.IsNullOrWhiteSpace(_perfSearch))
             {
-                "revenue" => query.OrderByDescending(b => b.Revenue),
-                "stock" => query.OrderByDescending(b => b.StockLeft),
-                _ => query.OrderByDescending(b => b.UnitsSold)
+                var term = _perfSearch.Trim();
+                query = query.Where(r =>
+                    r.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || r.Category.Contains(term, StringComparison.OrdinalIgnoreCase)
+                    || r.Sku.Contains(term, StringComparison.OrdinalIgnoreCase));
+            }
+
+            query = _perfSort switch
+            {
+                "revenue" => query.OrderByDescending(r => r.Revenue).ThenByDescending(r => r.UnitsSold),
+                "orders" => query.OrderByDescending(r => r.Orders).ThenByDescending(r => r.UnitsSold),
+                "stock" => query.OrderByDescending(r => r.CurrentStock).ThenBy(r => r.Name),
+                _ => query.OrderByDescending(r => r.UnitsSold).ThenByDescending(r => r.Revenue)
             };
 
-            return query.Select((b, i) => new ReportBestSeller
+            return query.Select((r, i) => new ReportProductPerformance
             {
                 Rank = i + 1,
-                ProductId = b.ProductId,
-                Name = b.Name,
-                Category = b.Category,
-                ImageUrl = b.ImageUrl,
-                UnitsSold = b.UnitsSold,
-                Revenue = b.Revenue,
-                StockLeft = b.StockLeft
+                ProductId = r.ProductId,
+                Name = r.Name,
+                Category = r.Category,
+                Sku = r.Sku,
+                ImageUrl = r.ImageUrl,
+                UnitsSold = r.UnitsSold,
+                Revenue = r.Revenue,
+                AvgPrice = r.AvgPrice,
+                Orders = r.Orders,
+                CurrentStock = r.CurrentStock,
+                Performance = r.Performance,
+                PerformanceKey = r.PerformanceKey
             });
         }
     }
@@ -431,22 +569,24 @@
         Reload();
     }
 
-    private void ToggleFilter() => _showFilter = !_showFilter;
-
-    private void ResetFilter()
+    private void SetPerfSort(string sort)
     {
-        _filterCategory = "All";
-        _minUnits = 0;
-        _sortBy = "units";
-        ApplyFilter();
+        _perfSort = sort;
     }
 
-    private void ApplyFilter()
+    private async Task ViewAllProducts(string sort)
     {
-        _appliedCategory = _filterCategory;
-        _appliedMinUnits = _minUnits;
-        _appliedSortBy = _sortBy;
-        _showFilter = false;
+        _perfSort = sort;
+        _perfSearch = string.Empty;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await JS.InvokeVoidAsync("nubeScrollIntoView", _performanceSection);
+        }
+        catch
+        {
+            // Ignore if helper is unavailable; sort still applied.
+        }
     }
 
     private async Task ExportCsv()
@@ -460,7 +600,6 @@
         }
         catch
         {
-            // Fallback if helper JS is unavailable.
             await JS.InvokeVoidAsync("navigator.clipboard.writeText", csv);
             Toast.Show("CSV copied to clipboard.");
         }

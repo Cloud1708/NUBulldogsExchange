@@ -17,18 +17,38 @@
 
 <AuthSessionRestorer />
 
-@if (_ready && Auth.IsLoggedIn && Auth.IsAdmin)
+@if (_ready && Auth.IsLoggedIn && Auth.CanAccessAdmin)
 {
-    <div class="admin-shell">
-        <AdminSidebar @ref="_sidebar" Active="@ActiveKey" />
-        <div class="admin-main">
-            <AdminHeader OnMenuClick="OpenSidebar" />
-            <div class="admin-content">
-                @Body
-            </div>
+    @if (Auth.MustChangePassword && !IsChangePasswordPage)
+    {
+        <div class="admin-gate">
+            <p>Redirecting to password change...</p>
         </div>
-        <ToastHost />
-    </div>
+    }
+    else if (Auth.MustChangePassword)
+    {
+        <div class="admin-shell admin-shell-force-password">
+            <div class="admin-main">
+                <div class="admin-content">
+                    @Body
+                </div>
+            </div>
+            <ToastHost />
+        </div>
+    }
+    else
+    {
+        <div class="admin-shell">
+            <AdminSidebar @ref="_sidebar" Active="@ActiveKey" />
+            <div class="admin-main">
+                <AdminHeader OnMenuClick="OpenSidebar" />
+                <div class="admin-content">
+                    @Body
+                </div>
+            </div>
+            <ToastHost />
+        </div>
+    }
 }
 else if (_ready)
 {
@@ -41,6 +61,10 @@ else if (_ready)
     private AdminSidebar? _sidebar;
     private bool _ready;
     private string ActiveKey { get; set; } = "dashboard";
+
+    private bool IsChangePasswordPage =>
+        new Uri(Navigation.Uri, UriKind.Absolute).AbsolutePath
+            .Contains("/admin/change-password", StringComparison.OrdinalIgnoreCase);
 
     protected override void OnInitialized()
     {
@@ -56,15 +80,19 @@ else if (_ready)
         await Auth.RestoreAsync(JS);
         try
         {
-            await Products.EnsureLoadedAsync();
-            await Categories.EnsureLoadedAsync();
-            await Orders.EnsureLoadedAsync();
-            await Customers.EnsureLoadedAsync();
-            await Staff.EnsureLoadedAsync();
-            await Promotions.EnsureLoadedAsync();
-            await Inventory.EnsureLoadedAsync();
-            await AdminNotifications.EnsureLoadedAsync();
-            await Reviews.EnsureLoadedAsync();
+            if (Auth.CanAccessAdmin && !Auth.MustChangePassword)
+            {
+                await Products.EnsureLoadedAsync();
+                await Categories.EnsureLoadedAsync();
+                await Orders.EnsureLoadedAsync();
+                await Customers.EnsureLoadedAsync();
+                if (Auth.IsAdmin)
+                    await Staff.EnsureLoadedAsync();
+                await Promotions.EnsureLoadedAsync();
+                await Inventory.EnsureLoadedAsync();
+                await AdminNotifications.EnsureLoadedAsync();
+                await Reviews.EnsureLoadedAsync();
+            }
         }
         catch (Exception ex)
         {
@@ -85,7 +113,11 @@ else if (_ready)
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         ActiveKey = ResolveActive(e.Location);
-        InvokeAsync(StateHasChanged);
+        InvokeAsync(() =>
+        {
+            EnforceAccess();
+            StateHasChanged();
+        });
     }
 
     private void EnforceAccess()
@@ -98,8 +130,22 @@ else if (_ready)
             return;
         }
 
-        if (!Auth.IsAdmin)
+        if (!Auth.CanAccessAdmin)
+        {
             Navigation.NavigateTo("/");
+            return;
+        }
+
+        if (Auth.MustChangePassword && !IsChangePasswordPage)
+        {
+            Navigation.NavigateTo("/admin/change-password");
+            return;
+        }
+
+        // Staff Management is Admin-only.
+        var path = new Uri(Navigation.Uri, UriKind.Absolute).AbsolutePath;
+        if (!Auth.IsAdmin && path.Contains("/admin/staff", StringComparison.OrdinalIgnoreCase))
+            Navigation.NavigateTo("/admin/dashboard");
     }
 
     private static string ResolveActive(string uri)
@@ -117,6 +163,7 @@ else if (_ready)
         if (path.Contains("/admin/reports")) return "reports";
         if (path.Contains("/admin/notifications")) return "notifications";
         if (path.Contains("/admin/settings")) return "settings";
+        if (path.Contains("/admin/change-password")) return "settings";
         return "dashboard";
     }
 

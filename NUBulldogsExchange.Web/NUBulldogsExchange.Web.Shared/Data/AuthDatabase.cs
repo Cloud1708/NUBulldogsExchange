@@ -371,6 +371,45 @@ public sealed partial class DatabaseService
         return new AuthResult { Success = true, User = user, SessionToken = sessionToken };
     }
 
+    public async Task<AuthResult> CompleteForcedPasswordChangeAsync(
+        string sessionToken,
+        ForcedPasswordChangeRequest request)
+    {
+        await EnsureReadyAsync();
+        await using var connection = await OpenAsync();
+        var userId = await GetSessionUserIdAsync(connection, sessionToken);
+        if (userId is null)
+            return Fail("Please sign in to change your password.");
+
+        var next = request.NewPassword ?? "";
+        var confirm = request.ConfirmNewPassword ?? "";
+
+        if (string.IsNullOrWhiteSpace(next))
+            return Fail("New password is required.");
+        if (next.Length < AuthValidation.MinPasswordLength)
+            return Fail($"Password must contain at least {AuthValidation.MinPasswordLength} characters.");
+        if (next != confirm)
+            return Fail("Passwords do not match.");
+
+        await using (var update = connection.CreateCommand())
+        {
+            update.CommandText = "UPDATE Users SET PasswordHash = $hash, UpdatedAt = $updatedAt WHERE Id = $id;";
+            update.Parameters.AddWithValue("$hash", PasswordHasher.HashPassword(new object(), next));
+            update.Parameters.AddWithValue("$updatedAt", DateTime.UtcNow.ToString("O"));
+            update.Parameters.AddWithValue("$id", userId.Value);
+            await update.ExecuteNonQueryAsync();
+        }
+
+        var user = await LoadUserAsync(connection, userId.Value);
+        if (user is not null)
+        {
+            user.MustChangePassword = false;
+            user.SessionToken = sessionToken;
+        }
+
+        return new AuthResult { Success = true, User = user, SessionToken = sessionToken };
+    }
+
     public async Task<bool> SetCustomerStatusAsync(string customerId, string status, int? actorUserId)
     {
         await EnsureReadyAsync();

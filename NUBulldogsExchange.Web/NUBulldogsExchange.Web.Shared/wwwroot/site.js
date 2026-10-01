@@ -14,3 +14,28 @@ window.nubeSetBodyScrollLock = function (locked) {
     document.documentElement.style.overflow = locked ? "hidden" : "";
     document.body.style.overflow = locked ? "hidden" : "";
 };
+
+window.nubeGetRect = function (el) {
+    if (!el) return null;
+    const r = el.getBoundingClientRect();
+    return {
+        top: r.top,
+        left: r.left,
+        bottom: r.bottom,
+        right: r.right,
+        width: r.width,
+        height: r.height,
+        viewportHeight: window.innerHeight || document.documentElement.clientHeight || 0,
+        viewportWidth: window.innerWidth || document.documentElement.clientWidth || 0
+    };
+};
+
+window.nubeGetRectBySelector = function (selector) {
+    const el = document.querySelector(selector);
+    return window.nubeGetRect(el);
+};
+
+window.nubeScrollIntoView = function (el) {
+    if (!el || typeof el.scrollIntoView !== "function") return;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+};

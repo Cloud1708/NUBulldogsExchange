@@ -69,6 +69,7 @@ public interface IAppDatabase
     Task<AuthResult> ValidateSessionAsync(string sessionToken);
     Task<AuthResult> UpdateCustomerProfileAsync(string sessionToken, UpdateProfileRequest request);
     Task<AuthResult> ChangePasswordAsync(string sessionToken, ChangePasswordRequest request);
+    Task<AuthResult> CompleteForcedPasswordChangeAsync(string sessionToken, ForcedPasswordChangeRequest request);
 
     // Customers
     Task<List<AdminCustomer>> GetCustomersAsync();
@@ -88,6 +89,7 @@ public interface IAppDatabase
 
     // Staff
     Task<List<AdminStaffMember>> GetStaffAsync();
+    Task<AdminStaffMember> CreateStaffAccountAsync(CreateStaffAccountRequest request);
     Task<AdminStaffMember> UpsertStaffAsync(AdminStaffMember staff);
     Task<bool> DeleteStaffAsync(string id);
 

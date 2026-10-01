@@ -77,10 +77,17 @@
                     {
                         <span class="auth-role-pill">Admin</span>
                     }
+                    else if (Auth.IsStaff)
+                    {
+                        <span class="auth-role-pill">Staff</span>
+                    }
                 </p>
-                @if (Auth.IsAdmin)
+                @if (Auth.CanAccessAdmin)
                 {
-                    <a href="/admin/dashboard" class="btn btn-navy btn-block auth-primary-btn">Go to Admin Portal</a>
+                    <a href="@(Auth.MustChangePassword ? "/admin/change-password" : "/admin/dashboard")"
+                       class="btn btn-navy btn-block auth-primary-btn">
+                        Go to Admin Portal
+                    </a>
                 }
                 else
                 {
@@ -308,8 +315,25 @@
             }
 
             await Auth.PersistAsync(JS);
-            Toast.Show(Auth.IsAdmin ? "Signed in as admin." : $"Welcome back, {Auth.FirstName}.");
-            Navigation.NavigateTo(Auth.IsAdmin ? "/admin/dashboard" : GetReturnUrl());
+
+            if (Auth.CanAccessAdmin)
+            {
+                Toast.Show(Auth.IsAdmin
+                    ? "Signed in as admin."
+                    : "Signed in as staff.");
+
+                if (Auth.MustChangePassword)
+                {
+                    Navigation.NavigateTo("/admin/change-password");
+                    return;
+                }
+
+                Navigation.NavigateTo("/admin/dashboard");
+                return;
+            }
+
+            Toast.Show($"Welcome back, {Auth.FirstName}.");
+            Navigation.NavigateTo(GetReturnUrl());
         }
         catch
         {

@@ -1375,6 +1375,10 @@ public sealed class SupabaseAppDatabase : IAppDatabase
                 return Fail("Your account is currently inactive. Please contact the administrator.");
             }
 
+            // Customers stay on storefront; Admin/Staff use Web portal.
+            // Mobile customer-only enforcement lives in the Mobile project and is unchanged.
+            await TryTouchLastLoginAsync(auth.User.Id, auth.AccessToken);
+
             user.RememberMe = request.RememberMe;
             user.SessionToken = auth.AccessToken;
 
@@ -1546,6 +1550,9 @@ public sealed class SupabaseAppDatabase : IAppDatabase
                 reauth.User.Id,
                 reauth.User.Email);
 
+            // Clear first-login flag when password is changed through the normal settings flow.
+            await TrySetMustChangePasswordAsync(reauth.User.Id, false, reauth.AccessToken);
+
             var user = await BuildMockUserAsync(reauth.User.Id, reauth.AccessToken);
             if (user is not null)
                 user.SessionToken = reauth.AccessToken;
@@ -1560,6 +1567,53 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         catch (Exception ex)
         {
             return Fail(CleanAuthError(ex.Message, "Unable to change your password."));
+        }
+    }
+
+    public async Task<AuthResult> CompleteForcedPasswordChangeAsync(
+        string sessionToken,
+        ForcedPasswordChangeRequest request)
+    {
+        if (string.IsNullOrWhiteSpace(request.NewPassword) ||
+            request.NewPassword.Length < AuthValidation.MinPasswordLength)
+            return Fail($"Password must contain at least {AuthValidation.MinPasswordLength} characters.");
+        if (!string.Equals(request.NewPassword, request.ConfirmNewPassword, StringComparison.Ordinal))
+            return Fail("Passwords do not match.");
+
+        try
+        {
+            var current = await GetAuthUserAsync(sessionToken);
+            if (current is null || string.IsNullOrWhiteSpace(current.Id))
+                return Fail("Your session has expired.");
+
+            _session.SetFromAccessToken(sessionToken, current.Id, current.Email);
+
+            using var response = await SendAsync(
+                HttpMethod.Put,
+                "auth/v1/user",
+                new { password = request.NewPassword },
+                bearerOverride: sessionToken);
+            await EnsureSuccessAsync(response);
+
+            await TrySetMustChangePasswordAsync(current.Id, false, sessionToken);
+
+            var user = await BuildMockUserAsync(current.Id, sessionToken);
+            if (user is null)
+                return Fail("Password was updated but your profile could not be reloaded.");
+
+            user.MustChangePassword = false;
+            user.SessionToken = sessionToken;
+
+            return new AuthResult
+            {
+                Success = true,
+                User = user,
+                SessionToken = sessionToken
+            };
+        }
+        catch (Exception ex)
+        {
+            return Fail(CleanAuthError(ex.Message, "Unable to update your password."));
         }
     }
 
@@ -1901,16 +1955,137 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
     public async Task<List<AdminStaffMember>> GetStaffAsync()
     {
+        // Staff Management lists Staff accounts only (role_id = 2).
+        // Admin accounts are intentionally excluded from this page.
         var rows = await GetListAsync<UserWithRoleRow>(
-            "rest/v1/users_with_roles?select=*&role=in.(Admin,Staff)&order=last_name.asc,first_name.asc");
+            "rest/v1/users_with_roles?select=*&role=eq.Staff&order=last_name.asc,first_name.asc");
 
         return rows.Select(UserRowToStaffMember).ToList();
+    }
+
+    public async Task<AdminStaffMember> CreateStaffAccountAsync(CreateStaffAccountRequest request)
+    {
+        var firstName = request.FirstName.Trim();
+        var lastName = request.LastName.Trim();
+        var email = AuthValidation.NormalizeEmail(request.Email);
+        var password = request.TemporaryPassword;
+        var status = string.IsNullOrWhiteSpace(request.Status) ? "Active" : request.Status.Trim();
+        var mustChange = request.MustChangePassword;
+
+        if (string.IsNullOrWhiteSpace(firstName) || string.IsNullOrWhiteSpace(lastName))
+            throw new InvalidOperationException("First name and last name are required.");
+        if (!AuthValidation.IsValidEmail(email))
+            throw new InvalidOperationException("Please enter a valid email address.");
+        if (string.IsNullOrWhiteSpace(password) || password.Length < AuthValidation.MinPasswordLength)
+            throw new InvalidOperationException(
+                $"Password must contain at least {AuthValidation.MinPasswordLength} characters.");
+        if (!string.Equals(password, request.ConfirmPassword, StringComparison.Ordinal))
+            throw new InvalidOperationException("Passwords do not match.");
+
+        var existing = (await GetListAsync<UserWithRoleRow>(
+            $"rest/v1/users_with_roles?select=*&email=eq.{Esc(email)}&limit=1"))
+            .FirstOrDefault();
+        if (existing is not null)
+            throw new InvalidOperationException("An account with this email already exists.");
+
+        // Preserve the Admin session — staff Auth creation must not replace it.
+        var adminToken = _session.AccessToken;
+
+        string authUserId;
+        try
+        {
+            authUserId = await CreateAuthUserForStaffAsync(email, password, firstName, lastName);
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException(
+                CleanAuthError(ex.Message, "Unable to create the staff login account."),
+                ex);
+        }
+
+        // Wait briefly for the Auth → public.users trigger (if any).
+        UserWithRoleRow? profile = null;
+        for (var attempt = 0; attempt < 8; attempt++)
+        {
+            profile = (await GetListAsync<UserWithRoleRow>(
+                $"rest/v1/users_with_roles?select=*&id=eq.{Esc(authUserId)}&limit=1",
+                adminToken))
+                .FirstOrDefault()
+                ?? (await GetListAsync<UserWithRoleRow>(
+                    $"rest/v1/users_with_roles?select=*&email=eq.{Esc(email)}&limit=1",
+                    adminToken))
+                .FirstOrDefault();
+
+            if (profile is not null)
+                break;
+
+            await Task.Delay(250);
+        }
+
+        var permissions = AdminStaffPermissions.DefaultStaff();
+        var body = new Dictionary<string, object?>
+        {
+            ["role_id"] = 2,
+            ["first_name"] = firstName,
+            ["last_name"] = lastName,
+            ["email"] = email,
+            ["status"] = status,
+            ["is_primary_admin"] = false,
+            ["permissions"] = permissions,
+            ["must_change_password"] = mustChange,
+            ["last_login_at"] = null
+        };
+
+        try
+        {
+            if (profile is null)
+            {
+                // No trigger row — insert public.users with the Auth UUID.
+                body["id"] = authUserId;
+                var inserted = await SendForListAsync<UserRow>(
+                    HttpMethod.Post,
+                    "rest/v1/users",
+                    body,
+                    "return=representation",
+                    bearerOverride: adminToken);
+                if (inserted.Count == 0)
+                    throw new InvalidOperationException("Staff profile could not be created.");
+            }
+            else
+            {
+                var patched = await SendForListAsync<UserRow>(
+                    HttpMethod.Patch,
+                    $"rest/v1/users?id=eq.{Esc(authUserId)}",
+                    body,
+                    "return=representation",
+                    bearerOverride: adminToken);
+                if (patched.Count == 0)
+                    throw new InvalidOperationException("Staff profile could not be updated.");
+            }
+        }
+        catch (Exception ex)
+        {
+            // Best-effort cleanup so we do not leave an Auth user without a usable staff profile.
+            await TryDeleteAuthUserAsync(authUserId);
+            throw new InvalidOperationException(
+                CleanAuthError(ex.Message, "Staff Auth user was created but the profile could not be saved. The Auth user was rolled back when possible."),
+                ex);
+        }
+
+        var saved = (await GetListAsync<UserWithRoleRow>(
+            $"rest/v1/users_with_roles?select=*&id=eq.{Esc(authUserId)}&limit=1",
+            adminToken))
+            .FirstOrDefault();
+
+        if (saved is null)
+            throw new InvalidOperationException("Staff account was created but could not be reloaded.");
+
+        return UserRowToStaffMember(saved);
     }
 
     public async Task<AdminStaffMember> UpsertStaffAsync(AdminStaffMember staff)
     {
         // public.users.id must always be the same UUID as auth.users.id.
-        // For a new staff entry, locate an already-registered Supabase Auth user by email.
         UserWithRoleRow? existing = null;
 
         if (Guid.TryParse(staff.Id, out _))
@@ -1930,16 +2105,19 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (existing is null)
         {
             throw new InvalidOperationException(
-                "No registered Supabase account was found for this email. " +
-                "Create/register the user first, then assign the Admin or Staff role.");
+                "No registered account was found for this email. Use Add Staff to create a new staff account.");
         }
 
-        // Keep the in-memory object in sync because AdminStaffService currently
-        // ignores the returned value from UpsertStaffAsync.
         staff.Id = existing.Id;
         staff.Email = existing.Email ?? staff.Email;
 
-        var roleId = staff.Role.Equals("Admin", StringComparison.OrdinalIgnoreCase) ? 1 : 2;
+        // Never casually promote Staff → Admin through Upsert from the Staff page.
+        var roleId = existing.RoleId == 1 ? 1 : 2;
+        if (roleId == 2)
+            staff.Role = "Staff";
+        else
+            staff.Role = "Admin";
+
         var permissions = roleId == 1
             ? AdminStaffPermissions.FullAccess()
             : staff.Permissions ?? AdminStaffPermissions.DefaultStaff();
@@ -1950,7 +2128,6 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             ["first_name"] = staff.FirstName.Trim(),
             ["last_name"] = staff.LastName.Trim(),
             ["status"] = staff.Status,
-            ["last_login_at"] = staff.LastLogin == default ? null : staff.LastLogin,
             ["is_primary_admin"] = staff.IsPrimaryAdmin,
             ["permissions"] = permissions
         };
@@ -1980,6 +2157,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         staff.Status = saved.Status;
         staff.LastLogin = saved.LastLogin;
         staff.IsPrimaryAdmin = saved.IsPrimaryAdmin;
+        staff.MustChangePassword = saved.MustChangePassword;
         staff.Permissions = saved.Permissions;
         return staff;
     }
@@ -1989,13 +2167,11 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (!Guid.TryParse(id, out _))
             return false;
 
-        // Removing staff access does not delete the Supabase Auth account.
-        // It safely converts the account back to Customer.
+        // Prefer deactivation over deletion. Convert role only if explicitly removed.
         var body = new Dictionary<string, object?>
         {
-            ["role_id"] = 3,
-            ["is_primary_admin"] = false,
-            ["permissions"] = new AdminStaffPermissions()
+            ["status"] = "Inactive",
+            ["is_primary_admin"] = false
         };
 
         var rows = await SendForListAsync<UserRow>(
@@ -2005,6 +2181,151 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             "return=representation");
 
         return rows.Count > 0;
+    }
+
+    private async Task<string> CreateAuthUserForStaffAsync(
+        string email,
+        string password,
+        string firstName,
+        string lastName)
+    {
+        if (_options.HasServiceRoleKey)
+        {
+            // Privileged Admin API — runs only on Web.Web server with ServiceRoleKey.
+            var adminBody = new
+            {
+                email,
+                password,
+                email_confirm = true,
+                user_metadata = new
+                {
+                    first_name = firstName,
+                    last_name = lastName,
+                    role = "Staff"
+                }
+            };
+
+            using var response = await SendAsync(
+                HttpMethod.Post,
+                "auth/v1/admin/users",
+                adminBody,
+                bearerOverride: _options.ServiceRoleKey,
+                apikeyOverride: _options.ServiceRoleKey);
+            await EnsureSuccessAsync(response);
+
+            var json = await response.Content.ReadAsStringAsync();
+            var auth = JsonSerializer.Deserialize<SupabaseAuthResponse>(json, JsonOptions)
+                       ?? new SupabaseAuthResponse();
+            if (auth.User is null && !string.IsNullOrWhiteSpace(auth.Id))
+            {
+                auth.User = new SupabaseAuthUser { Id = auth.Id, Email = auth.Email };
+            }
+
+            if (auth.User is null || string.IsNullOrWhiteSpace(auth.User.Id))
+                throw new InvalidOperationException("Supabase Admin API did not return the created user.");
+
+            return auth.User.Id;
+        }
+
+        // Fallback without service_role: public signup, without replacing the Admin session.
+        // Prefer configuring Supabase:ServiceRoleKey on Web.Web for reliable staff creation.
+        var signupBody = new
+        {
+            email,
+            password,
+            data = new
+            {
+                first_name = firstName,
+                last_name = lastName,
+                role = "Staff"
+            }
+        };
+
+        using var signupResponse = await SendAsync(
+            HttpMethod.Post,
+            "auth/v1/signup",
+            signupBody,
+            bearerOverride: _options.AnonKey);
+
+        if (!signupResponse.IsSuccessStatusCode)
+        {
+            var raw = await signupResponse.Content.ReadAsStringAsync();
+            var detail = ExtractError(raw);
+            throw new InvalidOperationException(
+                string.IsNullOrWhiteSpace(detail)
+                    ? "Unable to create the staff login account. Configure Supabase:ServiceRoleKey on the Web server for Admin Auth creation."
+                    : detail);
+        }
+
+        var signupJson = await signupResponse.Content.ReadAsStringAsync();
+        var signupAuth = JsonSerializer.Deserialize<SupabaseAuthResponse>(signupJson, JsonOptions)
+                         ?? new SupabaseAuthResponse();
+        if (signupAuth.User is null && !string.IsNullOrWhiteSpace(signupAuth.Id))
+        {
+            signupAuth.User = new SupabaseAuthUser { Id = signupAuth.Id, Email = signupAuth.Email };
+        }
+
+        if (signupAuth.User is null || string.IsNullOrWhiteSpace(signupAuth.User.Id))
+            throw new InvalidOperationException(
+                "Supabase did not return the registered staff user. " +
+                "Add Supabase:ServiceRoleKey to Web.Web appsettings for Admin Auth user creation.");
+
+        // Explicitly do NOT call _session.Set — Admin must remain signed in.
+        return signupAuth.User.Id;
+    }
+
+    private async Task TryDeleteAuthUserAsync(string authUserId)
+    {
+        if (!_options.HasServiceRoleKey || string.IsNullOrWhiteSpace(authUserId))
+            return;
+
+        try
+        {
+            using var response = await SendAsync(
+                HttpMethod.Delete,
+                $"auth/v1/admin/users/{authUserId}",
+                bearerOverride: _options.ServiceRoleKey,
+                apikeyOverride: _options.ServiceRoleKey);
+            _ = response.StatusCode;
+        }
+        catch
+        {
+            // Best-effort rollback only.
+        }
+    }
+
+    private async Task TryTouchLastLoginAsync(string authUserId, string accessToken)
+    {
+        try
+        {
+            await SendForListAsync<UserRow>(
+                HttpMethod.Patch,
+                $"rest/v1/users?id=eq.{Esc(authUserId)}",
+                new Dictionary<string, object?> { ["last_login_at"] = DateTime.UtcNow },
+                "return=minimal",
+                bearerOverride: accessToken);
+        }
+        catch
+        {
+            // Non-critical.
+        }
+    }
+
+    private async Task TrySetMustChangePasswordAsync(string authUserId, bool value, string accessToken)
+    {
+        try
+        {
+            await SendForListAsync<UserRow>(
+                HttpMethod.Patch,
+                $"rest/v1/users?id=eq.{Esc(authUserId)}",
+                new Dictionary<string, object?> { ["must_change_password"] = value },
+                "return=minimal",
+                bearerOverride: accessToken);
+        }
+        catch
+        {
+            // Column may be missing until docs/sql/020_must_change_password.sql is applied.
+        }
     }
 
     // ========================================================
@@ -2603,7 +2924,9 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         Role = p.Role,
         Status = p.Status,
         ProfileImage = p.ProfileImage ?? string.Empty,
-        CreatedAt = p.CreatedAt
+        CreatedAt = p.CreatedAt,
+        LastLoginAt = p.LastLoginAt,
+        MustChangePassword = p.MustChangePassword
     };
 
     private static AdminStaffMember UserRowToStaffMember(UserWithRoleRow r) => new()
@@ -2614,8 +2937,9 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         Email = r.Email ?? string.Empty,
         Role = r.Role,
         Status = r.Status,
-        LastLogin = r.LastLoginAt ?? DateTime.MinValue,
+        LastLogin = r.LastLoginAt,
         IsPrimaryAdmin = r.IsPrimaryAdmin,
+        MustChangePassword = r.MustChangePassword,
         Permissions = r.Permissions ?? AdminStaffPermissions.DefaultStaff()
     };
 
@@ -2746,14 +3070,19 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         object? body = null,
         string? prefer = null,
         string? bearerOverride = null,
-        string? contentType = null)
+        string? contentType = null,
+        string? apikeyOverride = null)
     {
         // Relative paths must resolve against BaseAddress (…supabase.co/).
         var request = new HttpRequestMessage(method, path.TrimStart('/'));
-        request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
+        var apiKey = !string.IsNullOrWhiteSpace(apikeyOverride)
+            ? apikeyOverride
+            : _options.AnonKey;
+        request.Headers.TryAddWithoutValidation("apikey", apiKey);
 
         // Supabase requires Authorization on every call. Use the user JWT when
         // signed in; otherwise fall back to the publishable/anon key.
+        // Service-role overrides are used only for server-side Admin Auth APIs.
         var bearer = !string.IsNullOrWhiteSpace(bearerOverride)
             ? bearerOverride
             : !string.IsNullOrWhiteSpace(_session.AccessToken)
@@ -3073,6 +3402,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         public string? College { get; set; }
         public string? Address { get; set; }
         public bool IsPrimaryAdmin { get; set; }
+        public bool MustChangePassword { get; set; }
         public AdminStaffPermissions? Permissions { get; set; }
         public DateTime? LastLoginAt { get; set; }
         public DateTime CreatedAt { get; set; }
@@ -3095,6 +3425,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         public string? College { get; set; }
         public string? Address { get; set; }
         public bool IsPrimaryAdmin { get; set; }
+        public bool MustChangePassword { get; set; }
         public AdminStaffPermissions? Permissions { get; set; }
         public DateTime? LastLoginAt { get; set; }
         public DateTime CreatedAt { get; set; }

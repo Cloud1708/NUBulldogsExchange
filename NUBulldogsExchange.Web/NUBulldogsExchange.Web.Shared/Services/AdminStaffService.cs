@@ -5,7 +5,6 @@ namespace NUBulldogsExchange.Web.Shared.Services;
 
 public class AdminStaffService
 {
-    public static readonly string[] Roles = ["Admin", "Staff"];
     public static readonly string[] Statuses = ["Active", "Inactive"];
 
     public static readonly (string Key, string Label)[] PermissionOptions =
@@ -23,34 +22,38 @@ public class AdminStaffService
         new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
     private readonly IAppDatabase _db;
+    private readonly IAppEmailSender _email;
     private readonly List<AdminStaffMember> _staff = [];
-    private int _nextId = 1;
     private bool _loaded;
 
     public event Action? OnChange;
 
-    public AdminStaffService(IAppDatabase db)
+    public AdminStaffService(IAppDatabase db, IAppEmailSender email)
     {
         _db = db;
+        _email = email;
     }
 
     public async Task EnsureLoadedAsync()
     {
         if (_loaded) return;
+        await ReloadAsync();
+    }
+
+    public async Task ReloadAsync()
+    {
         _staff.Clear();
         _staff.AddRange(await _db.GetStaffAsync());
-        _nextId = _staff
-            .Select(s => int.TryParse(s.Id.Replace("S-", "", StringComparison.OrdinalIgnoreCase), out var n) ? n : 0)
-            .DefaultIfEmpty(0)
-            .Max() + 1;
         _loaded = true;
         OnChange?.Invoke();
     }
 
     public IReadOnlyList<AdminStaffMember> All => _staff;
 
+    /// <summary>Staff accounts only (role_id = 2).</summary>
     public int TotalStaff => _staff.Count;
-    public int AdminCount => _staff.Count(s => s.IsAdmin);
+
+    /// <summary>Active Staff accounts.</summary>
     public int ActiveCount => _staff.Count(s => s.IsActive);
 
     public AdminStaffMember? GetById(string id) =>
@@ -68,56 +71,76 @@ public class AdminStaffService
         return GetPermission(member.Permissions, permissionKey);
     }
 
-    public async Task<(bool Success, string Message)> AddAsync(
-        string firstName,
-        string lastName,
-        string email,
-        string role,
-        string status,
-        AdminStaffPermissions? permissions = null)
+    public async Task<(bool Success, string Message, AdminStaffMember? Member)> AddStaffAsync(
+        CreateStaffAccountRequest request)
     {
-        firstName = firstName.Trim();
-        lastName = lastName.Trim();
-        email = email.Trim();
+        var firstName = request.FirstName?.Trim() ?? string.Empty;
+        var lastName = request.LastName?.Trim() ?? string.Empty;
+        var email = request.Email?.Trim() ?? string.Empty;
+        var password = request.TemporaryPassword ?? string.Empty;
+        var confirm = request.ConfirmPassword ?? string.Empty;
+        var status = string.IsNullOrWhiteSpace(request.Status) ? "Active" : request.Status.Trim();
 
         if (string.IsNullOrWhiteSpace(firstName))
-            return (false, "First name is required.");
+            return (false, "First name is required.", null);
         if (string.IsNullOrWhiteSpace(lastName))
-            return (false, "Last name is required.");
+            return (false, "Last name is required.", null);
         if (string.IsNullOrWhiteSpace(email) || !EmailRegex.IsMatch(email))
-            return (false, "Enter a valid email address.");
+            return (false, "Please enter a valid email address.", null);
         if (GetByEmail(email) is not null)
-            return (false, "A staff member with this email already exists.");
-        if (string.IsNullOrWhiteSpace(role) || !Roles.Contains(role))
-            return (false, "Select a role.");
-        if (string.IsNullOrWhiteSpace(status) || !Statuses.Contains(status))
+            return (false, "An account with this email already exists.", null);
+        if (string.IsNullOrWhiteSpace(password) || password.Length < AuthValidation.MinPasswordLength)
+            return (false, $"Password must contain at least {AuthValidation.MinPasswordLength} characters.", null);
+        if (!string.Equals(password, confirm, StringComparison.Ordinal))
+            return (false, "Passwords do not match.", null);
+        if (!Statuses.Contains(status))
             status = "Active";
 
-        var isAdmin = role.Equals("Admin", StringComparison.OrdinalIgnoreCase);
-        var member = new AdminStaffMember
-        {
-            Id = string.Empty,
-            FirstName = firstName,
-            LastName = lastName,
-            Email = email,
-            Role = isAdmin ? "Admin" : "Staff",
-            Status = status,
-            LastLogin = DateTime.Now,
-            Permissions = isAdmin
-                ? AdminStaffPermissions.FullAccess()
-                : (permissions ?? AdminStaffPermissions.DefaultStaff()).Clone()
-        };
+        request.FirstName = firstName;
+        request.LastName = lastName;
+        request.Email = email;
+        request.Status = status;
+        request.TemporaryPassword = password;
+        request.ConfirmPassword = confirm;
 
         try
         {
-            var saved = await _db.UpsertStaffAsync(member);
+            var saved = await _db.CreateStaffAccountAsync(request);
+            _staff.RemoveAll(s => s.Id.Equals(saved.Id, StringComparison.OrdinalIgnoreCase));
             _staff.Add(saved);
             OnChange?.Invoke();
-            return (true, "Staff member added successfully.");
+
+            try
+            {
+                await _email.SendStaffTemporaryPasswordAsync(
+                    saved.Email,
+                    saved.FullName,
+                    password,
+                    request.MustChangePassword);
+
+                return (true, "Staff Account Created! Temporary password emailed.", saved);
+            }
+            catch (Exception mailEx)
+            {
+                // Account already exists — do not roll back. Admin can resend/share manually.
+                var mailError = CleanError(mailEx.Message);
+                return (
+                    true,
+                    $"Staff account created, but the temporary password email could not be sent. {mailError}",
+                    saved);
+            }
         }
         catch (Exception ex)
         {
-            return (false, ex.Message);
+            var message = CleanError(ex.Message);
+            if (message.Contains("already", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("registered", StringComparison.OrdinalIgnoreCase) ||
+                message.Contains("exists", StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, "An account with this email already exists.", null);
+            }
+
+            return (false, message, null);
         }
     }
 
@@ -125,8 +148,6 @@ public class AdminStaffService
         string id,
         string firstName,
         string lastName,
-        string email,
-        string role,
         string status)
     {
         var member = GetById(id);
@@ -135,21 +156,11 @@ public class AdminStaffService
 
         firstName = firstName.Trim();
         lastName = lastName.Trim();
-        email = email.Trim();
 
         if (string.IsNullOrWhiteSpace(firstName))
             return (false, "First name is required.");
         if (string.IsNullOrWhiteSpace(lastName))
             return (false, "Last name is required.");
-        if (string.IsNullOrWhiteSpace(email) || !EmailRegex.IsMatch(email))
-            return (false, "Enter a valid email address.");
-
-        var duplicate = GetByEmail(email);
-        if (duplicate is not null && !duplicate.Id.Equals(id, StringComparison.OrdinalIgnoreCase))
-            return (false, "A staff member with this email already exists.");
-
-        if (!member.Email.Equals(email, StringComparison.OrdinalIgnoreCase))
-            return (false, "The login email cannot be changed from this page.");
 
         if (member.IsPrimaryAdmin)
         {
@@ -161,15 +172,14 @@ public class AdminStaffService
         }
         else
         {
-            if (string.IsNullOrWhiteSpace(role) || !Roles.Contains(role))
-                return (false, "Select a role.");
             if (string.IsNullOrWhiteSpace(status) || !Statuses.Contains(status))
                 return (false, "Select a status.");
 
             member.FirstName = firstName;
             member.LastName = lastName;
-            member.Email = email;
-            member.Role = role;
+            // Role stays Staff (or Admin if already admin) — never promote Staff→Admin here.
+            if (!member.IsAdmin)
+                member.Role = "Staff";
             member.Status = status;
             if (member.IsAdmin)
                 member.Permissions = AdminStaffPermissions.FullAccess();
@@ -183,7 +193,7 @@ public class AdminStaffService
         }
         catch (Exception ex)
         {
-            return (false, ex.Message);
+            return (false, CleanError(ex.Message));
         }
     }
 
@@ -207,32 +217,32 @@ public class AdminStaffService
         return (true, "Permissions updated successfully.");
     }
 
-    public async Task<(bool Success, string Message)> DeleteAsync(string id, string? currentUserEmail)
+    public async Task<(bool Success, string Message)> DeactivateAsync(string id, string? currentUserEmail)
     {
         var member = GetById(id);
         if (member is null)
             return (false, "Staff member not found.");
 
         if (member.IsPrimaryAdmin)
-            return (false, "The primary admin account cannot be deleted.");
+            return (false, "The primary admin account cannot be deactivated.");
 
         if (!string.IsNullOrWhiteSpace(currentUserEmail) &&
             member.Email.Equals(currentUserEmail.Trim(), StringComparison.OrdinalIgnoreCase))
-            return (false, "You cannot delete your own account.");
+            return (false, "You cannot deactivate your own account.");
 
+        if (!member.IsActive)
+            return (true, "Account is already inactive.");
+
+        member.Status = "Inactive";
         try
         {
-            var removed = await _db.DeleteStaffAsync(id);
-            if (!removed)
-                return (false, "Staff member could not be removed.");
-
-            _staff.Remove(member);
+            await _db.UpsertStaffAsync(member);
             OnChange?.Invoke();
-            return (true, "Staff access removed successfully.");
+            return (true, "Staff account deactivated. Web login is now blocked.");
         }
         catch (Exception ex)
         {
-            return (false, ex.Message);
+            return (false, CleanError(ex.Message));
         }
     }
 
@@ -246,6 +256,8 @@ public class AdminStaffService
             "customers" => permissions.ViewCustomers,
             "promotions" => permissions.ManagePromotions,
             "reports" => permissions.ViewReports,
+            "staff" => false,
+            "settings" => false,
             _ => false
         };
 
@@ -261,5 +273,24 @@ public class AdminStaffService
             case "promotions": permissions.ManagePromotions = value; break;
             case "reports": permissions.ViewReports = value; break;
         }
+    }
+
+    private static string CleanError(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+            return "Unable to complete the staff operation.";
+
+        var trimmed = message.Trim();
+        if (trimmed.Contains("service_role", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("sb_secret", StringComparison.OrdinalIgnoreCase) ||
+            trimmed.Contains("apikey", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Unable to create the staff account. Please contact the system administrator.";
+        }
+
+        if (trimmed.Length > 220)
+            trimmed = trimmed[..220].Trim() + "…";
+
+        return trimmed;
     }
 }

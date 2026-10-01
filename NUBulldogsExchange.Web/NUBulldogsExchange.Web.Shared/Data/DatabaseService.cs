@@ -1749,11 +1749,20 @@ public sealed partial class DatabaseService : IAppDatabase
         var list = new List<AdminStaffMember>();
         await using var connection = await OpenAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = "SELECT * FROM Staff ORDER BY Id;";
+        command.CommandText = "SELECT * FROM Staff WHERE Role = 'Staff' ORDER BY Id;";
         await using var reader = await command.ExecuteReaderAsync();
         while (await reader.ReadAsync())
         {
             var permissionsJson = reader.GetString(reader.GetOrdinal("PermissionsJson"));
+            var lastLoginRaw = reader.GetString(reader.GetOrdinal("LastLogin"));
+            DateTime? lastLogin = null;
+            if (!string.IsNullOrWhiteSpace(lastLoginRaw) &&
+                DateTime.TryParse(lastLoginRaw, out var parsed) &&
+                parsed > DateTime.MinValue.AddYears(1))
+            {
+                lastLogin = parsed;
+            }
+
             list.Add(new AdminStaffMember
             {
                 Id = reader.GetString(reader.GetOrdinal("Id")),
@@ -1762,7 +1771,7 @@ public sealed partial class DatabaseService : IAppDatabase
                 Email = reader.GetString(reader.GetOrdinal("Email")),
                 Role = reader.GetString(reader.GetOrdinal("Role")),
                 Status = reader.GetString(reader.GetOrdinal("Status")),
-                LastLogin = DateTime.Parse(reader.GetString(reader.GetOrdinal("LastLogin"))),
+                LastLogin = lastLogin,
                 IsPrimaryAdmin = reader.GetInt32(reader.GetOrdinal("IsPrimaryAdmin")) == 1,
                 Permissions = JsonSerializer.Deserialize<AdminStaffPermissions>(permissionsJson, JsonOptions)
                               ?? AdminStaffPermissions.DefaultStaff()
@@ -1799,11 +1808,34 @@ public sealed partial class DatabaseService : IAppDatabase
         command.Parameters.AddWithValue("$email", staff.Email);
         command.Parameters.AddWithValue("$role", staff.Role);
         command.Parameters.AddWithValue("$status", staff.Status);
-        command.Parameters.AddWithValue("$lastLogin", staff.LastLogin.ToString("O"));
+        command.Parameters.AddWithValue(
+            "$lastLogin",
+            staff.LastLogin is null || staff.LastLogin == DateTime.MinValue
+                ? ""
+                : staff.LastLogin.Value.ToString("O"));
         command.Parameters.AddWithValue("$isPrimaryAdmin", staff.IsPrimaryAdmin ? 1 : 0);
         command.Parameters.AddWithValue("$permissions", JsonSerializer.Serialize(staff.Permissions, JsonOptions));
         await command.ExecuteNonQueryAsync();
         return staff;
+    }
+
+    public async Task<AdminStaffMember> CreateStaffAccountAsync(CreateStaffAccountRequest request)
+    {
+        var member = new AdminStaffMember
+        {
+            Id = string.Empty,
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim(),
+            Email = AuthValidation.NormalizeEmail(request.Email),
+            Role = "Staff",
+            Status = string.IsNullOrWhiteSpace(request.Status) ? "Active" : request.Status.Trim(),
+            LastLogin = null,
+            MustChangePassword = request.MustChangePassword,
+            Permissions = AdminStaffPermissions.DefaultStaff()
+        };
+
+        // Local SQLite path stores staff metadata only (no Supabase Auth).
+        return await UpsertStaffAsync(member);
     }
 
     public async Task<bool> DeleteStaffAsync(string id)
@@ -1811,7 +1843,7 @@ public sealed partial class DatabaseService : IAppDatabase
         await EnsureReadyAsync();
         await using var connection = await OpenAsync();
         await using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM Staff WHERE Id = $id;";
+        command.CommandText = "UPDATE Staff SET Status = 'Inactive' WHERE Id = $id;";
         command.Parameters.AddWithValue("$id", id);
         return await command.ExecuteNonQueryAsync() > 0;
     }

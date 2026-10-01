@@ -648,6 +648,9 @@ public class AuthService
     public string Initial => CurrentUser?.Initial ?? "?";
     public bool IsCustomer => CurrentUser?.IsCustomer == true;
     public bool IsAdmin => CurrentUser?.IsAdmin == true;
+    public bool IsStaff => CurrentUser?.IsStaff == true;
+    public bool CanAccessAdmin => CurrentUser?.CanAccessAdmin == true;
+    public bool MustChangePassword => CurrentUser?.MustChangePassword == true;
 
     public async Task<AuthResult> RegisterAsync(RegisterRequest request)
     {
@@ -729,6 +732,25 @@ public class AuthService
             return new AuthResult { Success = false, Error = "Please sign in to change your password." };
 
         return await _db.ChangePasswordAsync(token, request);
+    }
+
+    public async Task<AuthResult> CompleteForcedPasswordChangeAsync(ForcedPasswordChangeRequest request)
+    {
+        var token = CurrentUser?.SessionToken;
+        if (string.IsNullOrWhiteSpace(token))
+            return new AuthResult { Success = false, Error = "Please sign in to change your password." };
+
+        var result = await _db.CompleteForcedPasswordChangeAsync(token, request);
+        if (result.Success && result.User is not null)
+        {
+            result.User.RememberMe = RememberMe;
+            result.User.SessionToken = result.SessionToken ?? token;
+            CurrentUser = result.User;
+            NormalizeProfile(CurrentUser);
+            OnChange?.Invoke();
+        }
+
+        return result;
     }
 
     public async Task<AuthResult> RestoreFromTokenAsync(string sessionToken, bool rememberMe = true)

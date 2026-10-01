@@ -1,6 +1,7 @@
 @namespace NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AuthService Auth
+@inject AdminStaffService StaffService
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
 @implements IDisposable
@@ -15,7 +16,7 @@
     </div>
 
     <nav class="admin-nav" aria-label="Admin">
-        @foreach (var item in NavItems)
+        @foreach (var item in VisibleNavItems)
         {
             <a href="@item.Href"
                class="admin-nav-item @(IsActive(item.Key) ? "active" : "")"
@@ -53,6 +54,48 @@
 
     private bool _collapsed;
     private bool _mobileOpen;
+
+    private IEnumerable<(string Key, string Label, string Href, string Icon)> VisibleNavItems
+    {
+        get
+        {
+            foreach (var item in NavItems)
+            {
+                if (item.Key is "staff" or "settings")
+                {
+                    if (!Auth.IsAdmin)
+                        continue;
+                }
+                else if (!Auth.IsAdmin)
+                {
+                    // Staff: keep existing permission flags; modules without a flag stay visible
+                    // so Staff can use Reviews/Notifications as intended without inventing new keys.
+                    var permissionKey = item.Key switch
+                    {
+                        "products" => "products",
+                        "categories" => "categories",
+                        "orders" => "orders",
+                        "inventory" => "inventory",
+                        "customers" => "customers",
+                        "promotions" => "promotions",
+                        "reports" => "reports",
+                        _ => null
+                    };
+
+                    if (permissionKey is not null &&
+                        !string.IsNullOrWhiteSpace(Auth.Email) &&
+                        !StaffService.HasPermission(Auth.Email, permissionKey))
+                    {
+                        // If staff list isn't loaded yet, allow module (avoid empty nav flash).
+                        if (StaffService.All.Count > 0)
+                            continue;
+                    }
+                }
+
+                yield return item;
+            }
+        }
+    }
 
     private static readonly (string Key, string Label, string Href, string Icon)[] NavItems =
     [
