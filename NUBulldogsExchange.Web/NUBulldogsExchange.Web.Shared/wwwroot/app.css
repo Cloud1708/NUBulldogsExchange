@@ -7545,6 +7545,297 @@ a.notification-card:hover .notification-body strong {
     white-space: nowrap;
 }
 
+.admin-stat-live {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #16A34A;
+    white-space: nowrap;
+}
+
+.admin-stat-live i {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22C55E;
+    display: inline-block;
+}
+
+.admin-stat-hint {
+    margin: 0;
+    font-style: normal;
+    font-size: 11px;
+    font-weight: 600;
+    color: #94A3B8;
+}
+
+.admin-dash-empty {
+    margin: 8px 0 0;
+    padding: 20px 8px;
+    text-align: center;
+    color: #94A3B8;
+    font-size: 13px;
+}
+
+.admin-dash-dual-chart {
+    display: grid;
+    grid-template-columns: 48px 1fr 36px;
+    gap: 8px;
+    align-items: stretch;
+    min-height: 220px;
+}
+
+.admin-dash-y-left,
+.admin-dash-y-right {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #94A3B8;
+    font-weight: 600;
+    padding: 8px 0 28px;
+}
+
+.admin-dash-y-right {
+    text-align: right;
+}
+
+.admin-dash-svg {
+    height: 200px;
+}
+
+.admin-dash-donut-wrap {
+    padding-bottom: 12px;
+}
+
+.admin-dash-donut-hole {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 2px;
+}
+
+.admin-dash-donut-hole strong {
+    font-size: 22px;
+    color: var(--admin-navy);
+    font-weight: 800;
+    line-height: 1;
+}
+
+.admin-dash-donut-hole span {
+    font-size: 11px;
+    color: #94A3B8;
+    font-weight: 700;
+}
+
+.admin-dash-status-legend li {
+    grid-template-columns: 10px 1fr auto auto;
+}
+
+.admin-dash-status-legend em {
+    font-style: normal;
+    font-size: 12px;
+    color: #94A3B8;
+    font-weight: 600;
+    min-width: 42px;
+    text-align: right;
+}
+
+.admin-dash-orders-table {
+    min-width: 760px;
+}
+
+.admin-dash-top-list .admin-dash-top-item {
+    grid-template-columns: 18px 40px minmax(0, 1fr) auto;
+    align-items: start;
+}
+
+.admin-dash-top-bar {
+    height: 6px;
+    border-radius: 999px;
+    background: #F1F5F9;
+    overflow: hidden;
+    margin: 4px 0;
+}
+
+.admin-dash-top-bar span {
+    display: block;
+    height: 100%;
+    border-radius: inherit;
+    background: #123A63;
+}
+
+.admin-footer-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+}
+
+.admin-dash-alert-list,
+.admin-dash-notif-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.admin-dash-alert-list li {
+    display: grid;
+    grid-template-columns: 40px 1fr auto;
+    gap: 10px;
+    align-items: center;
+}
+
+.admin-dash-alert-list img {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    object-fit: cover;
+    background: #F1F5F9;
+    border: 1px solid #E2E8F0;
+}
+
+.admin-dash-alert-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.admin-dash-alert-meta strong {
+    color: var(--admin-navy);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.admin-dash-alert-meta small {
+    color: #64748B;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.admin-dash-alert-meta span {
+    color: #94A3B8;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.admin-dash-alert-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 0 10px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 800;
+    white-space: nowrap;
+}
+
+.admin-dash-alert-badge.low {
+    background: #FEE2E2;
+    color: #B91C1C;
+}
+
+.admin-dash-alert-badge.out {
+    background: #FECACA;
+    color: #991B1B;
+}
+
+.admin-dash-notif-list li {
+    display: grid;
+    grid-template-columns: 34px 1fr;
+    gap: 10px;
+    align-items: start;
+}
+
+.admin-dash-notif-icon {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.admin-dash-notif-icon.tone-blue { background: #DBEAFE; color: #2563EB; }
+.admin-dash-notif-icon.tone-gold { background: #FEF3C7; color: #D97706; }
+.admin-dash-notif-icon.tone-purple { background: #F3E8FF; color: #9333EA; }
+
+.admin-dash-notif-meta {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.admin-dash-notif-meta strong {
+    color: var(--admin-navy);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.admin-dash-notif-meta span {
+    color: #64748B;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.admin-dash-notif-meta em {
+    font-style: normal;
+    color: #94A3B8;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.admin-dash-quick-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.admin-dash-quick-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-height: 48px;
+    padding: 10px 12px;
+    border: 1px solid #E2E8F0;
+    border-radius: 12px;
+    background: #F8FAFC;
+    text-decoration: none;
+    color: var(--admin-navy);
+    transition: background .15s ease, border-color .15s ease;
+}
+
+.admin-dash-quick-btn:hover {
+    background: white;
+    border-color: #CBD5E1;
+}
+
+.admin-dash-quick-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: #DBEAFE;
+    color: #2563EB;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.admin-dash-quick-btn strong {
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
 .admin-revenue-block {
     margin-top: 22px;
     padding-top: 18px;
@@ -7653,7 +7944,8 @@ a.notification-card:hover .notification-body strong {
     }
 
     .admin-mid-grid,
-    .admin-bottom-grid {
+    .admin-bottom-grid,
+    .admin-footer-grid {
         grid-template-columns: 1fr;
     }
 
@@ -7706,6 +7998,14 @@ a.notification-card:hover .notification-body strong {
 
     .admin-stat-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .admin-dash-dual-chart {
+        grid-template-columns: 40px 1fr 28px;
+    }
+
+    .admin-dash-quick-grid {
+        grid-template-columns: 1fr;
     }
 
     .admin-page-intro h1 {

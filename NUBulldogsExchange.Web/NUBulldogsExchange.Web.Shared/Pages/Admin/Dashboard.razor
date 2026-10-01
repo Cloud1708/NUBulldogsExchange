@@ -4,12 +4,14 @@
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
-@inject IAppDatabase Database
 @inject AdminProductService Products
 @inject AdminOrderService Orders
 @inject AdminInventoryService Inventory
+@inject AdminNotificationService Notifications
+@inject AdminStaffService StaffService
+@inject AuthService Auth
 
-<PageTitle>Admin Dashboard | NU Bulldogs Exchange</PageTitle>
+<PageTitle>Store Overview | Admin | NU Bulldogs Exchange</PageTitle>
 
 @if (_loading)
 {
@@ -39,13 +41,19 @@ else
                         <div class="admin-stat-icon tone-@stat.Tone" aria-hidden="true">
                             <Icon Name="@stat.Icon" Size="16" />
                         </div>
-                        <span class="admin-stat-change @(stat.IsPositive ? "up" : "down")">
-                            <Icon Name="@(stat.IsPositive ? "trending-up" : "trending-down")" Size="12" />
-                            @stat.Change
-                        </span>
+                        @if (stat.ShowLiveDot)
+                        {
+                            <span class="admin-stat-live">
+                                <i></i> Live
+                            </span>
+                        }
                     </div>
                     <strong>@stat.Value</strong>
                     <span>@stat.Label</span>
+                    @if (!string.IsNullOrWhiteSpace(stat.Hint))
+                    {
+                        <em class="admin-stat-hint">@stat.Hint</em>
+                    }
                 </article>
             }
         </div>
@@ -55,37 +63,74 @@ else
                 <div class="admin-card-head">
                     <div>
                         <h2>Sales Analytics</h2>
-                        <p>Revenue from recorded orders</p>
+                        <p>Revenue from completed orders</p>
+                    </div>
+                    <div class="admin-range-tabs" role="tablist" aria-label="Sales range">
+                        @foreach (var range in Ranges)
+                        {
+                            <button type="button"
+                                    role="tab"
+                                    class="admin-range-tab @(_range == range.Key ? "active" : "")"
+                                    @onclick="() => SelectRange(range.Key)">
+                                @range.Label
+                            </button>
+                        }
                     </div>
                 </div>
-                <div class="admin-line-chart" aria-label="Sales line chart">
-                    <div class="admin-line-y">
-                        <span>₱@_chartMax.ToString("N0")</span>
-                        <span>₱0</span>
-                    </div>
-                    <div class="admin-line-plot">
-                        <svg viewBox="0 0 400 180" preserveAspectRatio="none" class="admin-line-svg">
-                            <defs>
-                                <linearGradient id="salesFill" x1="0" y1="0" x2="0" y2="1">
-                                    <stop offset="0%" stop-color="#123A63" stop-opacity="0.22" />
-                                    <stop offset="100%" stop-color="#123A63" stop-opacity="0.02" />
-                                </linearGradient>
-                            </defs>
-                            <path d="@AreaPath" fill="url(#salesFill)" />
-                            <path d="@LinePath" class="admin-line-path" fill="none" />
-                            @foreach (var point in ChartPoints)
-                            {
-                                <circle cx="@point.X.ToString("0.##")" cy="@point.Y.ToString("0.##")" r="3.5" class="admin-line-dot" />
-                            }
-                        </svg>
-                        <div class="admin-line-x">
-                            @foreach (var month in _salesMonths)
-                            {
-                                <span>@month</span>
-                            }
+
+                @if (_chartPoints.Count == 0)
+                {
+                    <p class="admin-dash-empty">No completed sales in this period.</p>
+                }
+                else
+                {
+                    <div class="admin-dash-dual-chart" aria-label="Sales analytics chart">
+                        <div class="admin-dash-y-left">
+                            <span>₱@_revenueMaxLabel</span>
+                            <span>₱0</span>
+                        </div>
+                        <div class="admin-line-plot">
+                            <svg viewBox="0 0 480 200" preserveAspectRatio="none" class="admin-line-svg admin-dash-svg">
+                                <defs>
+                                    <linearGradient id="dashSalesFill" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="0%" stop-color="#123A63" stop-opacity="0.22" />
+                                        <stop offset="100%" stop-color="#123A63" stop-opacity="0.02" />
+                                    </linearGradient>
+                                </defs>
+                                @for (var i = 0; i < 5; i++)
+                                {
+                                    var y = 10 + i * 45;
+                                    <line x1="0" y1="@y" x2="480" y2="@y" class="admin-grid-line" />
+                                }
+                                <path d="@RevenueArea" fill="url(#dashSalesFill)" />
+                                <path d="@RevenueLine" class="admin-reports-line revenue" fill="none" />
+                                <path d="@OrdersLine" class="admin-reports-line orders" fill="none" />
+                                @foreach (var p in RevenueSvgPoints)
+                                {
+                                    <circle cx="@p.X.ToString("0.##")" cy="@p.Y.ToString("0.##")" r="3.5" class="admin-reports-dot revenue" />
+                                }
+                                @foreach (var p in OrdersSvgPoints)
+                                {
+                                    <circle cx="@p.X.ToString("0.##")" cy="@p.Y.ToString("0.##")" r="3.5" class="admin-reports-dot orders" />
+                                }
+                            </svg>
+                            <div class="admin-line-x">
+                                @foreach (var point in _chartPoints)
+                                {
+                                    <span>@point.Label</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="admin-dash-y-right">
+                            <span>@_ordersMaxLabel</span>
+                            <span>0</span>
                         </div>
                     </div>
-                </div>
+                    <div class="admin-reports-legend">
+                        <span><i class="dot orders"></i> Orders</span>
+                        <span><i class="dot revenue"></i> Revenue</span>
+                    </div>
+                }
             </section>
 
             <section class="admin-card admin-status-card">
@@ -97,22 +142,28 @@ else
                 </div>
                 @if (!_orderStatus.Any())
                 {
-                    <p>No orders yet.</p>
+                    <p class="admin-dash-empty">No orders yet.</p>
                 }
                 else
                 {
-                    <div class="admin-donut-wrap">
+                    var totalOrders = _orderStatus.Sum(s => s.Count);
+                    <div class="admin-donut-wrap admin-dash-donut-wrap">
                         <div class="admin-donut" style="background: @DonutGradient;" aria-hidden="true">
-                            <div class="admin-donut-hole"></div>
+                            <div class="admin-donut-hole admin-dash-donut-hole">
+                                <strong>@totalOrders</strong>
+                                <span>Orders</span>
+                            </div>
                         </div>
                     </div>
-                    <ul class="admin-status-legend">
+                    <ul class="admin-status-legend admin-dash-status-legend">
                         @foreach (var slice in _orderStatus)
                         {
+                            var pct = totalOrders <= 0 ? 0 : slice.Count * 100.0 / totalOrders;
                             <li>
                                 <span class="admin-legend-dot" style="background: @slice.Color;"></span>
                                 <span class="admin-legend-label">@slice.Label</span>
                                 <strong>@slice.Count</strong>
+                                <em>@pct.ToString("0.0")%</em>
                             </li>
                         }
                     </ul>
@@ -127,27 +178,32 @@ else
                         <h2>Recent Orders</h2>
                         <p>Latest transactions</p>
                     </div>
-                    <a href="/admin/orders" class="admin-view-all">
-                        View All
-                        <Icon Name="arrow-right" Size="14" />
-                    </a>
+                    @if (CanAccess("orders"))
+                    {
+                        <a href="/admin/orders" class="admin-view-all">
+                            View All
+                            <Icon Name="arrow-right" Size="14" />
+                        </a>
+                    }
                 </div>
 
                 @if (!_recentOrders.Any())
                 {
-                    <p>No records found.</p>
+                    <p class="admin-dash-empty">No recent orders.</p>
                 }
                 else
                 {
                     <div class="admin-table-wrap">
-                        <table class="admin-table">
+                        <table class="admin-table admin-dash-orders-table">
                             <thead>
                                 <tr>
                                     <th>Order ID</th>
                                     <th>Customer</th>
+                                    <th>Fulfillment</th>
                                     <th>Date</th>
                                     <th>Total</th>
                                     <th>Status</th>
+                                    <th>Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -155,18 +211,22 @@ else
                                 {
                                     <tr>
                                         <td><strong>@order.Id</strong></td>
-                                        <td>
-                                            <div class="admin-customer-cell">
-                                                <strong>@order.Customer</strong>
-                                                <span>@order.Fulfillment</span>
-                                            </div>
-                                        </td>
+                                        <td>@order.Customer</td>
+                                        <td>@order.Fulfillment</td>
                                         <td>@order.Date</td>
                                         <td><strong>₱@order.Total.ToString("N0")</strong></td>
                                         <td>
                                             <span class="order-status status-@AdminStatusHelper.StatusKey(order.Status)">
                                                 @order.Status
                                             </span>
+                                        </td>
+                                        <td>
+                                            @if (CanAccess("orders"))
+                                            {
+                                                <a class="admin-row-action" href="@($"/admin/orders/{Uri.EscapeDataString(order.Id)}")" title="View order">
+                                                    <Icon Name="more-horizontal" Size="16" />
+                                                </a>
+                                            }
                                         </td>
                                     </tr>
                                 }
@@ -179,28 +239,38 @@ else
             <section class="admin-card admin-topselling-card">
                 <div class="admin-card-head">
                     <div>
-                        <h2>Top Selling</h2>
+                        <h2>Top Selling Products</h2>
+                        <p>Based on units sold (@_rangeLabel)</p>
                     </div>
-                    <a href="/admin/products" class="admin-view-all">View All</a>
+                    @if (CanAccess("reports"))
+                    {
+                        <a href="/admin/reports" class="admin-view-all">
+                            View All
+                            <Icon Name="arrow-right" Size="14" />
+                        </a>
+                    }
                 </div>
 
                 @if (!_topProducts.Any())
                 {
-                    <p>No listings available.</p>
+                    <p class="admin-dash-empty">No completed sales in this period.</p>
                 }
                 else
                 {
-                    <div class="admin-top-list">
+                    <div class="admin-top-list admin-dash-top-list">
                         @foreach (var product in _topProducts)
                         {
-                            <article class="admin-top-item">
+                            <article class="admin-top-item admin-dash-top-item">
                                 <span class="admin-top-rank">@product.Rank</span>
                                 <img src="@product.ImageUrl"
                                      alt="@product.Name"
                                      loading="lazy"
                                      onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
                                 <div class="admin-top-meta">
-                                    <strong>@product.Name</strong>
+                                    <strong title="@product.Name">@product.Name</strong>
+                                    <div class="admin-dash-top-bar">
+                                        <span style="@($"width:{product.ProgressPct:0.##}%")"></span>
+                                    </div>
                                     <span>@product.Sold.ToString("N0") sold</span>
                                 </div>
                                 <strong class="admin-top-revenue">₱@product.Revenue.ToString("N0")</strong>
@@ -210,63 +280,167 @@ else
                 }
             </section>
         </div>
+
+        <div class="admin-footer-grid">
+            <section class="admin-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Inventory Alerts</h2>
+                        <p>Products that need attention</p>
+                    </div>
+                    @if (CanAccess("inventory"))
+                    {
+                        <a href="/admin/inventory" class="admin-view-all">
+                            View All
+                            <Icon Name="arrow-right" Size="14" />
+                        </a>
+                    }
+                </div>
+
+                @if (!_inventoryAlerts.Any())
+                {
+                    <p class="admin-dash-empty">All inventory levels are healthy.</p>
+                }
+                else
+                {
+                    <ul class="admin-dash-alert-list">
+                        @foreach (var alert in _inventoryAlerts)
+                        {
+                            <li>
+                                <img src="@alert.ImageUrl"
+                                     alt="@alert.ProductName"
+                                     loading="lazy"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                <div class="admin-dash-alert-meta">
+                                    <strong>@alert.ProductName</strong>
+                                    @if (!string.IsNullOrWhiteSpace(alert.VariantLabel))
+                                    {
+                                        <small>@alert.VariantLabel</small>
+                                    }
+                                    <span>@alert.StockLeft left in stock</span>
+                                </div>
+                                <span class="admin-dash-alert-badge @alert.StatusKey">@alert.Status</span>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="admin-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Recent Notifications</h2>
+                        <p>Latest updates and activities</p>
+                    </div>
+                    <a href="/admin/notifications" class="admin-view-all">
+                        View All
+                        <Icon Name="arrow-right" Size="14" />
+                    </a>
+                </div>
+
+                @if (!_notifications.Any())
+                {
+                    <p class="admin-dash-empty">No recent notifications.</p>
+                }
+                else
+                {
+                    <ul class="admin-dash-notif-list">
+                        @foreach (var item in _notifications)
+                        {
+                            <li>
+                                <div class="admin-dash-notif-icon tone-@item.Tone" aria-hidden="true">
+                                    <Icon Name="@item.IconName" Size="14" />
+                                </div>
+                                <div class="admin-dash-notif-meta">
+                                    <strong>@item.Title</strong>
+                                    <span>@item.Message</span>
+                                    <em>@item.TimeLabel</em>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <section class="admin-card">
+                <div class="admin-card-head">
+                    <div>
+                        <h2>Quick Actions</h2>
+                        <p>Jump to common tasks</p>
+                    </div>
+                </div>
+                @if (!_quickActions.Any())
+                {
+                    <p class="admin-dash-empty">No actions available for your role.</p>
+                }
+                else
+                {
+                    <div class="admin-dash-quick-grid">
+                        @foreach (var action in _quickActions)
+                        {
+                            <a class="admin-dash-quick-btn" href="@action.Href">
+                                <span class="admin-dash-quick-icon" aria-hidden="true">
+                                    <Icon Name="@action.Icon" Size="16" />
+                                </span>
+                                <strong>@action.Label</strong>
+                            </a>
+                        }
+                    </div>
+                }
+            </section>
+        </div>
     </div>
 }
 
 @code {
+    private static readonly (string Key, string Label)[] Ranges =
+    [
+        ("today", "Today"),
+        ("7days", "7 Days"),
+        ("30days", "30 Days"),
+        ("year", "This Year")
+    ];
+
+    private static readonly Dictionary<string, string> StatusColors = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["Completed"] = "#22C55E",
+        ["Delivered"] = "#16A34A",
+        ["Processing"] = "#9333EA",
+        ["Pending"] = "#F9C424",
+        ["Confirmed"] = "#2563EB",
+        ["Ready for Pickup"] = "#A855F7",
+        ["Out for Delivery"] = "#0369A1",
+        ["Cancelled"] = "#EF4444"
+    };
+
     private bool _loading = true;
     private string? _error;
-    private List<AdminStatCard> _stats = [];
+    private string _range = "30days";
+    private string _rangeLabel = "Last 30 Days";
+
+    private List<DashStat> _stats = [];
     private List<AdminOrderRow> _recentOrders = [];
     private List<AdminStatusSlice> _orderStatus = [];
-    private List<AdminTopProduct> _topProducts = [];
-    private List<string> _salesMonths = [];
-    private double[] _salesValues = [];
-    private double _chartMax = 1;
+    private List<DashTopProduct> _topProducts = [];
+    private List<DashChartPoint> _chartPoints = [];
+    private List<DashInventoryAlert> _inventoryAlerts = [];
+    private List<AdminNotificationItem> _notifications = [];
+    private List<DashQuickAction> _quickActions = [];
 
-    private IEnumerable<(double X, double Y)> ChartPoints
-    {
-        get
-        {
-            var values = _salesValues;
-            if (values.Length == 0) yield break;
-            var max = Math.Max(1, _chartMax);
-            for (var i = 0; i < values.Length; i++)
-            {
-                var x = values.Length == 1 ? 200 : i * (400.0 / (values.Length - 1));
-                var y = 170 - (values[i] / max * 150);
-                yield return (x, y);
-            }
-        }
-    }
+    private double _revenueMax = 1;
+    private double _ordersMax = 1;
+    private string _revenueMaxLabel = "0";
+    private string _ordersMaxLabel = "0";
 
-    private string LinePath
-    {
-        get
-        {
-            var points = ChartPoints.ToList();
-            if (points.Count == 0) return string.Empty;
-            var parts = new List<string> { $"M {points[0].X:0.##} {points[0].Y:0.##}" };
-            for (var i = 1; i < points.Count; i++)
-                parts.Add($"L {points[i].X:0.##} {points[i].Y:0.##}");
-            return string.Join(" ", parts);
-        }
-    }
+    private IEnumerable<(double X, double Y)> RevenueSvgPoints =>
+        BuildSvgPoints(_chartPoints.Select(p => p.Revenue).ToArray(), _revenueMax);
 
-    private string AreaPath
-    {
-        get
-        {
-            var points = ChartPoints.ToList();
-            if (points.Count == 0) return string.Empty;
-            var parts = new List<string> { $"M {points[0].X:0.##} 170" };
-            parts.Add($"L {points[0].X:0.##} {points[0].Y:0.##}");
-            for (var i = 1; i < points.Count; i++)
-                parts.Add($"L {points[i].X:0.##} {points[i].Y:0.##}");
-            parts.Add($"L {points[^1].X:0.##} 170 Z");
-            return string.Join(" ", parts);
-        }
-    }
+    private IEnumerable<(double X, double Y)> OrdersSvgPoints =>
+        BuildSvgPoints(_chartPoints.Select(p => (double)p.Orders).ToArray(), _ordersMax);
+
+    private string RevenueLine => ToLine(RevenueSvgPoints);
+    private string OrdersLine => ToLine(OrdersSvgPoints);
+    private string RevenueArea => ToArea(RevenueSvgPoints, 190);
 
     private string DonutGradient
     {
@@ -293,24 +467,9 @@ else
             await Products.EnsureLoadedAsync();
             await Orders.EnsureLoadedAsync();
             await Inventory.EnsureLoadedAsync();
-            var dash = await Database.GetDashboardStatsAsync();
-
-            _stats =
-            [
-                new("Total Sales", $"₱{dash.TotalSales:N0}", "Live", true, "dollar-sign", "blue"),
-                new("Total Orders", dash.TotalOrders.ToString("N0"), "Live", true, "cart", "green"),
-                new("Pending Orders", dash.PendingOrders.ToString("N0"), "Live", dash.PendingOrders == 0, "alert-triangle", "gold"),
-                new("Completed Orders", dash.CompletedOrders.ToString("N0"), "Live", true, "check-circle", "teal"),
-                new("Total Products", dash.TotalProducts.ToString("N0"), "Live", true, "package", "purple"),
-                new("Low Stock", dash.LowStockCount.ToString("N0"), "Live", dash.LowStockCount == 0, "alert-triangle", "red")
-            ];
-
-            _recentOrders = dash.RecentOrders;
-            _orderStatus = dash.OrderStatus;
-            _topProducts = dash.TopProducts;
-            _salesMonths = dash.SalesByMonth.Select(s => s.Month).ToList();
-            _salesValues = dash.SalesByMonth.Select(s => s.Value).ToArray();
-            _chartMax = Math.Max(1, _salesValues.DefaultIfEmpty(0).Max());
+            await Notifications.EnsureLoadedAsync();
+            await StaffService.EnsureLoadedAsync();
+            Rebuild();
         }
         catch (Exception ex)
         {
@@ -322,4 +481,323 @@ else
             _loading = false;
         }
     }
+
+    private void SelectRange(string key)
+    {
+        if (_range == key) return;
+        _range = key;
+        Rebuild();
+    }
+
+    private void Rebuild()
+    {
+        var (start, end) = ResolveRange();
+        _rangeLabel = FormatRangeLabel();
+
+        var allOrders = Orders.All.ToList();
+        var periodOrders = allOrders
+            .Where(o => o.Date.Date >= start && o.Date.Date <= end)
+            .ToList();
+        var fulfilledPeriod = periodOrders.Where(AdminReportService.IsFulfilledSale).ToList();
+        var alerts = BuildInventoryAlerts().ToList();
+
+        var totalSales = fulfilledPeriod.Sum(o => o.Items.Sum(i => i.Price * i.Quantity));
+        var totalOrders = periodOrders.Count;
+        var pending = allOrders.Count(o =>
+            o.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase));
+        var fulfilledCount = fulfilledPeriod.Count;
+        var totalProducts = Products.All.Count;
+        var lowStockItems = alerts.Count;
+
+        _stats =
+        [
+            new("Total Sales", $"₱{totalSales:N0}", "dollar-sign", "blue", true, null),
+            new("Total Orders", totalOrders.ToString("N0"), "cart", "green", true, null),
+            new("Pending Orders", pending.ToString("N0"), "clock", "gold", true, null),
+            new("Fulfilled Orders", fulfilledCount.ToString("N0"), "check-circle", "teal", false, "Completed + Delivered"),
+            new("Total Products", totalProducts.ToString("N0"), "package", "purple", true, null),
+            new("Low Stock Items", lowStockItems.ToString("N0"), "alert-triangle", "red", true, null)
+        ];
+
+        _orderStatus = allOrders
+            .GroupBy(o => o.Status)
+            .Select(g => new AdminStatusSlice(
+                g.Key,
+                g.Count(),
+                StatusColors.GetValueOrDefault(g.Key, "#94A3B8")))
+            .OrderByDescending(s => s.Count)
+            .ToList();
+
+        _recentOrders = allOrders
+            .OrderByDescending(o => o.Date)
+            .Take(5)
+            .Select(o => new AdminOrderRow(
+                o.Id,
+                o.CustomerName,
+                o.Fulfillment,
+                o.Date.ToString("MMM d, yyyy"),
+                o.Total,
+                o.Status))
+            .ToList();
+
+        _topProducts = BuildTopSelling(fulfilledPeriod);
+        _chartPoints = BuildChartPoints(start, end, periodOrders, fulfilledPeriod);
+        _revenueMax = Math.Max(1, _chartPoints.DefaultIfEmpty().Max(p => p?.Revenue ?? 0));
+        _ordersMax = Math.Max(1, _chartPoints.DefaultIfEmpty().Max(p => p?.Orders ?? 0));
+        _revenueMaxLabel = _revenueMax >= 1000
+            ? $"{(_revenueMax / 1000):0.#}K"
+            : _revenueMax.ToString("N0");
+        _ordersMaxLabel = _ordersMax.ToString("N0");
+
+        _inventoryAlerts = alerts.Take(5).ToList();
+        _notifications = Notifications.All.Take(5).ToList();
+        _quickActions = BuildQuickActions();
+    }
+
+    private List<DashTopProduct> BuildTopSelling(List<AdminOrder> fulfilledOrders)
+    {
+        var groups = fulfilledOrders
+            .SelectMany(o => o.Items)
+            .GroupBy(i => i.ProductId)
+            .Select(g =>
+            {
+                var product = Products.GetById(g.Key);
+                var first = g.First();
+                return new
+                {
+                    ProductId = g.Key,
+                    Name = product?.Name ?? first.Name,
+                    ImageUrl = product?.ImageUrl ?? first.ImageUrl ?? CatalogHelpers.PlaceholderImage,
+                    Sold = g.Sum(i => i.Quantity),
+                    Revenue = g.Sum(i => i.Price * i.Quantity)
+                };
+            })
+            .Where(x => x.Sold > 0)
+            .OrderByDescending(x => x.Sold)
+            .ThenByDescending(x => x.Revenue)
+            .Take(5)
+            .ToList();
+
+        var maxSold = groups.Count == 0 ? 1 : Math.Max(1, groups.Max(g => g.Sold));
+
+        return groups.Select((g, i) => new DashTopProduct(
+            i + 1,
+            g.Name,
+            g.ImageUrl,
+            g.Sold,
+            g.Revenue,
+            g.Sold * 100.0 / maxSold)).ToList();
+    }
+
+    private List<DashChartPoint> BuildChartPoints(
+        DateTime start,
+        DateTime end,
+        List<AdminOrder> periodOrders,
+        List<AdminOrder> fulfilledPeriod)
+    {
+        if (_range == "year")
+        {
+            return Enumerable.Range(0, 12)
+                .Select(m =>
+                {
+                    var month = new DateTime(end.Year, m + 1, 1);
+                    if (month > end) return null;
+                    var label = month.ToString("MMM");
+                    var revenue = (double)fulfilledPeriod
+                        .Where(o => o.Date.Year == month.Year && o.Date.Month == month.Month)
+                        .Sum(o => o.Items.Sum(i => i.Price * i.Quantity));
+                    var orders = periodOrders.Count(o =>
+                        o.Date.Year == month.Year && o.Date.Month == month.Month);
+                    return new DashChartPoint(label, revenue, orders);
+                })
+                .Where(p => p is not null)
+                .Cast<DashChartPoint>()
+                .ToList();
+        }
+
+        if (_range == "today")
+        {
+            var revenue = (double)fulfilledPeriod.Sum(o => o.Items.Sum(i => i.Price * i.Quantity));
+            return [new DashChartPoint("Today", revenue, periodOrders.Count)];
+        }
+
+        var days = (end.Date - start.Date).Days + 1;
+        var step = days <= 7 ? 1 : Math.Max(1, days / 6);
+        var points = new List<DashChartPoint>();
+        for (var d = start.Date; d <= end.Date; d = d.AddDays(step))
+        {
+            var bucketEnd = d.AddDays(step - 1);
+            if (bucketEnd > end.Date) bucketEnd = end.Date;
+            var revenue = (double)fulfilledPeriod
+                .Where(o => o.Date.Date >= d && o.Date.Date <= bucketEnd)
+                .Sum(o => o.Items.Sum(i => i.Price * i.Quantity));
+            var orders = periodOrders.Count(o => o.Date.Date >= d && o.Date.Date <= bucketEnd);
+            points.Add(new DashChartPoint(d.ToString("MMM d"), revenue, orders));
+            if (bucketEnd >= end.Date) break;
+        }
+
+        return points;
+    }
+
+    private IEnumerable<DashInventoryAlert> BuildInventoryAlerts()
+    {
+        var alerts = new List<DashInventoryAlert>();
+
+        foreach (var row in Inventory.Rows)
+        {
+            if (row.HasVariants)
+            {
+                foreach (var variant in row.Variants.Where(v => v.IsActive))
+                {
+                    var key = InventoryRow.VariantStatusKey(variant.StockQuantity, row.LowStockLevel);
+                    if (key is not ("out" or "low")) continue;
+
+                    alerts.Add(new DashInventoryAlert(
+                        row.Name,
+                        FormatAlertVariantLabel(variant),
+                        row.ImageUrl,
+                        variant.StockQuantity,
+                        InventoryRow.VariantStatus(variant.StockQuantity, row.LowStockLevel),
+                        key));
+                }
+            }
+            else
+            {
+                var key = InventoryRow.VariantStatusKey(row.TotalStock, row.LowStockLevel);
+                if (key is not ("out" or "low")) continue;
+
+                alerts.Add(new DashInventoryAlert(
+                    row.Name,
+                    null,
+                    row.ImageUrl,
+                    row.TotalStock,
+                    InventoryRow.VariantStatus(row.TotalStock, row.LowStockLevel),
+                    key));
+            }
+        }
+
+        return alerts
+            .OrderBy(a => a.StatusKey == "out" ? 0 : 1)
+            .ThenBy(a => a.StockLeft)
+            .ThenBy(a => a.ProductName, StringComparer.OrdinalIgnoreCase);
+    }
+
+    private static string? FormatAlertVariantLabel(ProductVariant variant)
+    {
+        var label = InventoryRow.FormatVariantLabel(variant);
+        return string.IsNullOrWhiteSpace(label) || label.Equals("Default", StringComparison.OrdinalIgnoreCase)
+            ? null
+            : label;
+    }
+
+    private List<DashQuickAction> BuildQuickActions()
+    {
+        (string Label, string Href, string? Permission, string Icon)[] actions =
+        [
+            ("Add New Product", "/admin/products/new", "products", "plus"),
+            ("Manage Orders", "/admin/orders", "orders", "shopping-bag"),
+            ("Update Inventory", "/admin/inventory", "inventory", "warehouse"),
+            ("View Reports", "/admin/reports", "reports", "bar-chart"),
+            ("Manage Promotions", "/admin/promotions", "promotions", "tag"),
+            ("Manage Reviews", "/admin/reviews", null, "star")
+        ];
+
+        return actions
+            .Where(a => CanAccess(a.Permission))
+            .Select(a => new DashQuickAction(a.Label, a.Href, a.Icon))
+            .ToList();
+    }
+
+    private bool CanAccess(string? permissionKey)
+    {
+        if (Auth.IsAdmin) return true;
+        if (string.IsNullOrWhiteSpace(permissionKey)) return true;
+        if (string.IsNullOrWhiteSpace(Auth.Email)) return false;
+        return StaffService.HasPermission(Auth.Email, permissionKey);
+    }
+
+    private (DateTime Start, DateTime End) ResolveRange()
+    {
+        var today = DateTime.Today;
+        return _range switch
+        {
+            "today" => (today, today),
+            "7days" => (today.AddDays(-6), today),
+            "year" => (new DateTime(today.Year, 1, 1), today),
+            _ => (today.AddDays(-29), today)
+        };
+    }
+
+    private string FormatRangeLabel() => _range switch
+    {
+        "today" => "Today",
+        "7days" => "Last 7 Days",
+        "year" => "This Year",
+        _ => "Last 30 Days"
+    };
+
+    private static IEnumerable<(double X, double Y)> BuildSvgPoints(double[] values, double max)
+    {
+        if (values.Length == 0) yield break;
+        const double width = 480;
+        const double top = 10;
+        const double bottom = 190;
+        var usable = bottom - top;
+        for (var i = 0; i < values.Length; i++)
+        {
+            var x = values.Length == 1 ? width / 2 : (i / (double)(values.Length - 1)) * width;
+            var y = bottom - (Math.Clamp(values[i], 0, max) / Math.Max(1, max)) * usable;
+            yield return (x, y);
+        }
+    }
+
+    private static string ToLine(IEnumerable<(double X, double Y)> points)
+    {
+        var list = points.ToList();
+        if (list.Count == 0) return string.Empty;
+        var parts = new List<string> { $"M {list[0].X:0.##} {list[0].Y:0.##}" };
+        for (var i = 1; i < list.Count; i++)
+            parts.Add($"L {list[i].X:0.##} {list[i].Y:0.##}");
+        return string.Join(" ", parts);
+    }
+
+    private static string ToArea(IEnumerable<(double X, double Y)> points, double bottom)
+    {
+        var list = points.ToList();
+        if (list.Count == 0) return string.Empty;
+        var parts = new List<string> { $"M {list[0].X:0.##} {bottom:0.##}" };
+        parts.Add($"L {list[0].X:0.##} {list[0].Y:0.##}");
+        for (var i = 1; i < list.Count; i++)
+            parts.Add($"L {list[i].X:0.##} {list[i].Y:0.##}");
+        parts.Add($"L {list[^1].X:0.##} {bottom:0.##} Z");
+        return string.Join(" ", parts);
+    }
+
+    private sealed record DashStat(
+        string Label,
+        string Value,
+        string Icon,
+        string Tone,
+        bool ShowLiveDot,
+        string? Hint);
+
+    private sealed record DashTopProduct(
+        int Rank,
+        string Name,
+        string ImageUrl,
+        int Sold,
+        decimal Revenue,
+        double ProgressPct);
+
+    private sealed record DashChartPoint(string Label, double Revenue, int Orders);
+
+    private sealed record DashInventoryAlert(
+        string ProductName,
+        string? VariantLabel,
+        string ImageUrl,
+        int StockLeft,
+        string Status,
+        string StatusKey);
+
+    private sealed record DashQuickAction(string Label, string Href, string Icon);
 }
