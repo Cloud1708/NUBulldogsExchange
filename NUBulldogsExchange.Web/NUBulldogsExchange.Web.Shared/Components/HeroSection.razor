@@ -16,23 +16,59 @@
             </p>
             <div class="hero-buttons">
                 <a href="/shop" class="btn btn-gold">Shop Collection</a>
-                <a href="/new-arrivals" class="btn btn-outline">Explore New Arrivals →</a>
+                <a href="/new-arrivals" class="btn btn-outline">Explore New Arrivals</a>
             </div>
+
+            <ul class="hero-benefits">
+                <li>
+                    <Icon Name="map-pin" Size="18" />
+                    <div>
+                        <strong>Free Campus Pickup</strong>
+                        <small>@OrderFlow.PickupHoursDays, @OrderFlow.PickupHoursTime</small>
+                    </div>
+                </li>
+                <li>
+                    <Icon Name="shield" Size="18" />
+                    <div>
+                        <strong>Secure Payments</strong>
+                        <small>Pay on pickup or online</small>
+                    </div>
+                </li>
+                <li>
+                    <Icon Name="truck" Size="18" />
+                    <div>
+                        <strong>Easy Order Tracking</strong>
+                        <small>Follow every status update</small>
+                    </div>
+                </li>
+            </ul>
         </div>
 
-        <div class="hero-product">
-            <img src="https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?auto=format&fit=crop&w=700&q=85"
-                 alt="Featured NU Bulldogs shirt"
-                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-            <div class="pickup-card">
-                <div class="pickup-icon">
-                    <Icon Name="check" Size="16" />
-                </div>
-                <div>
-                    <strong>Free Campus Pickup</strong>
-                    <small>Available weekdays</small>
-                </div>
+        @if (MainProduct is not null)
+        {
+            <div class="hero-gallery @(SideProducts.Count == 0 ? "is-single" : SideProducts.Count == 1 ? "is-pair" : "")">
+                <a class="hero-shot hero-shot-main" href="/product/@MainProduct.Id">
+                    <img src="@MainProduct.ImageUrl"
+                         alt="@MainProduct.Name"
+                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                    <span class="hero-shot-label">@MainProduct.Name</span>
+                </a>
+                @foreach (var product in SideProducts)
+                {
+                    <a class="hero-shot" href="/product/@product.Id">
+                        <img src="@product.ImageUrl"
+                             alt="@product.Name"
+                             loading="lazy"
+                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                        <span class="hero-shot-label">@product.Name</span>
+                    </a>
+                }
             </div>
-        </div>
+        }
     </div>
 </section>
+
+@code {
+    [Parameter] public Product? MainProduct { get; set; }
+    [Parameter] public IReadOnlyList<Product> SideProducts { get; set; } = [];
+}

@@ -37,6 +37,7 @@ public class Product
     public string Section { get; set; } = "apparel"; // apparel | accessories
     public string Status { get; set; } = "Active"; // Active|Draft|Inactive
     public bool IsPublished { get; set; } = true;
+    public DateTime? CreatedAt { get; set; }
     public DateTime? PublishedAt { get; set; }
     public DateTime? UpdatedAt { get; set; }
     public string? CreatedBy { get; set; }
@@ -190,6 +191,46 @@ public class CategoryItem
     public int Count { get; set; }
     public string ImageUrl { get; set; } = string.Empty;
     public string Slug { get; set; } = string.Empty;
+}
+
+public class RankedProduct
+{
+    public Product Product { get; init; } = null!;
+    public int Rank { get; init; }
+    public int UnitsSold { get; init; }
+}
+
+public class HomeReview
+{
+    public long Id { get; init; }
+    public string DisplayName { get; init; } = "Customer";
+    public string Initials { get; init; } = "C";
+    public int Rating { get; init; }
+    public string Text { get; init; } = string.Empty;
+    public bool IsVerifiedPurchase { get; init; }
+    public int ProductId { get; init; }
+    public string? ProductName { get; init; }
+}
+
+public class HomePromotion
+{
+    public AdminPromotion Promotion { get; init; } = null!;
+    public List<Product> Products { get; init; } = [];
+    public string Href { get; init; } = "/shop";
+}
+
+/// <summary>Everything the customer Home page renders, loaded in one pass.</summary>
+public class StorefrontHome
+{
+    public List<CategoryItem> Categories { get; init; } = [];
+    public List<Product> FreshDrops { get; init; } = [];
+    public List<RankedProduct> BestSellers { get; init; } = [];
+    /// <summary>Null when fulfilled sales could not be loaded; cards then fall back to the cached count.</summary>
+    public IReadOnlyDictionary<int, int>? UnitsSold { get; init; }
+    public List<HomeReview> Reviews { get; init; } = [];
+    public HomePromotion? Promotion { get; init; }
+    public Product? HeroMain { get; init; }
+    public List<Product> HeroSide { get; init; } = [];
 }
 
 public class CartItem

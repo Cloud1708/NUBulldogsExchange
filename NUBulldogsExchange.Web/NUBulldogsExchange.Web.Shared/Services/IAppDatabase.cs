@@ -124,6 +124,48 @@ public interface IAppDatabase
     // Stats
     Task<DashboardStats> GetDashboardStatsAsync();
     Task<StorefrontStats> GetStorefrontStatsAsync();
+
+    // Storefront home (public, read-only). Defaults keep other implementations compiling unchanged.
+
+    /// <summary>
+    /// Units sold per product id from fulfilled orders only (Completed pickup / Delivered delivery).
+    /// Returns null when sales cannot be read by the current caller.
+    /// </summary>
+    Task<Dictionary<int, int>?> GetFulfilledUnitsSoldAsync() =>
+        Task.FromResult<Dictionary<int, int>?>(null);
+
+    /// <summary>Most recent Visible reviews across all products.</summary>
+    async Task<List<ProductReview>> GetPublicReviewsAsync(int limit)
+    {
+        try
+        {
+            return (await GetAllProductReviewsAsync())
+                .Where(r => r.IsVisible)
+                .OrderByDescending(r => r.Date)
+                .Take(Math.Max(1, limit))
+                .ToList();
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    /// <summary>An enabled promotion within its date window and usage limit, or null.</summary>
+    async Task<AdminPromotion?> GetStorefrontPromotionAsync()
+    {
+        try
+        {
+            return (await GetPromotionsAsync())
+                .Where(p => p.Status == "Active" && (p.UsageLimit <= 0 || p.UsedCount < p.UsageLimit))
+                .OrderByDescending(p => p.StartDate)
+                .FirstOrDefault();
+        }
+        catch
+        {
+            return null;
+        }
+    }
 }
 
 public class DashboardStats

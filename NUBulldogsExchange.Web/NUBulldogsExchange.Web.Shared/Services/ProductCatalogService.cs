@@ -235,6 +235,200 @@ public class ProductCatalogService
         p.Section == "accessories" ||
         p.Category is "Accessories" or "Caps" or "Bags" or "Tumblers" or "School Supplies");
 
+    private static readonly string[] SchoolEssentialsNames = ["School Essentials", "School Supplies"];
+
+    /// <summary>Published Active products only (excludes the empty-catalog fallback rows).</summary>
+    public IEnumerable<Product> StorefrontProducts => _products.Where(IsStorefrontActive);
+
+    /// <summary>School Essentials category when it exists and has active products; drives optional nav links.</summary>
+    public CategoryItem? SchoolEssentialsCategory => GetShopCategories()
+        .FirstOrDefault(c => SchoolEssentialsNames.Contains(c.Name, StringComparer.OrdinalIgnoreCase));
+
+    /// <summary>Active categories that have at least one active product, with a representative image.</summary>
+    public List<CategoryItem> GetShopCategories()
+    {
+        var byCategory = StorefrontProducts
+            .GroupBy(p => p.Category.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.ToList(), StringComparer.OrdinalIgnoreCase);
+
+        var result = new List<CategoryItem>();
+        foreach (var category in _categories)
+        {
+            if (!byCategory.TryGetValue(category.Name.Trim(), out var products) || products.Count == 0)
+                continue;
+
+            var image = HasRealImage(category.ImageUrl)
+                ? category.ImageUrl
+                : products.Select(p => p.ImageUrl).FirstOrDefault(HasRealImage) ?? CatalogHelpers.PlaceholderImage;
+
+            result.Add(new CategoryItem
+            {
+                Name = category.Name,
+                Slug = category.Slug,
+                ImageUrl = image,
+                Count = products.Count,
+                ItemCount = products.Count == 1 ? "1 item" : $"{products.Count} items"
+            });
+        }
+
+        return result;
+    }
+
+    /// <summary>Newest active products by created_at, then published_at, then id.</summary>
+    public List<Product> GetLatest(int take) => StorefrontProducts
+        .OrderByDescending(p => p.CreatedAt ?? p.PublishedAt ?? DateTime.MinValue)
+        .ThenByDescending(p => p.Id)
+        .Take(take)
+        .ToList();
+
+    public async Task<StorefrontHome> LoadHomeAsync(int productCount = 5, int reviewCount = 3)
+    {
+        await EnsureLoadedAsync();
+
+        var salesTask = _db.GetFulfilledUnitsSoldAsync();
+        var reviewsTask = _db.GetPublicReviewsAsync(reviewCount * 4);
+        var promoTask = _db.GetStorefrontPromotionAsync();
+        await Task.WhenAll(
+            salesTask.ContinueWith(_ => { }),
+            reviewsTask.ContinueWith(_ => { }),
+            promoTask.ContinueWith(_ => { }));
+
+        var unitsSold = Result(salesTask, null);
+        var reviews = Result(reviewsTask, []);
+        var promotion = Result(promoTask, null);
+
+        var bestSellers = unitsSold is null
+            ? []
+            : StorefrontProducts
+                .Where(p => unitsSold.TryGetValue(p.Id, out var units) && units > 0)
+                .OrderByDescending(p => unitsSold[p.Id])
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+                .Take(productCount)
+                .Select((p, index) => new RankedProduct { Product = p, Rank = index + 1, UnitsSold = unitsSold[p.Id] })
+                .ToList();
+
+        var freshDrops = GetLatest(productCount);
+        var (heroMain, heroSide) = PickHeroProducts(bestSellers.Select(b => b.Product).Concat(freshDrops));
+
+        return new StorefrontHome
+        {
+            Categories = GetShopCategories().Take(6).ToList(),
+            FreshDrops = freshDrops,
+            BestSellers = bestSellers,
+            UnitsSold = unitsSold,
+            Reviews = BuildHomeReviews(reviews, reviewCount),
+            Promotion = BuildHomePromotion(promotion, bestSellers.Select(b => b.Product).Concat(freshDrops)),
+            HeroMain = heroMain,
+            HeroSide = heroSide
+        };
+    }
+
+    private (Product? Main, List<Product> Side) PickHeroProducts(IEnumerable<Product> preferred)
+    {
+        var pool = preferred
+            .Concat(StorefrontProducts.Where(p => p.IsFeatured))
+            .Concat(StorefrontProducts)
+            .Where(p => HasRealImage(p.ImageUrl))
+            .DistinctBy(p => p.Id)
+            .ToList();
+
+        if (pool.Count == 0)
+            return (null, []);
+
+        var hoodie = pool.FirstOrDefault(p => MentionsAny(p, "hoodie"));
+        var cap = pool.FirstOrDefault(p => MentionsAny(p, "cap", "caps", "hat"));
+        var main = pool.FirstOrDefault(p => p != hoodie && p != cap) ?? pool[0];
+
+        var side = new List<Product>();
+        foreach (var candidate in new[] { hoodie, cap }.Concat(pool))
+        {
+            if (side.Count == 2) break;
+            if (candidate is null || candidate.Id == main.Id || side.Any(s => s.Id == candidate.Id)) continue;
+            side.Add(candidate);
+        }
+
+        return (main, side);
+    }
+
+    private List<HomeReview> BuildHomeReviews(IEnumerable<ProductReview> reviews, int take) => reviews
+        .Where(r => r.IsVisible && !string.IsNullOrWhiteSpace(r.Comment))
+        .OrderByDescending(r => r.IsVerifiedPurchase)
+        .ThenByDescending(r => r.Date)
+        .Take(take)
+        .Select(r =>
+        {
+            var parts = r.PublicAuthor.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            var display = parts.Length > 1 ? $"{parts[0]} {char.ToUpperInvariant(parts[^1][0])}." : r.PublicAuthor;
+            var initials = parts.Length > 1
+                ? $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}"
+                : char.ToUpperInvariant(r.PublicAuthor[0]).ToString();
+            var comment = r.Comment.Trim();
+            var title = r.Title?.Trim();
+            var text = string.IsNullOrWhiteSpace(title) || comment.StartsWith(title, StringComparison.OrdinalIgnoreCase)
+                ? comment
+                : $"{title} — {comment}";
+
+            return new HomeReview
+            {
+                Id = r.Id,
+                DisplayName = display,
+                Initials = initials,
+                Rating = Math.Clamp(r.Rating, 1, 5),
+                Text = text.Length <= 160 ? text : text[..157].TrimEnd() + "…",
+                IsVerifiedPurchase = r.IsVerifiedPurchase,
+                ProductId = r.ProductId,
+                ProductName = GetById(r.ProductId) is { } product && IsStorefrontActive(product) ? product.Name : null
+            };
+        })
+        .ToList();
+
+    private HomePromotion? BuildHomePromotion(AdminPromotion? promotion, IEnumerable<Product> fallback)
+    {
+        if (promotion is null)
+            return null;
+
+        var linked = promotion.ProductIds
+            .Select(GetById)
+            .Where(p => p is not null && IsStorefrontActive(p) && HasRealImage(p.ImageUrl))
+            .Cast<Product>()
+            .ToList();
+
+        var products = (linked.Count > 0 ? linked : fallback.Where(p => HasRealImage(p.ImageUrl)))
+            .DistinctBy(p => p.Id)
+            .Take(3)
+            .ToList();
+
+        return new HomePromotion
+        {
+            Promotion = promotion,
+            Products = products,
+            Href = linked.Count == 1 ? $"/product/{linked[0].Id}" : "/shop"
+        };
+    }
+
+    private static T Result<T>(Task<T> task, T fallback)
+    {
+        if (task.IsCompletedSuccessfully)
+            return task.Result;
+        if (task.Exception is not null)
+            Console.Error.WriteLine(task.Exception.GetBaseException());
+        return fallback;
+    }
+
+    private static bool IsStorefrontActive(Product p) =>
+        p.IsPublished && (string.IsNullOrEmpty(p.Status) || p.Status.Equals("Active", StringComparison.OrdinalIgnoreCase));
+
+    public static bool HasRealImage(string? url) =>
+        !string.IsNullOrWhiteSpace(url) && !string.Equals(url, CatalogHelpers.PlaceholderImage, StringComparison.Ordinal);
+
+    private static bool MentionsAny(Product p, params string[] words)
+    {
+        var tokens = $"{p.Name} {p.Category}"
+            .Split([' ', '-', '/', '&', ','], StringSplitOptions.RemoveEmptyEntries);
+        return tokens.Any(t => words.Any(w => t.Equals(w, StringComparison.OrdinalIgnoreCase)
+                                             || t.Equals(w + "s", StringComparison.OrdinalIgnoreCase)));
+    }
+
     public IEnumerable<Product> GetRelated(Product product, int take = 4)
     {
         var related = _products

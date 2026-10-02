@@ -14,7 +14,7 @@
     </div>
     @if (!string.IsNullOrWhiteSpace(ViewAllHref))
     {
-        <a href="@ViewAllHref">View All →</a>
+        <a href="@ViewAllHref">@ViewAllText</a>
     }
 </div>
 
@@ -23,4 +23,5 @@
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
     [Parameter] public string? Subtitle { get; set; }
     [Parameter] public string? ViewAllHref { get; set; }
+    [Parameter] public string ViewAllText { get; set; } = "View All →";
 }

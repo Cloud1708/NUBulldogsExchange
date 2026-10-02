@@ -2562,6 +2562,102 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     }
 
     // ========================================================
+    // Storefront home (public, read-only)
+    // ========================================================
+
+    public async Task<Dictionary<int, int>?> GetFulfilledUnitsSoldAsync()
+    {
+        try
+        {
+            // Requires docs/sql/021_storefront_best_sellers.sql; anon cannot read orders directly.
+            var rows = await SendForListAsync<ProductUnitsSoldRow>(
+                HttpMethod.Post,
+                "rest/v1/rpc/get_storefront_best_sellers",
+                new { });
+
+            return rows
+                .Where(r => r.ProductId > 0 && r.UnitsSold > 0)
+                .GroupBy(r => (int)r.ProductId)
+                .ToDictionary(g => g.Key, g => (int)g.Sum(r => r.UnitsSold));
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
+        {
+            Console.Error.WriteLine($"Storefront best sellers unavailable: {ex.Message}");
+            return null;
+        }
+    }
+
+    public async Task<List<ProductReview>> GetPublicReviewsAsync(int limit)
+    {
+        limit = Math.Clamp(limit, 1, 50);
+        List<ProductReviewRow> rows;
+        try
+        {
+            rows = await GetListAsync<ProductReviewRow>(
+                $"rest/v1/product_reviews?select=*&is_visible=eq.true&order=review_date.desc,id.desc&limit={limit}");
+        }
+        catch (InvalidOperationException ex) when (
+            ex.Message.Contains("is_visible", StringComparison.OrdinalIgnoreCase))
+        {
+            // SQL 018 not applied yet: every review is visible.
+            rows = await GetListAsync<ProductReviewRow>(
+                $"rest/v1/product_reviews?select=*&order=review_date.desc,id.desc&limit={limit}");
+        }
+
+        return rows.Select(MapProductReview).Where(r => r.IsVisible).ToList();
+    }
+
+    public async Task<AdminPromotion?> GetStorefrontPromotionAsync()
+    {
+        List<PromotionRow> rows;
+        try
+        {
+            rows = await GetListAsync<PromotionRow>(
+                "rest/v1/promotions?select=*&enabled=eq.true&order=start_date.desc&limit=20");
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or HttpRequestException)
+        {
+            return null;
+        }
+
+        var promo = rows
+            .Select(r => new AdminPromotion
+            {
+                Id = r.Id,
+                Name = r.Name,
+                Code = r.Code,
+                DiscountType = r.DiscountType,
+                DiscountValue = r.DiscountValue,
+                MinimumOrder = r.MinimumOrder,
+                MaximumDiscount = r.MaximumDiscount,
+                UsedCount = r.UsedCount,
+                UsageLimit = r.UsageLimit,
+                UsagePerCustomer = r.UsagePerCustomer,
+                StartDate = r.StartDate,
+                EndDate = r.EndDate,
+                Enabled = r.Enabled,
+                Description = r.Description
+            })
+            .FirstOrDefault(p => p.Status == "Active" && (p.UsageLimit <= 0 || p.UsedCount < p.UsageLimit));
+
+        if (promo is null)
+            return null;
+
+        try
+        {
+            var links = await GetListAsync<PromotionProductRow>(
+                $"rest/v1/promotion_products?select=product_id&promotion_id=eq.{Esc(promo.Id)}");
+            promo.ProductIds = links.Select(x => x.ProductId).ToList();
+        }
+        catch (InvalidOperationException)
+        {
+            // Product links are optional for the banner.
+        }
+
+        return promo;
+    }
+
+    // ========================================================
     // Inventory
     // ========================================================
 
@@ -3483,6 +3579,12 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         public DateTime EndDate { get; set; }
         public bool Enabled { get; set; }
         public string Description { get; set; } = string.Empty;
+    }
+
+    private sealed class ProductUnitsSoldRow
+    {
+        public long ProductId { get; set; }
+        public long UnitsSold { get; set; }
     }
 
     private sealed class PromotionProductRow

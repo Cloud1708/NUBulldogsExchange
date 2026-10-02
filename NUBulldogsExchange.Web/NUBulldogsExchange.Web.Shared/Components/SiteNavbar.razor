@@ -1,4 +1,7 @@
 @namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject ProductCatalogService Catalog
+@implements IDisposable
 
 <nav class="navigation">
     <div class="container nav-content">
@@ -31,5 +34,18 @@
                 <a href="/accessories?category=Accessories">Lanyards &amp; More</a>
             </div>
         </div>
+
+        @if (Catalog.SchoolEssentialsCategory is { } essentials)
+        {
+            <a class="nav-link" href="/shop?category=@Uri.EscapeDataString(essentials.Name)">School Essentials</a>
+        }
     </div>
 </nav>
+
+@code {
+    protected override void OnInitialized() => Catalog.OnChange += Refresh;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Catalog.OnChange -= Refresh;
+}

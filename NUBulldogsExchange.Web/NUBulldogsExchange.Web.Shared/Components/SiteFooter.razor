@@ -1,4 +1,7 @@
 @namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Services
+@inject ProductCatalogService Catalog
+@implements IDisposable
 
 <footer class="footer">
     <div class="container footer-grid">
@@ -13,12 +16,6 @@
             <p class="footer-description">
                 Official merchandise store for NU students, faculty, alumni, and Bulldog supporters.
             </p>
-            <div class="social-links">
-                <a href="#" aria-label="Facebook">FB</a>
-                <a href="#" aria-label="Instagram">IG</a>
-                <a href="#" aria-label="Twitter">TW</a>
-                <a href="#" aria-label="YouTube">YT</a>
-            </div>
         </div>
 
         <div>
@@ -27,39 +24,35 @@
             <a href="/best-sellers">Best Sellers</a>
             <a href="/apparel">Apparel</a>
             <a href="/accessories">Accessories</a>
+            @if (Catalog.SchoolEssentialsCategory is { } essentials)
+            {
+                <a href="/shop?category=@Uri.EscapeDataString(essentials.Name)">School Essentials</a>
+            }
         </div>
 
         <div>
             <h4>Customer Service</h4>
-            <a href="#">FAQs</a>
-            <a href="#">Order Tracking</a>
-            <a href="#">Contact Us</a>
-            <a href="#">Returns</a>
-            <a href="#">Terms &amp; Conditions</a>
+            <a href="/orders">Order Tracking</a>
         </div>
 
         <div>
             <h4>My Account</h4>
-            <a href="/login">Profile</a>
-            <a href="/cart">My Orders</a>
+            <a href="/profile">Profile</a>
+            <a href="/orders">My Orders</a>
             <a href="/wishlist">Wishlist</a>
             <a href="/cart">Cart</a>
-        </div>
-
-        <div>
-            <h4>Features</h4>
-            <div class="feature-item"><Icon Name="map-pin" Size="14" CssClass="feature-icon" /> Campus Pickup</div>
-            <div class="feature-item"><Icon Name="shield" Size="14" CssClass="feature-icon" /> Secure Checkout</div>
-            <div class="feature-item"><Icon Name="truck" Size="14" CssClass="feature-icon" /> Easy Tracking</div>
-            <div class="feature-item"><Icon Name="headphones" Size="14" CssClass="feature-icon" /> Support</div>
         </div>
     </div>
 
     <div class="footer-bottom">
-        <span>© 2026 NU Bulldogs Exchange. All rights reserved.</span>
-        <div class="footer-bottom-links">
-            <a href="#">Privacy Policy</a>
-            <a href="#">Terms</a>
-        </div>
+        <span>© @DateTime.Now.Year NU Bulldogs Exchange. All rights reserved.</span>
     </div>
 </footer>
+
+@code {
+    protected override void OnInitialized() => Catalog.OnChange += Refresh;
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Catalog.OnChange -= Refresh;
+}

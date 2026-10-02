@@ -5,8 +5,6 @@
 @using NUBulldogsExchange.Web.Shared.Services
 @inject IFormFactor FormFactor
 @inject ProductCatalogService Catalog
-@inject AdminCategoryService Categories
-@inject AdminProductService Products
 @implements IDisposable
 
 <PageTitle>NU Bulldogs Exchange | Official Merchandise</PageTitle>
@@ -19,93 +17,182 @@ else
 {
     @if (_loading)
     {
-        <section class="section section-light">
+        <section class="home-section">
             <div class="container">
-                <p>Loading catalog…</p>
+                <p class="home-status">Loading catalog…</p>
             </div>
         </section>
     }
-    else if (!string.IsNullOrWhiteSpace(_error))
+    else if (!string.IsNullOrWhiteSpace(_error) || _home is null)
     {
-        <section class="section section-light">
+        <section class="home-section">
             <div class="container">
-                <p class="text-danger">@_error</p>
+                <p class="home-status text-danger">@(_error ?? "Unable to load catalog. Please try again later.")</p>
             </div>
         </section>
     }
     else
     {
-        <HeroSection />
+        <HeroSection MainProduct="_home.HeroMain" SideProducts="_home.HeroSide" />
 
-        <section class="section section-light" id="categories">
-            <div class="container">
-                <SectionHeader Title="Shop by Category"
-                               Subtitle="Find exactly what you're looking for"
-                               ViewAllHref="/shop" />
-                @if (!Catalog.Categories.Any())
-                {
-                    <div class="empty-state">
-                        <p>No categories available.</p>
-                    </div>
-                }
-                else
-                {
+        @if (_home.Categories.Count > 0)
+        {
+            <section class="home-section" id="categories">
+                <div class="container">
+                    <SectionHeader Title="Shop by Category"
+                                   Subtitle="Find exactly what you're looking for"
+                                   ViewAllHref="/shop"
+                                   ViewAllText="View All Categories →" />
                     <div class="category-grid">
-                        @foreach (var category in Catalog.Categories)
+                        @foreach (var category in _home.Categories)
                         {
                             <CategoryCard Category="category" />
                         }
                     </div>
-                }
-            </div>
-        </section>
+                </div>
+            </section>
+        }
 
-        <section class="section section-light" id="products">
-            <div class="container">
-                <SectionHeader Title="Featured Bulldogs Picks"
-                               Subtitle="Handpicked favorites for every Bulldog"
-                               ViewAllHref="/shop" />
-                <ProductGrid Products="Catalog.Featured" />
-            </div>
-        </section>
-
-        <section class="section section-light" id="fresh">
+        <section class="home-section" id="fresh">
             <div class="container">
                 <SectionHeader Label="JUST DROPPED"
                                Title="Fresh Drops"
                                Subtitle="New merchandise just landed."
                                ViewAllHref="/new-arrivals" />
-                <ProductGrid Products="Catalog.FreshDrops" />
+                @if (_home.FreshDrops.Count > 0)
+                {
+                    <ProductGrid Products="_home.FreshDrops"
+                                 CssClass="home-product-grid"
+                                 ShowNewBadge="true"
+                                 ShowEmptyState="false"
+                                 UnitsSold="_home.UnitsSold" />
+                }
+                else
+                {
+                    <p class="home-empty">No new merchandise yet. Check back soon.</p>
+                }
             </div>
         </section>
 
-        <section class="section section-light" id="favorites">
+        <section class="home-section" id="favorites">
             <div class="container">
                 <SectionHeader Label="TOP PICKS"
                                Title="Bulldog Favorites"
                                Subtitle="What the community loves most"
                                ViewAllHref="/best-sellers" />
-                <ProductGrid Products="Catalog.Favorites" ShowRank="true" />
+                @if (_home.BestSellers.Count > 0)
+                {
+                    <ProductGrid Products="_home.BestSellers.Select(b => b.Product)"
+                                 CssClass="home-product-grid"
+                                 ShowRank="true"
+                                 ShowEmptyState="false"
+                                 UnitsSold="_home.UnitsSold" />
+                }
+                else
+                {
+                    <p class="home-empty">No sales data yet.</p>
+                }
             </div>
         </section>
 
+        @if (_home.Promotion is { } promo)
+        {
+            <section class="home-section home-section-tight">
+                <div class="container">
+                    <div class="promo-banner">
+                        <div class="promo-banner-content">
+                            <span class="promo-banner-label">Limited-time offer · Ends @promo.Promotion.EndDate.ToString("MMM d")</span>
+                            <h2>@promo.Promotion.Name</h2>
+                            <p>
+                                @(string.IsNullOrWhiteSpace(promo.Promotion.Description)
+                                    ? $"Save {promo.Promotion.DiscountLabel} on official NU merchandise."
+                                    : promo.Promotion.Description)
+                            </p>
+                            <div class="promo-banner-meta">
+                                <span class="promo-code">Code: <strong>@promo.Promotion.Code</strong></span>
+                                <span>@promo.Promotion.DiscountLabel off</span>
+                                @if (promo.Promotion.MinimumOrder > 0)
+                                {
+                                    <span>Min. spend @promo.Promotion.MinimumOrderLabel</span>
+                                }
+                            </div>
+                            <a href="@promo.Href" class="btn btn-gold">Shop Now →</a>
+                        </div>
+                        @if (promo.Products.Count > 0)
+                        {
+                            <div class="promo-banner-art count-@promo.Products.Count">
+                                @foreach (var product in promo.Products)
+                                {
+                                    <img src="@product.ImageUrl"
+                                         alt="@product.Name"
+                                         loading="lazy"
+                                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                }
+                            </div>
+                        }
+                    </div>
+                </div>
+            </section>
+        }
+
+        @if (_home.Reviews.Count > 0)
+        {
+            <section class="home-section" id="reviews">
+                <div class="container">
+                    <SectionHeader Title="What Our Customers Say"
+                                   Subtitle="Real reviews from NU students, alumni, and supporters" />
+                    <div class="review-grid">
+                        @foreach (var review in _home.Reviews)
+                        {
+                            <article class="home-review-card">
+                                <header>
+                                    <span class="home-review-avatar">@review.Initials</span>
+                                    <div>
+                                        <strong>@review.DisplayName</strong>
+                                        @if (review.IsVerifiedPurchase)
+                                        {
+                                            <small class="home-review-verified"><Icon Name="check-circle" Size="12" /> Verified Purchase</small>
+                                        }
+                                    </div>
+                                </header>
+                                <div class="home-review-stars" aria-label="@review.Rating out of 5 stars">
+                                    @for (var i = 1; i <= 5; i++)
+                                    {
+                                        <span class="@(i <= review.Rating ? "filled" : "")">★</span>
+                                    }
+                                </div>
+                                <p>“@review.Text”</p>
+                                @if (!string.IsNullOrWhiteSpace(review.ProductName))
+                                {
+                                    <a class="home-review-product" href="/product/@review.ProductId">
+                                        <Icon Name="tag" Size="13" /> @review.ProductName
+                                    </a>
+                                }
+                            </article>
+                        }
+                    </div>
+                </div>
+            </section>
+        }
+
         <WhyShopSection />
-        <NewsletterSection />
     }
 }
 
 @code {
     private bool _loading = true;
     private string? _error;
+    private StorefrontHome? _home;
 
     protected override async Task OnInitializedAsync()
     {
+        if (FormFactor.IsMobile)
+            return;
+
         Catalog.OnChange += Refresh;
         try
         {
-            await Categories.EnsureLoadedAsync();
-            await Products.EnsureLoadedAsync();
-            await Catalog.EnsureLoadedAsync();
+            _home = await Catalog.LoadHomeAsync();
         }
         catch (Exception ex)
         {

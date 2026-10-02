@@ -1,18 +1,21 @@
 @namespace NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
 
-<div class="product-grid">
+<div class="product-grid @CssClass">
     @{
         var index = 0;
     }
     @foreach (var product in Products)
     {
         index++;
-        <ProductCard Product="product" Rank="@(ShowRank && index == 1 ? 1 : null)" />
+        <ProductCard Product="product"
+                     Rank="@(ShowRank ? index : null)"
+                     ShowNewBadge="ShowNewBadge"
+                     SoldCount="@SoldFor(product)" />
     }
 </div>
 
-@if (!Products.Any())
+@if (!Products.Any() && ShowEmptyState)
 {
     <div class="empty-state">
         <p>No products found. Try a different search or category.</p>
@@ -23,4 +26,12 @@
 @code {
     [Parameter] public IEnumerable<Product> Products { get; set; } = [];
     [Parameter] public bool ShowRank { get; set; }
+    [Parameter] public bool ShowNewBadge { get; set; }
+    [Parameter] public bool ShowEmptyState { get; set; } = true;
+    [Parameter] public string? CssClass { get; set; }
+    /// <summary>When set, each card shows these totals (0 when a product is missing) instead of the cached sold count.</summary>
+    [Parameter] public IReadOnlyDictionary<int, int>? UnitsSold { get; set; }
+
+    private int? SoldFor(Product product) =>
+        UnitsSold is null ? null : UnitsSold.TryGetValue(product.Id, out var units) ? units : 0;
 }

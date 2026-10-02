@@ -2,12 +2,14 @@
 @using NUBulldogsExchange.Web.Shared.Data
 
 <a class="category-card" href="@Href">
-    <img src="@Category.ImageUrl"
-         alt="@Category.Name"
-         loading="lazy"
-         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+    <div class="category-card-image">
+        <img src="@Category.ImageUrl"
+             alt="@Category.Name"
+             loading="lazy"
+             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+    </div>
     <strong>@Category.Name</strong>
-    <span>@Category.ItemCount</span>
+    <span>Shop now →</span>
 </a>
 
 @code {

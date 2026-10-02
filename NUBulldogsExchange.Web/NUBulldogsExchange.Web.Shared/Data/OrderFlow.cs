@@ -197,6 +197,12 @@ public static class OrderFlow
         return EqualsStatus(status, Completed);
     }
 
+    /// <summary>Campus Pickup counts once Completed; Delivery counts once Delivered.</summary>
+    public static bool IsFulfilled(string? fulfillment, string? status) =>
+        IsDelivery(fulfillment)
+            ? EqualsStatus(status, "Delivered")
+            : EqualsStatus(status, Completed);
+
     public static bool CanWriteReview(MockOrder order) =>
         CanWriteReview(order.Fulfillment, order.Status);
 

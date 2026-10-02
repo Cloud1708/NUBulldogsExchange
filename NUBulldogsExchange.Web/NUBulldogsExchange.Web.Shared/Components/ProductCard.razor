@@ -12,7 +12,11 @@
     <div class="product-image">
         @if (Rank is > 0)
         {
-            <span class="rank-badge">#@Rank</span>
+            <span class="rank-badge rank-@Rank">#@Rank</span>
+        }
+        else if (ShowNewBadge)
+        {
+            <span class="badge badge-new">New</span>
         }
         else if (!string.IsNullOrWhiteSpace(Product.Badge))
         {
@@ -45,7 +49,7 @@
             {
                 <span class="star @(i <= Math.Round(Product.Rating) ? "filled" : "")">★</span>
             }
-            <span>(@Product.Reviews) · @Product.Sold sold</span>
+            <span>(@Product.Reviews) · @((SoldCount ?? Product.Sold).ToString("N0")) sold</span>
         </div>
 
         @if (Product.Colors.Count > 0)
@@ -80,6 +84,9 @@
 @code {
     [Parameter, EditorRequired] public Product Product { get; set; } = null!;
     [Parameter] public int? Rank { get; set; }
+    [Parameter] public bool ShowNewBadge { get; set; }
+    /// <summary>Overrides the cached <see cref="Product.Sold"/> (e.g. fulfilled-only totals on Home).</summary>
+    [Parameter] public int? SoldCount { get; set; }
 
     private string BadgeClass => Product.Badge switch
     {
@@ -103,7 +110,9 @@
     {
         if (!Auth.IsLoggedIn)
         {
-            Navigation.NavigateTo("/wishlist");
+            Toast.Show("Please log in to save items to your wishlist.");
+            var returnUrl = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+            Navigation.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
             return;
         }
 
@@ -115,7 +124,8 @@
 
     private void AddToCart()
     {
-        if (Product.HasSizeVariants)
+        // Size/color must be chosen by the customer; never add an arbitrary variant.
+        if (Product.HasVariants)
         {
             Navigation.NavigateTo($"/product/{Product.Id}");
             return;
