@@ -39,14 +39,50 @@ public class AdminCategoryService
     public AdminCategory? GetById(string id) =>
         _categories.FirstOrDefault(c => c.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
+    /// <summary>
+    /// Case-insensitive name and slug check against loaded categories.
+    /// Returns an error message, or null when the values are free.
+    /// </summary>
+    public string? FindDuplicate(string? name, string? slug, string? excludeId)
+    {
+        var trimmed = name?.Trim() ?? string.Empty;
+        if (trimmed.Length > 0)
+        {
+            var nameHit = _categories.FirstOrDefault(c =>
+                !SameId(c.Id, excludeId) &&
+                c.Name.Equals(trimmed, StringComparison.OrdinalIgnoreCase));
+            if (nameHit is not null)
+                return $"A category named \"{nameHit.Name}\" already exists.";
+        }
+
+        var normalizedSlug = string.IsNullOrWhiteSpace(slug) ? AdminCategory.ToSlug(trimmed) : slug.Trim();
+        if (normalizedSlug.Length > 0)
+        {
+            var slugHit = _categories.FirstOrDefault(c =>
+                !SameId(c.Id, excludeId) &&
+                c.Slug.Equals(normalizedSlug, StringComparison.OrdinalIgnoreCase));
+            if (slugHit is not null)
+                return $"The slug \"{normalizedSlug}\" is already used by \"{slugHit.Name}\".";
+        }
+
+        return null;
+    }
+
+    private static bool SameId(string id, string? excludeId) =>
+        !string.IsNullOrWhiteSpace(excludeId) &&
+        id.Equals(excludeId, StringComparison.OrdinalIgnoreCase);
+
     public async Task<AdminCategory> AddAsync(AdminCategory category)
     {
-        category.Id = $"cat-{_nextId:000}";
-        _nextId++;
         category.Name = category.Name.Trim();
         category.Slug = string.IsNullOrWhiteSpace(category.Slug)
             ? AdminCategory.ToSlug(category.Name)
             : AdminCategory.ToSlug(category.Slug);
+        var duplicate = FindDuplicate(category.Name, category.Slug, null);
+        if (duplicate is not null)
+            throw new InvalidOperationException(duplicate);
+        category.Id = $"cat-{_nextId:000}";
+        _nextId++;
         category.Status = string.IsNullOrWhiteSpace(category.Status) ? "Active" : category.Status;
         category.ImageUrl = string.IsNullOrWhiteSpace(category.ImageUrl)
             ? CatalogHelpers.PlaceholderImage
@@ -65,10 +101,16 @@ public class AdminCategoryService
         var existing = GetById(category.Id);
         if (existing is null) return false;
 
-        existing.Name = category.Name.Trim();
-        existing.Slug = string.IsNullOrWhiteSpace(category.Slug)
-            ? AdminCategory.ToSlug(existing.Name)
+        var name = category.Name.Trim();
+        var slug = string.IsNullOrWhiteSpace(category.Slug)
+            ? AdminCategory.ToSlug(name)
             : AdminCategory.ToSlug(category.Slug);
+        var duplicate = FindDuplicate(name, slug, existing.Id);
+        if (duplicate is not null)
+            throw new InvalidOperationException(duplicate);
+
+        existing.Name = name;
+        existing.Slug = slug;
         existing.ImageUrl = string.IsNullOrWhiteSpace(category.ImageUrl)
             ? CatalogHelpers.PlaceholderImage
             : category.ImageUrl.Trim();
@@ -89,16 +131,27 @@ public class AdminCategoryService
         return true;
     }
 
-    public async Task<(bool Success, string Message)> TryDeleteAsync(string id)
+    /// <summary>
+    /// Deletes a category that contains no products.
+    /// <paramref name="liveProductCount"/> is the actual catalog count; the stored
+    /// product_count column is only a fallback and can drift.
+    /// </summary>
+    public async Task<(bool Success, string Message)> TryDeleteAsync(string id, int? liveProductCount = null)
     {
         var category = GetById(id);
         if (category is null)
             return (false, "Category not found.");
 
-        if (category.ProductCount > 0)
-            return (false, "Move or remove the products in this category first.");
+        var count = Math.Max(0, liveProductCount ?? category.ProductCount);
+        if (count > 0)
+        {
+            var noun = count == 1 ? "product" : "products";
+            return (false, $"Cannot delete this category because it contains {count} {noun}. Move or remove the {noun} first.");
+        }
 
-        await _db.DeleteCategoryAsync(id);
+        if (!await _db.DeleteCategoryAsync(id))
+            return (false, "Unable to delete this category.");
+
         _categories.Remove(category);
         OnChange?.Invoke();
         return (true, "Category deleted.");

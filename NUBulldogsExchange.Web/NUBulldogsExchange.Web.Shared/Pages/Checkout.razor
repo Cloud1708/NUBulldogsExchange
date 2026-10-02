@@ -13,6 +13,7 @@
 @inject AdminPromotionService PromotionService
 @inject AdminSettingsService Settings
 @inject IAppDatabase Database
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Checkout | NU Bulldogs Exchange</PageTitle>
@@ -37,117 +38,278 @@
 }
 else if (_checkoutPhase == CheckoutPhaseConfirmation && _confirmedOrder is not null)
 {
-    <section class="checkout-page">
-        <div class="container checkout-container">
-            <nav class="shop-breadcrumb" aria-label="Breadcrumb">
-                <a href="/">Home</a>
-                <Icon Name="chevron-right" Size="14" />
-                <a href="/cart">My Shopping Cart</a>
-                <Icon Name="chevron-right" Size="14" />
-                <span>Checkout</span>
-            </nav>
+    var order = _confirmedOrder;
+    var isDeliveryOrder = OrderFlow.IsDelivery(order.Fulfillment);
+    var steps = OrderFlow.DetailTimelineSteps(order.Fulfillment);
+    var progress = OrderFlow.TimelineProgress(order.Fulfillment, order.Status);
+    var itemsSubtotal = order.Items.Sum(i => i.Price * i.Quantity);
+    var subtotal = order.Subtotal > 0 ? order.Subtotal : itemsSubtotal;
 
-            <header class="checkout-header">
-                <h1>Checkout</h1>
-                <p>Complete your order in a few easy steps.</p>
-            </header>
-
+    <section class="checkout-page confirm-page">
+        <div class="confirm-shell">
             @RenderCheckoutSteps()
 
-            <div class="checkout-confirm">
-                <div class="checkout-confirm-icon" aria-hidden="true">
-                    <Icon Name="check-circle" Size="40" />
+            <section class="confirm-banner" aria-labelledby="confirm-title">
+                <div class="confirm-banner-main">
+                    <span class="confirm-banner-icon" aria-hidden="true"><Icon Name="check" Size="34" /></span>
+                    <div>
+                        <h1 id="confirm-title">Order Confirmed!</h1>
+                        <p>Thank you for supporting NU Bulldogs Exchange.<br />Your order has been placed successfully.</p>
+                    </div>
                 </div>
-                <h2>Order Confirmed!</h2>
-                <p class="checkout-confirm-lead">Thank you for supporting NU Bulldogs Exchange. Your order has been placed successfully.</p>
 
-                <dl class="checkout-confirm-details">
+                <dl class="confirm-banner-meta">
                     <div>
                         <dt>Order Number</dt>
-                        <dd>@_confirmedOrder.Id</dd>
-                    </div>
-                    <div>
-                        <dt>Order Date</dt>
-                        <dd>@_confirmedOrder.Date.ToString("MMMM d, yyyy")</dd>
-                    </div>
-                    <div>
-                        <dt>Payment Method</dt>
-                        <dd>@(string.IsNullOrWhiteSpace(_confirmedOrder.PaymentMethod) ? "Not recorded" : _confirmedOrder.PaymentMethod)</dd>
-                    </div>
-                    <div>
-                        <dt>Payment Status</dt>
-                        <dd>
-                            <span class="admin-payment-badge payment-@_confirmedOrder.PaymentKey">@_confirmedOrder.PaymentStatus</span>
+                        <dd class="confirm-order-number">
+                            <span>@order.Id</span>
+                            <button type="button"
+                                    class="confirm-copy-btn"
+                                    aria-label="Copy order number @order.Id"
+                                    title="Copy order number"
+                                    @onclick="CopyOrderNumberAsync">
+                                <Icon Name="copy" Size="15" />
+                            </button>
                         </dd>
                     </div>
                     <div>
-                        <dt>Fulfillment Method</dt>
-                        <dd>@_confirmedOrder.Fulfillment</dd>
-                    </div>
-                    <div>
-                        <dt>Total Amount</dt>
-                        <dd>₱@_confirmedOrder.Total.ToString("N0")</dd>
+                        <dt>Order Date</dt>
+                        <dd>@FormatOrderDate(order.Date)</dd>
                     </div>
                 </dl>
 
-                @if (string.Equals(_confirmedOrder.Fulfillment, DeliveryMethod, StringComparison.OrdinalIgnoreCase))
+                <div class="confirm-banner-art" aria-hidden="true">
+                    <svg viewBox="0 0 120 120" width="110" height="110">
+                        <circle cx="16" cy="30" r="3" fill="#F9C424" />
+                        <circle cx="104" cy="22" r="2.5" fill="#22C55E" />
+                        <circle cx="108" cy="78" r="3" fill="#F9C424" />
+                        <rect x="12" y="84" width="6" height="6" rx="1" fill="#123A63" opacity="0.35" transform="rotate(20 15 87)" />
+                        <path d="M44 34 C44 18 76 18 76 34" fill="none" stroke="#94A3B8" stroke-width="4" stroke-linecap="round" />
+                        <path d="M28 36 H92 L98 106 H22 Z" fill="#E2E8F0" stroke="#CBD5E1" stroke-width="2" />
+                        <text x="60" y="72" text-anchor="middle" font-family="Arial, sans-serif" font-size="24" font-weight="800" fill="#123A63">NU</text>
+                        <text x="60" y="90" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" font-weight="700" fill="#123A63" letter-spacing="1">BULLDOGS</text>
+                    </svg>
+                </div>
+            </section>
+
+            <section class="confirm-card confirm-tracker-card" aria-labelledby="confirm-status-title">
+                <header class="confirm-card-head">
+                    <Icon Name="calendar" Size="18" />
+                    <h2 id="confirm-status-title">Order Status</h2>
+                </header>
+
+                @if (progress < 0)
                 {
-                    <div class="checkout-confirm-info">
-                        <strong>Delivery Information</strong>
-                        <p>
-                            <span>Recipient: @(_confirmedOrder.ShippingRecipientName)</span>
-                            <span>Shipping Address: @FormatConfirmedDeliveryAddress(_confirmedOrder)</span>
-                            <span>Contact Number: @(_confirmedOrder.ShippingPhone)</span>
-                            <span>Estimated Delivery: 3–7 business days</span>
-                        </p>
+                    <div class="confirm-cancelled" role="status">
+                        <Icon Name="x-circle" Size="22" />
+                        <div>
+                            <strong>Order Cancelled</strong>
+                            <p>This order has been cancelled and will not be processed further.</p>
+                        </div>
                     </div>
                 }
                 else
                 {
-                    <div class="checkout-confirm-info">
-                        <strong>Campus Pickup Information</strong>
-                        <p>
-                            <span>Your order will be ready within @PickupReadyWindow.</span>
-                            <span>Pick up your order at the @PickupLocationLabel pickup location.</span>
-                            <span>You'll receive a notification when your order is ready.</span>
-                        </p>
-                    </div>
-                }
-
-                @if (_confirmedOrder.Items.Count > 0)
-                {
-                    <ul class="checkout-summary-items checkout-confirm-items">
-                        @foreach (var item in _confirmedOrder.Items)
+                    <ol class="confirm-tracker" aria-label="Order progress">
+                        @for (var i = 0; i < steps.Length; i++)
                         {
-                            <li>
-                                <img src="@item.ImageUrl"
-                                     alt="@item.Name"
-                                     loading="lazy"
-                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                                <div class="checkout-summary-item-meta">
-                                    <strong>@item.Name</strong>
-                                    @if (!string.IsNullOrWhiteSpace(item.VariantLabel))
+                            var isDone = i < progress || (i == progress && i == steps.Length - 1);
+                            var isCurrent = i == progress && !isDone;
+                            var stateClass = isDone ? "is-done" : isCurrent ? "is-current" : "is-future";
+                            var stateLabel = isDone ? "Completed" : isCurrent ? "Current step" : "Not started";
+
+                            <li class="confirm-step @stateClass" aria-current="@(isCurrent ? "step" : null)">
+                                <span class="confirm-step-dot" aria-hidden="true">
+                                    @if (isDone || (isCurrent && i == 0))
                                     {
-                                        <span>@item.VariantLabel</span>
+                                        <Icon Name="check" Size="14" />
                                     }
-                                    <span>Qty: @item.Quantity</span>
-                                </div>
-                                <strong class="checkout-summary-price">₱@((item.Price * item.Quantity).ToString("N0"))</strong>
+                                    else
+                                    {
+                                        <Icon Name="@TrackerIcon(steps[i])" Size="14" />
+                                    }
+                                </span>
+                                <strong>@TrackerLabel(steps[i])</strong>
+                                <small>
+                                    <span class="visually-hidden">@stateLabel. </span>
+                                    @if (i == 0)
+                                    {
+                                        @FormatOrderDate(order.Date)
+                                    }
+                                    else if (isDone)
+                                    {
+                                        <text>Done</text>
+                                    }
+                                    else if (isCurrent)
+                                    {
+                                        <text>In progress</text>
+                                    }
+                                    else
+                                    {
+                                        <text>Pending</text>
+                                    }
+                                </small>
                             </li>
                         }
-                    </ul>
+                    </ol>
                 }
+            </section>
 
-                <div class="checkout-confirm-actions">
-                    <a href="/orders" class="btn btn-navy">Track Order</a>
-                    <a href="/orders" class="btn btn-outline-navy">View My Orders</a>
-                    <a href="/shop" class="btn btn-outline-navy">Continue Shopping →</a>
+            <div class="confirm-grid">
+                <div class="confirm-col">
+                    <section class="confirm-card" aria-labelledby="confirm-items-title">
+                        <header class="confirm-card-head">
+                            <Icon Name="shopping-bag" Size="18" />
+                            <h2 id="confirm-items-title">Order Items (@order.ItemCount)</h2>
+                        </header>
+
+                        @if (order.Items.Count == 0)
+                        {
+                            <p class="confirm-muted">Item details are not available for this order.</p>
+                        }
+                        else
+                        {
+                            <ul class="confirm-items">
+                                @foreach (var item in order.Items)
+                                {
+                                    var variant = VariantLine(item);
+                                    <li>
+                                        <img src="@(string.IsNullOrWhiteSpace(item.ImageUrl) ? MockData.PlaceholderImage : item.ImageUrl)"
+                                             alt="@item.Name"
+                                             loading="lazy"
+                                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                        <div class="confirm-item-meta">
+                                            <strong>@item.Name</strong>
+                                            @if (!string.IsNullOrEmpty(variant))
+                                            {
+                                                <span>@variant</span>
+                                            }
+                                            @if (item.Quantity > 1)
+                                            {
+                                                <span>Qty: @item.Quantity × ₱@item.Price.ToString("N0")</span>
+                                            }
+                                            else
+                                            {
+                                                <span>Qty: @item.Quantity</span>
+                                            }
+                                        </div>
+                                        <div class="confirm-item-price">
+                                            @if (item.Quantity > 1)
+                                            {
+                                                <small>Line Total</small>
+                                            }
+                                            <strong>₱@((item.Price * item.Quantity).ToString("N0"))</strong>
+                                        </div>
+                                    </li>
+                                }
+                            </ul>
+                        }
+                    </section>
+
+                    @if (isDeliveryOrder)
+                    {
+                        <section class="confirm-card" aria-labelledby="confirm-fulfillment-title">
+                            <header class="confirm-card-head">
+                                <Icon Name="map-pin" Size="18" />
+                                <h2 id="confirm-fulfillment-title">Delivery Information</h2>
+                            </header>
+                            <dl class="confirm-rows">
+                                <div><dt>Recipient</dt><dd>@ValueOrNotRecorded(order.ShippingRecipientName)</dd></div>
+                                <div><dt>Contact Number</dt><dd>@ValueOrNotRecorded(order.ShippingPhone)</dd></div>
+                                <div><dt>Shipping Address</dt><dd>@ValueOrNotRecorded(order.ShippingAddressLine)</dd></div>
+                                @if (!string.IsNullOrWhiteSpace(order.ShippingBarangay))
+                                {
+                                    <div><dt>Barangay</dt><dd>@order.ShippingBarangay</dd></div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(order.ShippingCity))
+                                {
+                                    <div><dt>City</dt><dd>@order.ShippingCity</dd></div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(order.ShippingProvince))
+                                {
+                                    <div><dt>Province</dt><dd>@order.ShippingProvince</dd></div>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(order.ShippingPostalCode))
+                                {
+                                    <div><dt>Postal Code</dt><dd>@order.ShippingPostalCode</dd></div>
+                                }
+                                <div><dt>Estimated Delivery</dt><dd>@EstimatedDeliveryWindow</dd></div>
+                            </dl>
+                        </section>
+                    }
+                    else
+                    {
+                        <section class="confirm-card" aria-labelledby="confirm-fulfillment-title">
+                            <header class="confirm-card-head">
+                                <Icon Name="map-pin" Size="18" />
+                                <h2 id="confirm-fulfillment-title">Campus Pickup Information</h2>
+                            </header>
+                            <dl class="confirm-rows">
+                                <div><dt>Pickup Location</dt><dd>@OrderFlow.PickupLocation</dd></div>
+                                <div><dt>Pickup Hours</dt><dd>@OrderFlow.PickupHoursDays, @OrderFlow.PickupHoursTime</dd></div>
+                                <div><dt>Status</dt><dd>@(progress < 0 ? OrderFlow.Cancelled : TrackerLabel(steps[Math.Clamp(progress, 0, steps.Length - 1)]))</dd></div>
+                                <div><dt>Estimated Ready Time</dt><dd>@PickupReadyWindow</dd></div>
+                            </dl>
+                            <p class="confirm-note">We'll notify you when your order is ready for pickup.</p>
+                        </section>
+                    }
+                </div>
+
+                <div class="confirm-col">
+                    <section class="confirm-card" aria-labelledby="confirm-summary-title">
+                        <header class="confirm-card-head">
+                            <Icon Name="list" Size="18" />
+                            <h2 id="confirm-summary-title">Order Summary</h2>
+                        </header>
+                        <dl class="confirm-summary">
+                            <div><dt>Subtotal</dt><dd>₱@subtotal.ToString("N0")</dd></div>
+                            <div>
+                                <dt>Delivery Fee</dt>
+                                @if (isDeliveryOrder)
+                                {
+                                    <dd>₱@order.ShippingFee.ToString("N0")</dd>
+                                }
+                                else
+                                {
+                                    <dd class="text-success">Free</dd>
+                                }
+                            </div>
+                            @if (!string.IsNullOrWhiteSpace(order.PromotionCode))
+                            {
+                                <div><dt>Promo Code</dt><dd>@order.PromotionCode</dd></div>
+                            }
+                            <div>
+                                <dt>Discount</dt>
+                                <dd class="@(order.DiscountAmount > 0 ? "text-success" : null)">-₱@order.DiscountAmount.ToString("N0")</dd>
+                            </div>
+                            <div class="confirm-summary-total"><dt>Total Amount</dt><dd>₱@order.Total.ToString("N0")</dd></div>
+                        </dl>
+                    </section>
+
+                    <section class="confirm-card" aria-labelledby="confirm-payment-title">
+                        <header class="confirm-card-head">
+                            <Icon Name="wallet" Size="18" />
+                            <h2 id="confirm-payment-title">Payment Information</h2>
+                        </header>
+                        <dl class="confirm-rows">
+                            <div><dt>Payment Method</dt><dd><span class="confirm-pill">@OrderFlow.PaymentMethodLabel(order.PaymentMethod)</span></dd></div>
+                            <div><dt>Payment Status</dt><dd><span class="admin-payment-badge payment-@order.PaymentKey">@order.PaymentStatus</span></dd></div>
+                            <div><dt>Fulfillment Method</dt><dd>@(isDeliveryOrder ? OrderFlow.Delivery : OrderFlow.CampusPickup)</dd></div>
+                        </dl>
+                    </section>
                 </div>
             </div>
+
+            <div class="confirm-actions">
+                <a href="@($"/orders?order={Uri.EscapeDataString(order.Id)}")" class="btn btn-navy"><Icon Name="truck" Size="16" /> Track Order</a>
+                <a href="/orders" class="btn btn-outline-navy"><Icon Name="package" Size="16" /> View My Orders</a>
+                <a href="/shop" class="btn btn-outline-navy"><Icon Name="shopping-bag" Size="16" /> Continue Shopping</a>
+            </div>
+            <p class="confirm-footnote">We'll notify you in your account when your order status changes.</p>
         </div>
     </section>
 }
-else if (!Cart.Items.Any())
+else if (!Cart.SelectedItems.Any())
 {
     <section class="empty-cart-section">
         <div class="container">
@@ -519,7 +681,7 @@ else
                 <aside class="checkout-summary">
                     <div class="checkout-summary-card">
                         <header class="checkout-summary-head">
-                            <h3>Order Summary (@Cart.TotalCount item@(Cart.TotalCount == 1 ? "" : "s"))</h3>
+                            <h3>Order Summary (@Cart.SelectedCount item@(Cart.SelectedCount == 1 ? "" : "s"))</h3>
                             @if (_checkoutPhase == CheckoutPhaseInformation)
                             {
                                 <a href="/cart">Edit Cart</a>
@@ -527,7 +689,7 @@ else
                         </header>
 
                         <ul class="checkout-summary-items">
-                            @foreach (var item in Cart.Items)
+                            @foreach (var item in Cart.SelectedItems)
                             {
                                 <li>
                                     <img src="@item.Product.ImageUrl"
@@ -552,7 +714,7 @@ else
                         </ul>
 
                         <div class="checkout-summary-rows">
-                            <div class="summary-row"><span>Subtotal</span><span>₱@Cart.Subtotal.ToString("N0")</span></div>
+                            <div class="summary-row"><span>Subtotal</span><span>₱@Cart.SelectedSubtotal.ToString("N0")</span></div>
                             <div class="summary-row">
                                 <span>@(_fulfillment == DeliveryMethod ? "Delivery Fee" : "Fulfillment Fee")</span>
                                 @if (_fulfillment == DeliveryMethod)
@@ -745,7 +907,7 @@ else
             : DefaultDeliveryFee;
 
     private decimal FulfillmentFee => _fulfillment == DeliveryMethod ? DeliveryFee : 0;
-    private decimal GrandTotal => Math.Max(0, Cart.EstimatedTotal + FulfillmentFee);
+    private decimal GrandTotal => Math.Max(0, Cart.SelectedEstimatedTotal + FulfillmentFee);
 
     private UserAddress? SelectedAddress =>
         _savedAddresses.FirstOrDefault(a => a.Id.ToString().Equals(_selectedAddressId, StringComparison.OrdinalIgnoreCase));
@@ -762,17 +924,57 @@ else
             ? "1–3 business days"
             : Settings.Saved.Orders.ProcessingTime.Trim();
 
-    private static string FormatConfirmedDeliveryAddress(AdminOrder order)
-    {
-        var parts = new[]
-        {
-            order.ShippingAddressLine,
-            order.ShippingBarangay,
-            string.Join(" ", new[] { order.ShippingCity, order.ShippingProvince, order.ShippingPostalCode }
-                .Where(v => !string.IsNullOrWhiteSpace(v)))
-        };
+    private const string EstimatedDeliveryWindow = "3–7 business days";
 
-        return string.Join(", ", parts.Where(v => !string.IsNullOrWhiteSpace(v)));
+    private static string FormatOrderDate(DateTime date)
+    {
+        var local = date.Kind == DateTimeKind.Utc ? date.ToLocalTime() : date;
+        return local.ToString("MMMM d, yyyy • h:mm tt", System.Globalization.CultureInfo.GetCultureInfo("en-US"));
+    }
+
+    private static string TrackerLabel(string status) => status switch
+    {
+        "Pending" => "Order Placed",
+        _ => status
+    };
+
+    private static string TrackerIcon(string status) => status switch
+    {
+        "Confirmed" => "check-circle",
+        "Processing" => "package",
+        "Out for Delivery" => "truck",
+        "Ready for Pickup" => "map-pin",
+        _ => "check"
+    };
+
+    private static string VariantLine(AdminOrderItem item)
+    {
+        var parts = new List<string>(2);
+        if (OrderFlow.HasDisplayColor(item.ColorName))
+            parts.Add($"Color: {MockData.FormatColorName(item.ColorName!.Trim())}");
+        if (OrderFlow.HasDisplaySize(item.Size))
+            parts.Add($"Size: {item.Size!.Trim()}");
+        return string.Join(" • ", parts);
+    }
+
+    private static string ValueOrNotRecorded(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "Not recorded" : value.Trim();
+
+    private async Task CopyOrderNumberAsync()
+    {
+        if (_confirmedOrder is null || string.IsNullOrWhiteSpace(_confirmedOrder.Id))
+            return;
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _confirmedOrder.Id);
+            Toast.Show("Order number copied.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            Toast.Show("Unable to copy the order number.");
+        }
     }
 
     private string DefaultCashMethod =>
@@ -1114,14 +1316,14 @@ else
 
     private async Task ApplyPromoAsync()
     {
-        if (_applyingPromo || !Cart.Items.Any())
+        if (_applyingPromo || !Cart.SelectedItems.Any())
             return;
 
         _applyingPromo = true;
         _promoMessage = null;
         try
         {
-            var items = Cart.Items.Select(i => new PromoCartItem
+            var items = Cart.SelectedItems.Select(i => new PromoCartItem
             {
                 ProductId = i.Product.Id,
                 Quantity = i.Quantity,
@@ -1229,7 +1431,7 @@ else
         if (_submitting || Auth.CurrentUser is null)
             return;
 
-        if (!Cart.Items.Any() && string.IsNullOrWhiteSpace(_placedOrderId))
+        if (!Cart.SelectedItems.Any() && string.IsNullOrWhiteSpace(_placedOrderId))
             return;
 
         // Re-validate (cash places immediately; online places after simulated payment success).
@@ -1273,7 +1475,7 @@ else
                     CustomerEmail = _email.Trim(),
                     CustomerPhone = _contactPhone.Trim(),
                     Date = DateTime.Now,
-                    Subtotal = Cart.Subtotal,
+                    Subtotal = Cart.SelectedSubtotal,
                     DiscountAmount = Cart.AppliedDiscount,
                     ShippingFee = isDelivery ? DeliveryFee : 0,
                     Total = expectedTotal,
@@ -1289,7 +1491,7 @@ else
                     ShippingCity = isDelivery ? _shipCity.Trim() : null,
                     ShippingProvince = isDelivery ? _shipProvince.Trim() : null,
                     ShippingPostalCode = isDelivery ? _shipPostal.Trim() : null,
-                    Items = Cart.Items.Select(i =>
+                    Items = Cart.SelectedItems.Select(i =>
                     {
                         var variantId = i.VariantId;
                         var color = i.SelectedColor;
@@ -1417,7 +1619,7 @@ else
                     Tone = "green",
                     IsRead = false,
                     RelatedId = order.Id,
-                    RelatedHref = "/orders"
+                    RelatedHref = $"/orders?order={Uri.EscapeDataString(order.Id)}"
                 });
             }
             catch (Exception ex)
@@ -1426,7 +1628,7 @@ else
             }
 
             Toast.Show($"Order {order.Id} placed.");
-            Cart.Clear();
+            Cart.CompleteCheckout();
             try { await Cart.PersistAsync(user.Email); }
             catch (Exception ex) { Console.Error.WriteLine(ex); }
         }

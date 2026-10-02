@@ -177,8 +177,10 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (bytes.Length == 0)
             return null;
 
-        var mime = meta.Contains("image/png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
-        var ext = mime == "image/png" ? "png" : "jpg";
+        var mime = meta.Contains("image/png", StringComparison.OrdinalIgnoreCase) ? "image/png"
+            : meta.Contains("image/webp", StringComparison.OrdinalIgnoreCase) ? "image/webp"
+            : "image/jpeg";
+        var ext = mime == "image/png" ? "png" : mime == "image/webp" ? "webp" : "jpg";
         var fileName = $"{Guid.NewGuid():N}.{ext}";
 
         foreach (var bucket in new[] { "product-images", "products", "images" })
@@ -561,6 +563,14 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (string.IsNullOrWhiteSpace(category.Slug))
             category.Slug = AdminCategory.ToSlug(category.Name);
 
+        if (category.ImageUrl.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+        {
+            var stored = await TryPersistUploadedImageAsync(category.ImageUrl);
+            if (string.IsNullOrWhiteSpace(stored) || stored.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+                throw new InvalidOperationException("Unable to store the category image. Please try again.");
+            category.ImageUrl = stored;
+        }
+
         if (string.IsNullOrWhiteSpace(category.Id))
         {
             var generatedId = $"cat-{category.Slug}-{Guid.NewGuid():N}";
@@ -922,6 +932,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
         // Best-effort snapshot write if RPC does not yet persist these columns.
         await TryPatchOrderCheckoutSnapshotAsync(order);
+        await TrySaveShippingSnapshotAsync(order);
         await TryPatchOrderItemColorSnapshotsAsync(order);
         if (!string.Equals(order.Status, "Pending", StringComparison.OrdinalIgnoreCase))
         {
@@ -1164,6 +1175,43 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         catch
         {
             // Snapshot columns may not exist until 003_checkout_customer_shipping.sql is applied.
+        }
+    }
+
+    // Customers have no UPDATE on public.orders, so the PATCH above is silently
+    // filtered by RLS; the shipping snapshot is written through a write-once RPC.
+    private async Task TrySaveShippingSnapshotAsync(AdminOrder order)
+    {
+        if (string.IsNullOrWhiteSpace(order.Id) || !OrderFlow.IsDelivery(order.Fulfillment))
+            return;
+
+        try
+        {
+            var saved = await SendForSingleAsync<AdminOrder>(
+                HttpMethod.Post,
+                "rest/v1/rpc/save_checkout_shipping_snapshot",
+                new Dictionary<string, object?>
+                {
+                    ["p_order_id"] = order.Id,
+                    ["p_recipient_name"] = order.ShippingRecipientName,
+                    ["p_phone"] = order.ShippingPhone,
+                    ["p_address_line"] = order.ShippingAddressLine,
+                    ["p_barangay"] = order.ShippingBarangay,
+                    ["p_city"] = order.ShippingCity,
+                    ["p_province"] = order.ShippingProvince,
+                    ["p_postal_code"] = order.ShippingPostalCode
+                });
+
+            if (saved is not null && !string.IsNullOrWhiteSpace(saved.Id))
+            {
+                order.ShippingFee = saved.ShippingFee;
+                order.Total = saved.Total;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(
+                $"Shipping snapshot for order {order.Id} was not saved. Run docs/sql/022_checkout_shipping_snapshot.sql in Supabase. {ex.Message}");
         }
     }
 
@@ -1470,12 +1518,23 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
             _session.SetFromAccessToken(sessionToken, authUser.Id, authUser.Email);
 
+            var profileImage = request.ProfileImage?.Trim() ?? string.Empty;
+            if (profileImage.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
+            {
+                if (profileImage.StartsWith("data:image/svg", StringComparison.OrdinalIgnoreCase))
+                    return Fail("Please upload a JPG, PNG, or WEBP image.");
+
+                profileImage = await TryPersistUploadedImageAsync(profileImage) ?? string.Empty;
+                if (string.IsNullOrEmpty(profileImage))
+                    return Fail("Unable to upload your photo right now.");
+            }
+
             var body = new Dictionary<string, object?>
             {
                 ["first_name"] = request.FirstName.Trim(),
                 ["last_name"] = request.LastName.Trim(),
                 ["phone_number"] = request.PhoneNumber.Trim(),
-                ["profile_image"] = request.ProfileImage,
+                ["profile_image"] = profileImage,
                 ["student_id"] = request.StudentId,
                 ["college"] = request.College,
                 ["address"] = request.Address

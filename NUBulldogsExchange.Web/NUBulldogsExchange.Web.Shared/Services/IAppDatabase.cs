@@ -104,6 +104,13 @@ public interface IAppDatabase
     // Inventory
     Task<List<InventoryHistoryEntry>> GetInventoryHistoryAsync();
     Task AddInventoryHistoryAsync(InventoryHistoryEntry entry);
+
+    /// <summary>
+    /// True when order stock apply already writes inventory_history rows (SQLite).
+    /// Supabase/RPC paths leave this false so the inventory service can log movements.
+    /// </summary>
+    bool OrderStockWritesInventoryHistory => false;
+
     Task<Dictionary<int, int>> GetReservedStockAsync();
     Task SetReservedStockAsync(int productId, int reserved);
     Task<Dictionary<int, int>> GetLowStockLevelsAsync();

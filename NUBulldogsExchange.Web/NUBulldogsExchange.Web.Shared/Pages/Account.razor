@@ -1,10 +1,13 @@
 @page "/account"
+@using System.Globalization
 @using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AuthService Auth
 @inject OrderService Orders
 @inject WishlistService Wishlist
+@inject NotificationService Notifications
+@inject ProductCatalogService Catalog
 @implements IDisposable
 
 <PageTitle>My Account | NU Bulldogs Exchange</PageTitle>
@@ -26,89 +29,301 @@
 }
 else
 {
+    var bannerImages = BannerImages();
+
     <AccountShell Active="overview">
         <div class="account-overview">
-            <section class="account-welcome-card">
-                <h1>Welcome back, @Auth.FirstName!</h1>
-                <p>Here's a summary of your account.</p>
-            </section>
-
-            <div class="account-stat-grid">
-                <article class="account-stat-card">
-                    <div class="account-stat-icon" aria-hidden="true">
-                        <Icon Name="package" Size="22" />
-                    </div>
-                    <strong>@Orders.TotalCount</strong>
-                    <span>Total Orders</span>
-                </article>
-                <article class="account-stat-card">
-                    <div class="account-stat-icon" aria-hidden="true">
-                        <Icon Name="map-pin" Size="22" />
-                    </div>
-                    <strong>@Orders.ActiveCount</strong>
-                    <span>Active Orders</span>
-                </article>
-                <article class="account-stat-card">
-                    <div class="account-stat-icon" aria-hidden="true">
-                        <Icon Name="heart" Size="22" />
-                    </div>
-                    <strong>@Wishlist.Count</strong>
-                    <span>Wishlist Items</span>
-                </article>
-            </div>
-
-            <section class="account-panel account-recent-panel">
-                <div class="account-panel-head">
-                    <h2>Recent Orders</h2>
-                    <a href="/orders" class="account-view-all">
-                        View All
-                        <Icon Name="chevron-right" Size="14" />
-                    </a>
+            <section class="account-banner" aria-labelledby="account-banner-title">
+                <div class="account-banner-copy">
+                    <h1 id="account-banner-title">Welcome back, @Auth.FirstName!</h1>
+                    <p>Track your orders, manage your wishlist, and update your profile.</p>
                 </div>
-
-                <div class="recent-order-list">
-                    @foreach (var order in Orders.Recent())
+                <div class="account-banner-art" aria-hidden="true">
+                    <span class="account-banner-shape is-gold"></span>
+                    <span class="account-banner-shape is-navy"></span>
+                    @foreach (var (url, index) in bannerImages.Select((u, i) => (u, i)))
                     {
-                        <article class="recent-order">
-                            <div class="order-thumbs" aria-hidden="true">
-                                @foreach (var item in order.Items.SelectMany(i => Enumerable.Repeat(i, i.Quantity)).Take(3))
-                                {
-                                    <img src="@item.ImageUrl"
-                                         alt=""
-                                         loading="lazy"
-                                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                                }
-                            </div>
-                            <div class="recent-order-meta">
-                                <strong>@order.Id</strong>
-                                <span>@order.DateLabel · @order.ItemCountLabel</span>
-                            </div>
-                            <div class="recent-order-aside">
-                                <span class="order-status status-@order.StatusKey">@order.Status</span>
-                                <strong>₱@order.Total.ToString("N0")</strong>
-                            </div>
-                        </article>
+                        <img src="@url"
+                             alt=""
+                             class="account-banner-img is-@(index == 0 ? "main" : "side")"
+                             loading="lazy"
+                             onerror="this.style.display='none';" />
                     }
                 </div>
             </section>
+
+            <section class="account-summary-grid" aria-label="Account summary">
+                <article class="account-summary-card">
+                    <div class="account-summary-icon tone-blue" aria-hidden="true"><Icon Name="package" Size="22" /></div>
+                    <div>
+                        <strong>@Orders.TotalCount</strong>
+                        <h2>Total Orders</h2>
+                        <p>All your orders</p>
+                    </div>
+                </article>
+                <article class="account-summary-card">
+                    <div class="account-summary-icon tone-blue" aria-hidden="true"><Icon Name="truck" Size="22" /></div>
+                    <div>
+                        <strong>@Orders.ActiveCount</strong>
+                        <h2>Active Orders</h2>
+                        <p>Processing or on the way</p>
+                    </div>
+                </article>
+                <article class="account-summary-card">
+                    <div class="account-summary-icon tone-green" aria-hidden="true"><Icon Name="check-circle" Size="22" /></div>
+                    <div>
+                        <strong>@Orders.CompletedCount</strong>
+                        <h2>Completed Orders</h2>
+                        <p>Successfully fulfilled</p>
+                    </div>
+                </article>
+                <article class="account-summary-card">
+                    <div class="account-summary-icon tone-red" aria-hidden="true"><Icon Name="heart" Size="22" /></div>
+                    <div>
+                        <strong>@Wishlist.Count</strong>
+                        <h2>Wishlist Items</h2>
+                        <p>Items you saved</p>
+                    </div>
+                </article>
+            </section>
+
+            <section class="account-dash-card account-orders-card" aria-labelledby="recent-orders-title">
+                <header class="account-dash-head">
+                    <div>
+                        <h2 id="recent-orders-title">Recent Orders</h2>
+                        <p>Your latest orders and their status.</p>
+                    </div>
+                    <a href="/orders" class="account-view-all">
+                        View All Orders <Icon Name="arrow-right" Size="14" />
+                    </a>
+                </header>
+
+                @{ var recent = Orders.Recent(3).ToList(); }
+                @if (_loadingOrders && recent.Count == 0)
+                {
+                    <p class="account-dash-empty">Loading your orders…</p>
+                }
+                else if (recent.Count == 0)
+                {
+                    <div class="account-dash-empty">
+                        <p>No orders yet.</p>
+                        <a href="/shop" class="btn btn-navy">Start Shopping</a>
+                    </div>
+                }
+                else
+                {
+                    <ul class="account-order-list">
+                        @foreach (var order in recent)
+                        {
+                            var first = order.Items.FirstOrDefault();
+                            var payment = OrderFlow.PaymentBadge(order.PaymentMethod, order.PaymentStatus);
+                            var href = $"/orders?order={Uri.EscapeDataString(order.Id)}";
+                            <li class="account-order-row">
+                                <img class="account-order-thumb"
+                                     src="@ItemImage(first)"
+                                     alt="@(first?.Name ?? "Order item")"
+                                     loading="lazy"
+                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+
+                                <div class="account-order-meta">
+                                    <strong title="@order.Id">@order.Id</strong>
+                                    <span>@order.Date.ToString("MMMM d, yyyy", EnUs) • @order.ItemCountLabel</span>
+                                </div>
+
+                                <div class="account-order-minis">
+                                    @if (order.Items.Count > 1)
+                                    {
+                                        @foreach (var item in order.Items.Take(2))
+                                        {
+                                            <img src="@ItemImage(item)"
+                                                 alt="@item.Name"
+                                                 loading="lazy"
+                                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                        }
+                                        @if (order.Items.Count > 2)
+                                        {
+                                            <span class="account-order-more">+@(order.Items.Count - 2) more</span>
+                                        }
+                                    }
+                                </div>
+
+                                <div class="account-order-fulfillment">
+                                    <Icon Name="@(order.IsDelivery ? "truck" : "map-pin")" Size="16" />
+                                    <div>
+                                        <strong>@(order.IsDelivery ? OrderFlow.Delivery : OrderFlow.CampusPickup)</strong>
+                                        <span>@(order.IsDelivery ? OrderFlow.EstimatedDeliveryWindow : OrderFlow.PickupLocation)</span>
+                                    </div>
+                                </div>
+
+                                <div class="account-order-badges">
+                                    <span class="order-status status-@order.StatusKey">@order.Status</span>
+                                    <span class="account-pay-badge pay-@payment.Key">@payment.Label</span>
+                                </div>
+
+                                <strong class="account-order-total">₱@order.Total.ToString("N0")</strong>
+
+                                <a href="@href"
+                                   class="btn btn-navy account-order-action"
+                                   aria-label="@($"{(order.IsActive ? "Track" : "View")} order {order.Id}")">
+                                    @(order.IsActive ? "Track Order" : "View Order")
+                                </a>
+                            </li>
+                        }
+                    </ul>
+                }
+            </section>
+
+            <div class="account-bottom-grid">
+                <section class="account-dash-card" aria-labelledby="recent-notes-title">
+                    <header class="account-dash-head">
+                        <div>
+                            <h2 id="recent-notes-title">Recent Notifications</h2>
+                            <p>Latest updates about your orders and account.</p>
+                        </div>
+                        <a href="/notifications" class="account-view-all">
+                            View All <Icon Name="arrow-right" Size="14" />
+                        </a>
+                    </header>
+
+                    @{ var notes = Notifications.Items.Take(3).ToList(); }
+                    @if (notes.Count == 0)
+                    {
+                        <p class="account-dash-empty">No recent notifications.</p>
+                    }
+                    else
+                    {
+                        <ul class="account-note-feed">
+                            @foreach (var note in notes)
+                            {
+                                <li>
+                                    <a href="@(string.IsNullOrWhiteSpace(note.RelatedHref) ? "/orders" : note.RelatedHref)"
+                                       class="account-note-item @(note.IsRead ? "is-read" : "is-unread")">
+                                        <span class="notification-icon tone-@note.Tone" aria-hidden="true">
+                                            <Icon Name="@note.Icon" Size="16" />
+                                        </span>
+                                        <span class="account-note-body">
+                                            <strong>@note.Title</strong>
+                                            <span>@(string.IsNullOrWhiteSpace(note.RelatedId) ? note.Message : note.RelatedId)</span>
+                                        </span>
+                                        <span class="account-note-time">@note.TimeAgo</span>
+                                        @if (!note.IsRead)
+                                        {
+                                            <span class="notification-dot" role="img" aria-label="Unread"></span>
+                                        }
+                                    </a>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+
+                <section class="account-dash-card" aria-labelledby="quick-actions-title">
+                    <header class="account-dash-head">
+                        <div>
+                            <h2 id="quick-actions-title">Quick Actions</h2>
+                            <p>Common tasks for your account.</p>
+                        </div>
+                    </header>
+
+                    <div class="account-quick-grid">
+                        @foreach (var action in QuickActions)
+                        {
+                            <a href="@action.Href" class="account-quick-action">
+                                <span class="account-quick-icon tone-@action.Tone" aria-hidden="true">
+                                    <Icon Name="@action.Icon" Size="18" />
+                                </span>
+                                <span class="account-quick-copy">
+                                    <strong>@action.Title</strong>
+                                    <span>@action.Description</span>
+                                </span>
+                                <Icon Name="chevron-right" Size="16" />
+                            </a>
+                        }
+                    </div>
+                </section>
+            </div>
         </div>
     </AccountShell>
 }
 
 @code {
-    protected override void OnInitialized()
+    private static readonly CultureInfo EnUs = CultureInfo.GetCultureInfo("en-US");
+
+    private static readonly (string Title, string Description, string Href, string Icon, string Tone)[] QuickActions =
+    [
+        ("Shop Now", "Discover new arrivals and Bulldog merchandise.", "/shop", "shopping-bag", "blue"),
+        ("View Wishlist", "Check your saved items.", "/wishlist", "heart", "red"),
+        ("My Orders", "Track and manage your orders.", "/orders", "package", "blue"),
+        ("Manage Profile", "Update your personal information.", "/profile", "user", "blue")
+    ];
+
+    private bool _loadingOrders = true;
+
+    protected override async Task OnInitializedAsync()
     {
-        Auth.OnChange += Refresh;
+        Auth.OnChange += OnAuthChanged;
         Orders.OnChange += Refresh;
         Wishlist.OnChange += Refresh;
+        Notifications.OnChange += Refresh;
+        Catalog.OnChange += Refresh;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!Auth.IsLoggedIn)
+            return;
+
+        try
+        {
+            await Task.WhenAll(
+                Orders.EnsureLoadedAsync(Auth.Email),
+                Notifications.EnsureLoadedAsync(Auth.Email),
+                Catalog.EnsureLoadedAsync());
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+        }
+        finally
+        {
+            _loadingOrders = false;
+        }
+    }
+
+    private List<string> BannerImages() =>
+        Catalog.Featured
+            .Select(p => p.ImageUrl)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct()
+            .Take(2)
+            .ToList();
+
+    private string ItemImage(MockOrderItem? item)
+    {
+        if (item is null)
+            return MockData.PlaceholderImage;
+        if (!string.IsNullOrWhiteSpace(item.ImageUrl))
+            return item.ImageUrl;
+
+        var current = Catalog.GetById(item.ProductId)?.ImageUrl;
+        return string.IsNullOrWhiteSpace(current) ? MockData.PlaceholderImage : current;
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
+    private void OnAuthChanged() => InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
     public void Dispose()
     {
-        Auth.OnChange -= Refresh;
+        Auth.OnChange -= OnAuthChanged;
         Orders.OnChange -= Refresh;
         Wishlist.OnChange -= Refresh;
+        Notifications.OnChange -= Refresh;
+        Catalog.OnChange -= Refresh;
     }
 }

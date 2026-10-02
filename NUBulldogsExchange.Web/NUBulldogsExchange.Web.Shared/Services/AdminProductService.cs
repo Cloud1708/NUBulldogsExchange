@@ -298,33 +298,32 @@ public class AdminProductService
 
     public async Task<bool> DeleteAsync(int id)
     {
-        var removed = _products.RemoveAll(p => p.Id == id) > 0;
-        if (removed)
-        {
-            await _db.DeleteProductAsync(id);
-            RemoveFromStorefront(id);
-            OnChange?.Invoke();
-        }
+        if (GetById(id) is null || !await _db.DeleteProductAsync(id))
+            return false;
 
-        return removed;
+        _products.RemoveAll(p => p.Id == id);
+        RemoveFromStorefront(id);
+        OnChange?.Invoke();
+        return true;
     }
 
-    public async Task<int> DeleteManyAsync(IEnumerable<int> ids)
+    /// <summary>Deletes products one by one; returns the ids the database actually removed.</summary>
+    public async Task<List<int>> DeleteManyAsync(IEnumerable<int> ids)
     {
         var set = ids.ToHashSet();
-        var removedIds = _products.Where(p => set.Contains(p.Id)).Select(p => p.Id).ToList();
-        var removed = _products.RemoveAll(p => set.Contains(p.Id));
-        if (removed > 0)
+        var deleted = new List<int>();
+        foreach (var id in _products.Where(p => set.Contains(p.Id)).Select(p => p.Id).ToList())
         {
-            foreach (var id in removedIds)
-            {
-                await _db.DeleteProductAsync(id);
-                RemoveFromStorefront(id);
-            }
-            OnChange?.Invoke();
+            if (!await _db.DeleteProductAsync(id))
+                continue;
+            _products.RemoveAll(p => p.Id == id);
+            RemoveFromStorefront(id);
+            deleted.Add(id);
         }
 
-        return removed;
+        if (deleted.Count > 0)
+            OnChange?.Invoke();
+        return deleted;
     }
 
     public async Task SetStatusManyAsync(IEnumerable<int> ids, string status)

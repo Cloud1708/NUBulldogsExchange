@@ -23,79 +23,105 @@
             }
         </nav>
 
-        <h1 class="shop-title">@DisplayTitle</h1>
-
-        <div class="shop-toolbar-card">
-            <p class="shop-showing">
-                Showing <strong>@_filtered.Count</strong> @_productLabel
-            </p>
-
-            <div class="shop-toolbar-right">
-                <button type="button" class="mobile-filters-btn" @onclick="() => _filtersOpen = true">
-                    <Icon Name="sliders" Size="16" /> Filters
-                </button>
-
-                <label class="shop-sort">
-                    <span>Sort by</span>
-                    <select value="@_sortOption" @onchange="OnSortChanged">
-                        <option value="featured">Featured</option>
-                        <option value="newest">Newest</option>
-                        <option value="price-asc">Price: Low to High</option>
-                        <option value="price-desc">Price: High to Low</option>
-                        <option value="best-selling">Best Selling</option>
-                        <option value="rating">Highest Rated</option>
-                    </select>
-                </label>
-
-                <div class="view-toggle" role="group" aria-label="View mode">
-                    <button type="button"
-                            class="view-btn @(_viewMode == "grid" ? "active" : "")"
-                            title="Grid view"
-                            @onclick="SetGridView">
-                        <Icon Name="grid" Size="16" />
-                    </button>
-                    <button type="button"
-                            class="view-btn @(_viewMode == "list" ? "active" : "")"
-                            title="List view"
-                            @onclick="SetListView">
-                        <Icon Name="list" Size="16" />
-                    </button>
-                </div>
-            </div>
-        </div>
+        <header class="shop-heading">
+            <h1 class="shop-title">@DisplayTitle</h1>
+            @if (!HasSearchQuery && !string.IsNullOrWhiteSpace(Subtitle))
+            {
+                <p>@Subtitle</p>
+            }
+        </header>
 
         <div class="shop-layout">
             <aside class="shop-sidebar desktop-filters">
-                <ShopFilters SelectedCategories="_draftCategories"
-                             SelectedSizes="_draftSizes"
-                             MaxPriceValue="_draftMaxPrice"
-                             MaxPriceValueChanged="OnDraftPriceChanged"
-                             MinRating="_draftMinRating"
-                             MinRatingChanged="OnDraftRatingChanged"
-                             InStockOnly="_draftInStockOnly"
-                             InStockOnlyChanged="OnDraftInStockChanged"
-                             OnApplyClicked="ApplyFilters"
+                <ShopFilters Categories="CategoryOptions"
+                             Colors="ColorOptions"
+                             Sizes="SizeOptions"
+                             PriceMin="_catalogMin"
+                             PriceMax="_catalogMax"
+                             SelectedMin="_minPrice"
+                             SelectedMinChanged="SetMinPrice"
+                             SelectedMax="_maxPrice"
+                             SelectedMaxChanged="SetMaxPrice"
+                             SelectedCategories="_categories"
+                             SelectedColors="_colors"
+                             SelectedSizes="_sizes"
+                             MinRating="_minRating"
+                             MinRatingChanged="SetRating"
+                             InStockOnly="_inStockOnly"
+                             InStockOnlyChanged="SetInStock"
+                             InStockCount="InStockCount"
+                             FiltersChanged="OnFiltersChanged"
                              OnClearClicked="ClearAll"
                              RadioGroupName="@($"{RadioGroupPrefix}-desktop")" />
             </aside>
 
             <div class="shop-results">
-                @if (!_pageItems.Any())
+                <div class="shop-toolbar-card">
+                    <p class="shop-showing">@ShowingLabel</p>
+                    <div class="shop-toolbar-right">
+                        <button type="button" class="mobile-filters-btn" @onclick="() => _filtersOpen = true">
+                            <Icon Name="sliders" Size="16" /> Filters
+                        </button>
+                        <label class="shop-sort">
+                            <span>Sort by</span>
+                            <select value="@_sortOption" @onchange="OnSortChanged">
+                                <option value="featured">Featured</option>
+                                <option value="newest">Newest</option>
+                                <option value="best-selling">Best Selling</option>
+                                <option value="price-asc">Price: Low to High</option>
+                                <option value="price-desc">Price: High to Low</option>
+                                <option value="rating">Top Rated</option>
+                            </select>
+                        </label>
+                        <div class="view-toggle" role="group" aria-label="View mode">
+                            <button type="button" class="view-btn @(_viewMode == "grid" ? "active" : "")" aria-pressed="@(_viewMode == "grid")" title="Grid view" @onclick="SetGridView">
+                                <Icon Name="grid" Size="16" />
+                            </button>
+                            <button type="button" class="view-btn @(_viewMode == "list" ? "active" : "")" aria-pressed="@(_viewMode == "list")" title="List view" @onclick="SetListView">
+                                <Icon Name="list" Size="16" />
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                @if (Chips.Count > 0)
+                {
+                    <div class="shop-chips">
+                        @foreach (var chip in Chips)
+                        {
+                            var key = chip.Key;
+                            <span class="shop-chip">
+                                @chip.Label
+                                <button type="button" aria-label="@($"Remove {chip.Label}")" @onclick="() => RemoveChip(key)">
+                                    <Icon Name="x" Size="12" />
+                                </button>
+                            </span>
+                        }
+                        <button type="button" class="shop-chip-clear" @onclick="ClearAll">Clear All</button>
+                    </div>
+                }
+
+                @if (Universe.Count == 0)
                 {
                     <div class="shop-empty">
-                        @if (HasSearchQuery)
+                        <h2>No products are currently available.</h2>
+                        <p>Please check back soon.</p>
+                        <a href="/" class="btn btn-navy">Return Home</a>
+                    </div>
+                }
+                else if (!_pageItems.Any())
+                {
+                    <div class="shop-empty">
+                        @if (HasSearchQuery && !HasActiveFilters)
                         {
                             <h2>No products found for "@_searchQuery".</h2>
-                            <p>Try another search term or adjust your filters.</p>
-                            <div class="shop-empty-actions">
-                                <button type="button" class="btn btn-navy" @onclick="ClearSearch">Clear Search</button>
-                                <a href="/shop" class="btn btn-outline-navy">View All Products</a>
-                            </div>
+                            <p>Try another search term.</p>
+                            <button type="button" class="btn btn-navy" @onclick="ClearSearch">Clear Search</button>
                         }
                         else
                         {
                             <h2>No products found.</h2>
-                            <p>Try adjusting your filters or search.</p>
+                            <p>Try adjusting your filters.</p>
                             <button type="button" class="btn btn-navy" @onclick="ClearAll">Clear Filters</button>
                         }
                     </div>
@@ -105,7 +131,7 @@
                     <div class="product-list">
                         @foreach (var product in _pageItems)
                         {
-                            <ProductListCard Product="product" />
+                            <ProductListCard @key="product.Id" Product="product" SoldCount="Catalog.FulfilledUnits(product.Id)" />
                         }
                     </div>
                 }
@@ -114,7 +140,7 @@
                     <div class="product-grid shop-product-grid">
                         @foreach (var product in _pageItems)
                         {
-                            <ProductCard Product="product" />
+                            <ProductCard @key="product.Id" Product="product" SoldCount="Catalog.FulfilledUnits(product.Id)" ShowCatalogExtras="true" />
                         }
                     </div>
                 }
@@ -122,29 +148,13 @@
                 @if (_totalPages > 1)
                 {
                     <div class="shop-pagination">
-                        <button type="button"
-                                class="page-btn"
-                                disabled="@(_currentPage <= 1)"
-                                @onclick="() => GoToPage(_currentPage - 1)">
-                            Previous
-                        </button>
-
+                        <button type="button" class="page-btn" disabled="@(_currentPage <= 1)" @onclick="() => GoToPage(_currentPage - 1)">Previous</button>
                         @for (var page = 1; page <= _totalPages; page++)
                         {
                             var p = page;
-                            <button type="button"
-                                    class="page-btn page-num @(_currentPage == p ? "active" : "")"
-                                    @onclick="() => GoToPage(p)">
-                                @p
-                            </button>
+                            <button type="button" class="page-btn page-num @(_currentPage == p ? "active" : "")" @onclick="() => GoToPage(p)">@p</button>
                         }
-
-                        <button type="button"
-                                class="page-btn"
-                                disabled="@(_currentPage >= _totalPages)"
-                                @onclick="() => GoToPage(_currentPage + 1)">
-                            Next
-                        </button>
+                        <button type="button" class="page-btn" disabled="@(_currentPage >= _totalPages)" @onclick="() => GoToPage(_currentPage + 1)">Next</button>
                     </div>
                 }
             </div>
@@ -162,74 +172,175 @@
                 <Icon Name="x" Size="18" />
             </button>
         </div>
-        <ShopFilters SelectedCategories="_draftCategories"
-                     SelectedSizes="_draftSizes"
-                     MaxPriceValue="_draftMaxPrice"
-                     MaxPriceValueChanged="OnDraftPriceChanged"
-                     MinRating="_draftMinRating"
-                     MinRatingChanged="OnDraftRatingChanged"
-                     InStockOnly="_draftInStockOnly"
-                     InStockOnlyChanged="OnDraftInStockChanged"
-                     OnApplyClicked="ApplyFilters"
+        <ShopFilters Categories="CategoryOptions"
+                     Colors="ColorOptions"
+                     Sizes="SizeOptions"
+                     PriceMin="_catalogMin"
+                     PriceMax="_catalogMax"
+                     SelectedMin="_minPrice"
+                     SelectedMinChanged="SetMinPrice"
+                     SelectedMax="_maxPrice"
+                     SelectedMaxChanged="SetMaxPrice"
+                     SelectedCategories="_categories"
+                     SelectedColors="_colors"
+                     SelectedSizes="_sizes"
+                     MinRating="_minRating"
+                     MinRatingChanged="SetRating"
+                     InStockOnly="_inStockOnly"
+                     InStockOnlyChanged="SetInStock"
+                     InStockCount="InStockCount"
+                     FiltersChanged="OnFiltersChanged"
                      OnClearClicked="ClearAll"
-                     RadioGroupName="@($"{RadioGroupPrefix}-mobile")" />
+                     RadioGroupName="@($"{RadioGroupPrefix}-drawer")" />
     </aside>
 }
 
 @code {
     [Parameter, EditorRequired] public string Title { get; set; } = string.Empty;
+    [Parameter] public string? Subtitle { get; set; }
     [Parameter] public IEnumerable<BreadcrumbItem> Breadcrumb { get; set; } = [];
     [Parameter] public IEnumerable<Product>? BaseProducts { get; set; }
     [Parameter] public string DefaultSort { get; set; } = "featured";
     [Parameter] public string RadioGroupPrefix { get; set; } = "listing";
 
     private const int PageSize = 8;
-    private const decimal MaxPrice = 2000;
 
     private string? _searchQuery;
-    private string? _previousSearchQuery;
     private string _sortOption = "featured";
     private string _viewMode = "grid";
     private int _currentPage = 1;
     private bool _filtersOpen;
     private bool _initialized;
+    private bool _priceReady;
+    private decimal _catalogMin;
+    private decimal _catalogMax;
+    private decimal _minPrice;
+    private decimal _maxPrice;
 
-    private readonly HashSet<string> _draftCategories = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _draftSizes = new(StringComparer.OrdinalIgnoreCase);
-    private decimal _draftMaxPrice = MaxPrice;
-    private int _draftMinRating;
-    private bool _draftInStockOnly;
-
-    private readonly HashSet<string> _appliedCategories = new(StringComparer.OrdinalIgnoreCase);
-    private readonly HashSet<string> _appliedSizes = new(StringComparer.OrdinalIgnoreCase);
-    private decimal _appliedMaxPrice = MaxPrice;
-    private int _appliedMinRating;
-    private bool _appliedInStockOnly;
+    private readonly HashSet<string> _categories = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _colors = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _sizes = new(StringComparer.OrdinalIgnoreCase);
+    private int _minRating;
+    private bool _inStockOnly;
 
     private List<Product> _filtered = [];
     private List<Product> _pageItems = [];
     private int _totalPages = 1;
 
     private bool HasSearchQuery => !string.IsNullOrWhiteSpace(_searchQuery);
-    private string _productLabel => _filtered.Count == 1 ? "product" : "products";
 
-    private string DisplayTitle => HasSearchQuery
-        ? $"Results for \"{_searchQuery}\""
-        : Title;
+    private bool HasActiveFilters =>
+        _categories.Count > 0 || _colors.Count > 0 || _sizes.Count > 0 ||
+        _minRating > 0 || _inStockOnly ||
+        _minPrice > _catalogMin || _maxPrice < _catalogMax;
 
-    private IEnumerable<BreadcrumbItem> DisplayBreadcrumb
+    private string DisplayTitle => HasSearchQuery ? $"Results for \"{_searchQuery}\"" : Title;
+
+    private string ShowingLabel
     {
         get
         {
-            if (!HasSearchQuery)
-                return Breadcrumb;
+            var total = _filtered.Count;
+            if (total == 0) return "Showing 0 products";
+            var start = (_currentPage - 1) * PageSize + 1;
+            var end = Math.Min(start + PageSize - 1, total);
+            return $"Showing {start}–{end} of {total} {(total == 1 ? "product" : "products")}";
+        }
+    }
 
-            return
-            [
-                new BreadcrumbItem("Home", "/"),
-                new BreadcrumbItem("Shop", "/shop"),
-                new BreadcrumbItem($"\"{_searchQuery}\"")
-            ];
+    private List<Product> Universe => CatalogUniverse().ToList();
+    private int InStockCount => Universe.Count(ProductVariantLogic.IsPurchasable);
+
+    private IEnumerable<BreadcrumbItem> DisplayBreadcrumb => HasSearchQuery
+        ? [new("Home", "/"), new("Shop", "/shop"), new($"\"{_searchQuery}\"")]
+        : Breadcrumb;
+
+    private Task SetMinPrice(decimal value)
+    {
+        _minPrice = value;
+        return Task.CompletedTask;
+    }
+
+    private Task SetMaxPrice(decimal value)
+    {
+        _maxPrice = value;
+        return Task.CompletedTask;
+    }
+
+    private Task SetRating(int value)
+    {
+        _minRating = value;
+        return Task.CompletedTask;
+    }
+
+    private Task SetInStock(bool value)
+    {
+        _inStockOnly = value;
+        return Task.CompletedTask;
+    }
+
+    private List<ShopFilters.FilterCount> CategoryOptions
+    {
+        get
+        {
+            var known = Catalog.Categories.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            return Universe
+                .Where(p => !string.IsNullOrWhiteSpace(p.Category))
+                .GroupBy(p => p.Category.Trim(), StringComparer.OrdinalIgnoreCase)
+                .Where(g => known.Count == 0 || known.Contains(g.Key))
+                .Select(g => new ShopFilters.FilterCount(g.First().Category.Trim(), g.Count()))
+                .Where(c => c.Count > 0)
+                .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+    }
+
+    private List<ShopFilters.ColorFilter> ColorOptions =>
+        Universe
+            .SelectMany(p => ProductVariantLogic.SellableVariants(p)
+                .Where(v => !string.IsNullOrWhiteSpace(v.ColorName))
+                .Select(v => v.ColorName!.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(name => (Product: p, Name: name)))
+            .GroupBy(x => x.Name, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ShopFilters.ColorFilter(
+                g.First().Name,
+                ProductVariantLogic.ColorHex(g.First().Product.Variants, g.First().Name),
+                g.Select(x => x.Product.Id).Distinct().Count()))
+            .OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private List<ShopFilters.FilterCount> SizeOptions =>
+        Universe
+            .SelectMany(p => ProductVariantLogic.SellableVariants(p)
+                .Where(v => !string.IsNullOrWhiteSpace(v.Size))
+                .Select(v => v.Size.Trim())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Select(size => (Product: p, Size: size)))
+            .GroupBy(x => x.Size, StringComparer.OrdinalIgnoreCase)
+            .Select(g => new ShopFilters.FilterCount(g.First().Size, g.Select(x => x.Product.Id).Distinct().Count()))
+            .OrderBy(s => InventoryRow.SizeSortRank(s.Name))
+            .ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private List<(string Key, string Label)> Chips
+    {
+        get
+        {
+            var chips = new List<(string, string)>();
+            foreach (var category in _categories.OrderBy(c => c))
+                chips.Add(($"category:{category}", $"Category: {category}"));
+            foreach (var color in _colors.OrderBy(c => c))
+                chips.Add(($"color:{color}", $"Color: {color}"));
+            foreach (var size in _sizes.OrderBy(InventoryRow.SizeSortRank))
+                chips.Add(($"size:{size}", $"Size: {size}"));
+            if (_minPrice > _catalogMin || _maxPrice < _catalogMax)
+                chips.Add(("price", $"Price: {ProductVariantLogic.FormatPeso(_minPrice)} – {ProductVariantLogic.FormatPeso(_maxPrice)}"));
+            if (_minRating > 0)
+                chips.Add(("rating", $"Rating: {_minRating} & up"));
+            if (_inStockOnly)
+                chips.Add(("stock", "In Stock"));
+            return chips;
         }
     }
 
@@ -239,56 +350,45 @@
         _sortOption = DefaultSort;
         await AdminProducts.EnsureLoadedAsync();
         await Catalog.EnsureLoadedAsync();
-        SyncFromUrl(resetCategoryFromUrl: true);
-        ApplyFilters();
+        await Catalog.EnsureFulfilledSalesAsync();
+        SyncFromUrl();
+        EnsurePriceBounds(reset: true);
+        RebuildResults();
         _initialized = true;
     }
 
     protected override void OnParametersSet()
     {
         if (!_initialized) return;
+        EnsurePriceBounds(reset: false);
         RebuildResults();
     }
 
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
-        var previousSearch = _searchQuery;
-        SyncFromUrl(resetCategoryFromUrl: true);
-
-        if (!string.Equals(previousSearch, _searchQuery, StringComparison.Ordinal))
-            _currentPage = 1;
-
-        ApplyFilters();
+        SyncFromUrl();
+        _currentPage = 1;
+        RebuildResults();
         InvokeAsync(StateHasChanged);
     }
 
-    private void SyncFromUrl(bool resetCategoryFromUrl)
+    private void SyncFromUrl()
     {
         var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
-        _previousSearchQuery = _searchQuery;
         _searchQuery = GetQueryValue(uri, "q") ?? GetQueryValue(uri, "search");
-
         if (!string.IsNullOrWhiteSpace(_searchQuery))
             _searchQuery = _searchQuery.Trim();
 
-        if (!resetCategoryFromUrl) return;
-
+        _categories.Clear();
         var category = GetQueryValue(uri, "category");
-        _draftCategories.Clear();
-        _appliedCategories.Clear();
-
         if (!string.IsNullOrWhiteSpace(category))
-        {
-            _draftCategories.Add(category);
-            _appliedCategories.Add(category);
-        }
+            _categories.Add(category);
     }
 
     private static string? GetQueryValue(Uri uri, string key)
     {
         var query = uri.Query.TrimStart('?');
         if (string.IsNullOrEmpty(query)) return null;
-
         foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
         {
             var pair = part.Split('=', 2);
@@ -297,25 +397,42 @@
                 continue;
             return pair.Length > 1 ? Uri.UnescapeDataString(pair[1]) : string.Empty;
         }
-
         return null;
     }
 
-    private Task OnDraftPriceChanged(decimal value)
+    private IEnumerable<Product> CatalogUniverse()
     {
-        _draftMaxPrice = value;
-        return Task.CompletedTask;
+        var source = BaseProducts ?? Catalog.StorefrontProducts;
+        return source.Where(p =>
+            p.IsPublished &&
+            (string.IsNullOrEmpty(p.Status) || p.Status.Equals("Active", StringComparison.OrdinalIgnoreCase)));
     }
 
-    private Task OnDraftRatingChanged(int value)
+    private IEnumerable<Product> ListingProducts() => Catalog.Search(CatalogUniverse(), _searchQuery);
+
+    private void EnsurePriceBounds(bool reset)
     {
-        _draftMinRating = value;
-        return Task.CompletedTask;
+        var prices = CatalogUniverse().SelectMany(ProductVariantLogic.CustomerPrices).ToList();
+        _catalogMin = prices.Count == 0 ? 0 : Math.Floor(prices.Min());
+        _catalogMax = prices.Count == 0 ? 0 : Math.Ceiling(prices.Max());
+        if (reset || !_priceReady)
+        {
+            _minPrice = _catalogMin;
+            _maxPrice = _catalogMax;
+            _priceReady = true;
+        }
+        else
+        {
+            _minPrice = Math.Clamp(_minPrice, _catalogMin, _catalogMax);
+            _maxPrice = Math.Clamp(_maxPrice, _catalogMin, _catalogMax);
+            if (_minPrice > _maxPrice) _minPrice = _catalogMin;
+        }
     }
 
-    private Task OnDraftInStockChanged(bool value)
+    private Task OnFiltersChanged()
     {
-        _draftInStockOnly = value;
+        _currentPage = 1;
+        RebuildResults();
         return Task.CompletedTask;
     }
 
@@ -329,56 +446,51 @@
     private void SetGridView() => _viewMode = "grid";
     private void SetListView() => _viewMode = "list";
 
-    private void ApplyFilters()
+    private void RemoveChip(string key)
     {
-        _appliedCategories.Clear();
-        foreach (var c in _draftCategories) _appliedCategories.Add(c);
-
-        _appliedSizes.Clear();
-        foreach (var s in _draftSizes) _appliedSizes.Add(s);
-
-        _appliedMaxPrice = _draftMaxPrice;
-        _appliedMinRating = _draftMinRating;
-        _appliedInStockOnly = _draftInStockOnly;
+        var split = key.Split(':', 2);
+        switch (split[0])
+        {
+            case "category": _categories.Remove(split[1]); break;
+            case "color": _colors.Remove(split[1]); break;
+            case "size": _sizes.Remove(split[1]); break;
+            case "price":
+                _minPrice = _catalogMin;
+                _maxPrice = _catalogMax;
+                break;
+            case "rating": _minRating = 0; break;
+            case "stock": _inStockOnly = false; break;
+        }
         _currentPage = 1;
-
         RebuildResults();
-        _filtersOpen = false;
     }
 
     private void ClearAll()
     {
-        _draftCategories.Clear();
-        _draftSizes.Clear();
-        _draftMaxPrice = MaxPrice;
-        _draftMinRating = 0;
-        _draftInStockOnly = false;
-
-        _appliedCategories.Clear();
-        _appliedSizes.Clear();
-        _appliedMaxPrice = MaxPrice;
-        _appliedMinRating = 0;
-        _appliedInStockOnly = false;
-
+        _categories.Clear();
+        _colors.Clear();
+        _sizes.Clear();
+        _minRating = 0;
+        _inStockOnly = false;
+        _minPrice = _catalogMin;
+        _maxPrice = _catalogMax;
         _currentPage = 1;
+        _filtersOpen = false;
 
-        // Keep the active search keyword; only strip category from the URL.
         if (HasSearchQuery)
         {
             Navigation.NavigateTo($"/shop?q={Uri.EscapeDataString(_searchQuery!)}");
             return;
         }
 
-        var path = Navigation.ToAbsoluteUri(Navigation.Uri).AbsolutePath;
-        var current = Navigation.ToAbsoluteUri(Navigation.Uri);
-        if (!string.IsNullOrWhiteSpace(current.Query))
+        var uri = Navigation.ToAbsoluteUri(Navigation.Uri);
+        if (!string.IsNullOrWhiteSpace(uri.Query))
         {
-            Navigation.NavigateTo(path);
+            Navigation.NavigateTo(uri.AbsolutePath);
             return;
         }
 
         RebuildResults();
-        _filtersOpen = false;
     }
 
     private void ClearSearch()
@@ -387,50 +499,58 @@
         Navigation.NavigateTo("/shop");
     }
 
-    private IEnumerable<Product> GetBaseProducts()
-    {
-        var source = BaseProducts ?? Catalog.Products;
-        return Catalog.Search(source, _searchQuery);
-    }
-
     private void RebuildResults()
     {
-        IEnumerable<Product> list = GetBaseProducts();
+        IEnumerable<Product> list = ListingProducts();
 
-        if (_appliedCategories.Count > 0)
-            list = list.Where(p => _appliedCategories.Contains(p.Category));
+        if (_categories.Count > 0)
+            list = list.Where(p => _categories.Contains(p.Category ?? string.Empty));
 
-        list = list.Where(p => p.Price <= _appliedMaxPrice);
+        if (_colors.Count > 0)
+            list = list.Where(p => ProductVariantLogic.SellableVariants(p)
+                .Any(v => !string.IsNullOrWhiteSpace(v.ColorName) && _colors.Contains(v.ColorName)));
 
-        if (_appliedSizes.Count > 0)
-            list = list.Where(p => p.Sizes.Any(s => _appliedSizes.Contains(s)));
+        if (_sizes.Count > 0)
+            list = list.Where(p => ProductVariantLogic.SellableVariants(p)
+                .Any(v => !string.IsNullOrWhiteSpace(v.Size) && _sizes.Contains(v.Size)));
 
-        if (_appliedMinRating > 0)
-            list = list.Where(p => p.Rating >= _appliedMinRating);
+        if (_catalogMax > _catalogMin && (_minPrice > _catalogMin || _maxPrice < _catalogMax))
+        {
+            list = list.Where(p =>
+            {
+                var prices = ProductVariantLogic.CustomerPrices(p);
+                return prices.Any(price => price >= _minPrice && price <= _maxPrice);
+            });
+        }
 
-        if (_appliedInStockOnly)
-            list = list.Where(p => p.InStock);
+        if (_minRating > 0)
+            list = list.Where(p => p.Rating >= _minRating);
+
+        if (_inStockOnly)
+            list = list.Where(ProductVariantLogic.IsPurchasable);
 
         list = _sortOption switch
         {
-            "newest" => list.OrderByDescending(p => p.IsNewArrival || p.Badge == "New")
+            "newest" => list
+                .OrderByDescending(p => p.CreatedAt ?? p.PublishedAt ?? DateTime.MinValue)
                 .ThenByDescending(p => p.Id),
-            "price-asc" => list.OrderBy(p => p.Price),
-            "price-desc" => list.OrderByDescending(p => p.Price),
-            "best-selling" => list.OrderByDescending(p => p.IsBestSeller || p.Badge == "Best Seller")
-                .ThenByDescending(p => p.Sold),
-            "rating" => list.OrderByDescending(p => p.Rating).ThenByDescending(p => p.Reviews),
+            "price-asc" => list.OrderBy(p => ProductVariantLogic.CustomerPrices(p).DefaultIfEmpty(p.Price).Min()),
+            "price-desc" => list.OrderByDescending(p => ProductVariantLogic.CustomerPrices(p).DefaultIfEmpty(p.Price).Max()),
+            "best-selling" => list
+                .OrderByDescending(p => Catalog.FulfilledUnits(p.Id))
+                .ThenBy(p => p.Name, StringComparer.OrdinalIgnoreCase),
+            "rating" => list
+                .OrderByDescending(p => p.Rating)
+                .ThenByDescending(p => p.Reviews)
+                .ThenByDescending(p => Catalog.FulfilledUnits(p.Id)),
             _ => list.OrderByDescending(p => p.IsFeatured).ThenBy(p => p.Id)
         };
 
         _filtered = list.ToList();
         _totalPages = Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)PageSize));
         if (_currentPage > _totalPages) _currentPage = _totalPages;
-
-        _pageItems = _filtered
-            .Skip((_currentPage - 1) * PageSize)
-            .Take(PageSize)
-            .ToList();
+        if (_currentPage < 1) _currentPage = 1;
+        _pageItems = _filtered.Skip((_currentPage - 1) * PageSize).Take(PageSize).ToList();
     }
 
     private void GoToPage(int page)

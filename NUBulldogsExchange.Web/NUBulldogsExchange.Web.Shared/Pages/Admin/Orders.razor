@@ -5,6 +5,8 @@
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminOrderService OrderService
+@inject ToastService Toast
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Orders | Admin | NU Bulldogs Exchange</PageTitle>
@@ -17,12 +19,63 @@
         </div>
     </header>
 
+    <section class="admin-order-stats" aria-label="Order summary">
+        <article class="admin-inventory-stat admin-order-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="shopping-bag" Size="18" /></div>
+            <div>
+                <strong>@TotalOrders</strong>
+                <span>Total Orders</span>
+                <small>Live</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat admin-order-stat">
+            <div class="admin-inventory-stat-icon tone-gold"><Icon Name="clock" Size="18" /></div>
+            <div>
+                <strong>@ToConfirm</strong>
+                <span>To Confirm</span>
+                <small>Live</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat admin-order-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="settings" Size="18" /></div>
+            <div>
+                <strong>@Processing</strong>
+                <span>Processing</span>
+                <small>Live</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat admin-order-stat">
+            <div class="admin-inventory-stat-icon tone-purple"><Icon Name="package" Size="18" /></div>
+            <div>
+                <strong>@ReadyForPickup</strong>
+                <span>Ready for Pickup</span>
+                <small>Live</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat admin-order-stat">
+            <div class="admin-inventory-stat-icon tone-cyan"><Icon Name="truck" Size="18" /></div>
+            <div>
+                <strong>@OutForDelivery</strong>
+                <span>Out for Delivery</span>
+                <small>Live</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat admin-order-stat">
+            <div class="admin-inventory-stat-icon tone-green"><Icon Name="check-circle" Size="18" /></div>
+            <div>
+                <strong>@Fulfilled</strong>
+                <span>Completed</span>
+                <small>Live</small>
+            </div>
+        </article>
+    </section>
+
     <nav class="admin-order-tabs" aria-label="Fulfillment">
         @foreach (var tab in AdminOrderService.FulfillmentTabs)
         {
             <button type="button"
-                    class="admin-order-tab @(_fulfillmentTab == tab ? "active" : "")"
-                    @onclick="() => SelectTab(tab)">
+                    class="admin-order-tab @(_fulfillment == tab ? "active" : "")"
+                    @onclick="() => SelectFulfillment(tab)">
                 <span>@tab</span>
                 <strong>@OrderService.CountByFulfillment(tab)</strong>
             </button>
@@ -33,39 +86,94 @@
         <div class="admin-products-search">
             <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
             <input type="search"
-                   placeholder="Search by Order ID or Customer..."
+                   placeholder="Search by Order ID or customer name..."
                    value="@_search"
                    @oninput="OnSearchInput" />
         </div>
-        <select class="admin-products-select" value="@_status" @onchange="OnStatusChange">
-            @foreach (var option in AdminOrderService.StatusFilters)
+        <select class="admin-products-select" aria-label="Order status" value="@_status" @onchange="OnStatusChange">
+            @foreach (var option in StatusOptions)
             {
                 <option value="@option">@option</option>
             }
         </select>
-        <select class="admin-products-select" value="@_payment" @onchange="OnPaymentChange">
-            @foreach (var option in AdminOrderService.PaymentFilters)
-            {
-                <option value="@option">@option</option>
-            }
-        </select>
-        <select class="admin-products-select" value="@_paymentMethod" @onchange="OnPaymentMethodChange">
+        <select class="admin-products-select" aria-label="Payment method" value="@_paymentMethod" @onchange="OnPaymentMethodChange">
             @foreach (var option in AdminOrderService.PaymentMethodFilters)
             {
-                <option value="@option">@option</option>
+                <option value="@option">@(option == "All Methods" ? "All Payment Methods" : option)</option>
             }
         </select>
+        <select class="admin-products-select" aria-label="Fulfillment" value="@_fulfillment" @onchange="OnFulfillmentChange">
+            <option value="All">All Fulfillment</option>
+            <option value="@OrderFlow.CampusPickup">@OrderFlow.CampusPickup</option>
+            <option value="@OrderFlow.Delivery">@OrderFlow.Delivery</option>
+        </select>
+        <select class="admin-products-select" aria-label="Date range" value="@_datePreset" @onchange="OnDatePresetChange">
+            <option value="all">All Dates</option>
+            <option value="today">Today</option>
+            <option value="7">7 Days</option>
+            <option value="30">30 Days</option>
+            <option value="month">This Month</option>
+            <option value="custom">Custom Range</option>
+        </select>
+        @if (_datePreset == "custom")
+        {
+            <input class="admin-products-select admin-order-date-input"
+                   type="date"
+                   aria-label="From date"
+                   value="@DateInput(_customFrom)"
+                   @onchange="OnCustomFrom" />
+            <input class="admin-products-select admin-order-date-input"
+                   type="date"
+                   aria-label="To date"
+                   value="@DateInput(_customTo)"
+                   @onchange="OnCustomTo" />
+        }
+        <label class="admin-order-sort">
+            <span>Sort by</span>
+            <select aria-label="Sort orders" value="@_sort" @onchange="OnSortChange">
+                <option value="newest">Newest First</option>
+                <option value="oldest">Oldest First</option>
+                <option value="total-desc">Highest Total</option>
+                <option value="total-asc">Lowest Total</option>
+            </select>
+        </label>
     </section>
 
-    <section class="admin-orders-table-card">
-        @if (!Filtered.Any())
+    @if (Chips.Count > 0)
+    {
+        <div class="admin-filter-chips">
+            @foreach (var chip in Chips)
+            {
+                var key = chip.Key;
+                <span class="admin-filter-chip">
+                    @chip.Label
+                    <button type="button" aria-label="@($"Remove {chip.Label}")" @onclick="() => RemoveChip(key)">
+                        <Icon Name="x" Size="12" />
+                    </button>
+                </span>
+            }
+            <button type="button" class="admin-filter-clear" @onclick="ClearFilters">Clear All</button>
+        </div>
+    }
+
+    <section class="admin-orders-table-card @(_openMenuId is not null ? "is-menu-open" : "")">
+        @if (OrderService.All.Count == 0)
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="shopping-bag" Size="36" />
+                </div>
+                <h2>No orders yet.</h2>
+            </div>
+        }
+        else if (Filtered.Count == 0)
         {
             <div class="admin-products-empty">
                 <div class="admin-products-empty-icon" aria-hidden="true">
                     <Icon Name="shopping-bag" Size="36" />
                 </div>
                 <h2>No orders found.</h2>
-                <p>Try changing your search or filters.</p>
+                <p>Try adjusting your filters.</p>
                 <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
             </div>
         }
@@ -79,7 +187,6 @@
                             <th>Customer</th>
                             <th>Fulfillment</th>
                             <th>Payment</th>
-                            <th>Payment Status</th>
                             <th>Total</th>
                             <th>Order Status</th>
                             <th>Date</th>
@@ -87,39 +194,72 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var order in Filtered)
+                        @foreach (var order in PageItems)
                         {
-                            <tr>
+                            <tr class="admin-order-row" @onclick="() => OpenOrder(order)">
                                 <td>
-                                    <button type="button" class="admin-order-id" @onclick="() => OpenOrder(order)">
+                                    <button type="button" class="admin-order-id" @onclick="() => OpenOrder(order)" @onclick:stopPropagation="true">
                                         @order.Id
                                     </button>
                                 </td>
                                 <td>
                                     <div class="admin-order-customer">
-                                        <strong>@order.CustomerName</strong>
-                                        <span>@order.CustomerEmail</span>
+                                        <span class="admin-order-avatar tone-@AvatarTone(order.CustomerName)" aria-hidden="true">@Initials(order.CustomerName)</span>
+                                        <span>
+                                            <strong>@order.CustomerName</strong>
+                                            <span>@order.CustomerEmail</span>
+                                        </span>
                                     </div>
                                 </td>
                                 <td>
                                     <span class="admin-fulfillment-badge @(order.IsDelivery ? "is-delivery" : "is-pickup")">
+                                        <Icon Name="@(order.IsDelivery ? "truck" : "map-pin")" Size="12" />
                                         @(order.IsDelivery ? "Delivery" : "Campus Pickup")
                                     </span>
                                 </td>
-                                <td>@(string.IsNullOrWhiteSpace(order.PaymentMethod) ? "—" : order.PaymentMethod)</td>
                                 <td>
-                                    <span class="admin-payment-badge payment-@order.PaymentKey">@order.PaymentStatus</span>
+                                    <div class="admin-order-pay">
+                                        <strong>@OrderFlow.PaymentMethodLabel(order.PaymentMethod)</strong>
+                                        <span class="admin-pay-line is-@order.PaymentKey">@order.PaymentStatus</span>
+                                    </div>
                                 </td>
                                 <td><strong class="admin-order-total">₱@order.Total.ToString("N0")</strong></td>
                                 <td>
                                     <span class="order-status status-@order.StatusKey">@order.Status</span>
                                 </td>
-                                <td>@order.DateLabel</td>
                                 <td>
-                                    <button type="button" class="btn btn-navy admin-order-view-btn" @onclick="() => OpenOrder(order)">
-                                        <Icon Name="eye" Size="14" />
-                                        View
-                                    </button>
+                                    <div class="admin-order-when">
+                                        <strong>@When(order).ToString("yyyy-MM-dd")</strong>
+                                        <span>@When(order).ToString("h:mm tt", System.Globalization.CultureInfo.GetCultureInfo("en-US"))</span>
+                                    </div>
+                                </td>
+                                <td @onclick:stopPropagation="true">
+                                    <div class="admin-order-actions">
+                                        <button type="button" class="btn btn-navy admin-order-view-btn" @onclick="() => OpenOrder(order)">
+                                            <Icon Name="eye" Size="14" />
+                                            @(IsClosed(order) ? "View" : "Manage Order")
+                                        </button>
+                                        <div class="admin-row-menu-wrap">
+                                            <button type="button"
+                                                    class="admin-row-action"
+                                                    title="More actions"
+                                                    aria-label="@($"More actions for {order.Id}")"
+                                                    @onclick="() => ToggleMenu(order.Id)">
+                                                <Icon Name="more-horizontal" Size="16" />
+                                            </button>
+                                            @if (_openMenuId == order.Id)
+                                            {
+                                                <div class="admin-row-menu" role="menu" @onclick:stopPropagation="true">
+                                                    <button type="button" class="admin-row-menu-item" @onclick="() => OpenOrder(order)">
+                                                        <Icon Name="eye" Size="14" /> View Details
+                                                    </button>
+                                                    <button type="button" class="admin-row-menu-item" @onclick="() => CopyOrderNumber(order.Id)">
+                                                        <Icon Name="copy" Size="14" /> Copy Order Number
+                                                    </button>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                         }
@@ -128,58 +268,340 @@
             </div>
 
             <div class="admin-orders-footer">
-                <span>Showing @Filtered.Count() of @OrderService.All.Count orders</span>
+                <span>@ShowingLabel</span>
+                @if (TotalPages > 1)
+                {
+                    <nav class="admin-pagination" aria-label="Orders pagination">
+                        <button type="button"
+                                class="admin-page-btn"
+                                aria-label="Previous page"
+                                disabled="@(CurrentPage <= 1)"
+                                @onclick="() => GoToPage(CurrentPage - 1)">
+                            <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
+                        </button>
+                        @for (var page = 1; page <= TotalPages; page++)
+                        {
+                            var pageNumber = page;
+                            <button type="button"
+                                    class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
+                                    aria-label="@($"Page {pageNumber}")"
+                                    aria-current="@(CurrentPage == pageNumber ? "page" : null)"
+                                    @onclick="() => GoToPage(pageNumber)">
+                                @pageNumber
+                            </button>
+                        }
+                        <button type="button"
+                                class="admin-page-btn"
+                                aria-label="Next page"
+                                disabled="@(CurrentPage >= TotalPages)"
+                                @onclick="() => GoToPage(CurrentPage + 1)">
+                            <Icon Name="chevron-right" Size="14" />
+                        </button>
+                    </nav>
+                }
             </div>
         }
     </section>
 </div>
 
+@if (_openMenuId is not null)
+{
+    <div class="admin-menu-backdrop" @onclick="CloseMenu"></div>
+}
+
 <AdminOrderDetailsModal Order="_selectedOrder" OnClose="CloseOrder" />
 
 @code {
-    private string _fulfillmentTab = "All";
+    private string _fulfillment = "All";
     private string _search = string.Empty;
-    private string _payment = "All Payments";
     private string _paymentMethod = "All Methods";
     private string _status = "All Statuses";
+    private string _datePreset = "all";
+    private DateTime? _customFrom;
+    private DateTime? _customTo;
+    private string _sort = "newest";
+    private int _currentPage = 1;
+    private string? _openMenuId;
     private AdminOrder? _selectedOrder;
 
+    private int TotalOrders => OrderService.All.Count;
+    private int ToConfirm => OrderService.All.Count(o => IsStatus(o, "Pending"));
+    private int Processing => OrderService.All.Count(o => IsStatus(o, "Processing"));
+    private int ReadyForPickup => OrderService.All.Count(o => !o.IsDelivery && IsStatus(o, OrderFlow.ReadyForPickup));
+    private int OutForDelivery => OrderService.All.Count(o =>
+        o.IsDelivery && (IsStatus(o, "Out for Delivery") || IsStatus(o, "Shipped")));
+    private int Fulfilled => OrderService.All.Count(o => IsStatus(o, "Completed") || IsStatus(o, "Delivered"));
+
     private List<AdminOrder> Filtered =>
-        OrderService.Filter(_fulfillmentTab, _search, _payment, _paymentMethod, _status).ToList();
+        OrderService.Filter(_fulfillment, _search, "All Payments", _paymentMethod, _status, RangeStart, RangeEnd, _sort).ToList();
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)AdminOrderService.PageSize));
+
+    private int CurrentPage => Math.Clamp(_currentPage, 1, TotalPages);
+
+    private IEnumerable<AdminOrder> PageItems =>
+        Filtered.Skip((CurrentPage - 1) * AdminOrderService.PageSize).Take(AdminOrderService.PageSize);
+
+    private string ShowingLabel
+    {
+        get
+        {
+            var total = Filtered.Count;
+            if (total == 0) return "Showing 0 orders";
+            var start = (CurrentPage - 1) * AdminOrderService.PageSize + 1;
+            var end = Math.Min(start + AdminOrderService.PageSize - 1, total);
+            return $"Showing {start}–{end} of {total} {(total == 1 ? "order" : "orders")}";
+        }
+    }
+
+    private IEnumerable<string> StatusOptions
+    {
+        get
+        {
+            IEnumerable<string> options = AdminOrderService.StatusFilters;
+            if (_fulfillment.Equals(OrderFlow.CampusPickup, StringComparison.OrdinalIgnoreCase))
+                options = options.Where(s => s is not "Out for Delivery" and not "Delivered");
+            else if (_fulfillment.Equals(OrderFlow.Delivery, StringComparison.OrdinalIgnoreCase))
+                options = options.Where(s => s is not OrderFlow.ReadyForPickup and not "Completed");
+            return options;
+        }
+    }
+
+    private DateTime? RangeStart
+    {
+        get
+        {
+            var (start, _) = OrderedRange();
+            return start;
+        }
+    }
+
+    private DateTime? RangeEnd
+    {
+        get
+        {
+            var (_, end) = OrderedRange();
+            return end;
+        }
+    }
+
+    private (DateTime? Start, DateTime? End) OrderedRange()
+    {
+        DateTime? start = _datePreset switch
+        {
+            "today" => DateTime.Today,
+            "7" => DateTime.Today.AddDays(-6),
+            "30" => DateTime.Today.AddDays(-29),
+            "month" => new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1),
+            "custom" => _customFrom?.Date,
+            _ => null
+        };
+        DateTime? end = _datePreset switch
+        {
+            "today" => DateTime.Today,
+            "7" or "30" => DateTime.Today,
+            "month" => new DateTime(DateTime.Today.Year, DateTime.Today.Month, DateTime.DaysInMonth(DateTime.Today.Year, DateTime.Today.Month)),
+            "custom" => _customTo?.Date,
+            _ => null
+        };
+        if (start is DateTime from && end is DateTime to && from > to)
+            return (to, from);
+        return (start, end);
+    }
+
+    private List<(string Key, string Label)> Chips
+    {
+        get
+        {
+            var chips = new List<(string, string)>();
+            if (!string.IsNullOrWhiteSpace(_search))
+                chips.Add(("search", $"Search: {_search.Trim()}"));
+            if (_status != "All Statuses")
+                chips.Add(("status", $"Status: {_status}"));
+            if (_paymentMethod != "All Methods")
+                chips.Add(("payment", $"Payment: {_paymentMethod}"));
+            if (_fulfillment != "All")
+                chips.Add(("fulfillment", _fulfillment));
+            if (_datePreset != "all")
+                chips.Add(("date", DateChipLabel()));
+            return chips;
+        }
+    }
 
     protected override void OnInitialized() => OrderService.OnChange += Refresh;
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
-    private void SelectTab(string tab) => _fulfillmentTab = tab;
+    private void SelectFulfillment(string value)
+    {
+        _fulfillment = string.IsNullOrWhiteSpace(value) ? "All" : value;
+        if (!StatusOptions.Contains(_status))
+            _status = "All Statuses";
+        _currentPage = 1;
+        _openMenuId = null;
+    }
 
-    private void OnSearchInput(ChangeEventArgs e) =>
+    private void OnSearchInput(ChangeEventArgs e)
+    {
         _search = e.Value?.ToString() ?? string.Empty;
+        _currentPage = 1;
+    }
 
-    private void OnPaymentChange(ChangeEventArgs e) =>
-        _payment = e.Value?.ToString() ?? "All Payments";
-
-    private void OnPaymentMethodChange(ChangeEventArgs e) =>
-        _paymentMethod = e.Value?.ToString() ?? "All Methods";
-
-    private void OnStatusChange(ChangeEventArgs e) =>
+    private void OnStatusChange(ChangeEventArgs e)
+    {
         _status = e.Value?.ToString() ?? "All Statuses";
+        _currentPage = 1;
+    }
+
+    private void OnPaymentMethodChange(ChangeEventArgs e)
+    {
+        _paymentMethod = e.Value?.ToString() ?? "All Methods";
+        _currentPage = 1;
+    }
+
+    private void OnFulfillmentChange(ChangeEventArgs e) =>
+        SelectFulfillment(e.Value?.ToString() ?? "All");
+
+    private void OnDatePresetChange(ChangeEventArgs e)
+    {
+        _datePreset = e.Value?.ToString() ?? "all";
+        _currentPage = 1;
+    }
+
+    private void OnCustomFrom(ChangeEventArgs e)
+    {
+        _customFrom = ParseDate(e.Value?.ToString());
+        _currentPage = 1;
+    }
+
+    private void OnCustomTo(ChangeEventArgs e)
+    {
+        _customTo = ParseDate(e.Value?.ToString());
+        _currentPage = 1;
+    }
+
+    private void OnSortChange(ChangeEventArgs e)
+    {
+        _sort = e.Value?.ToString() ?? "newest";
+        _currentPage = 1;
+    }
+
+    private void RemoveChip(string key)
+    {
+        switch (key)
+        {
+            case "search": _search = string.Empty; break;
+            case "status": _status = "All Statuses"; break;
+            case "payment": _paymentMethod = "All Methods"; break;
+            case "fulfillment": _fulfillment = "All"; break;
+            case "date":
+                _datePreset = "all";
+                _customFrom = null;
+                _customTo = null;
+                break;
+        }
+        _currentPage = 1;
+    }
 
     private void ClearFilters()
     {
-        _fulfillmentTab = "All";
+        _fulfillment = "All";
         _search = string.Empty;
-        _payment = "All Payments";
         _paymentMethod = "All Methods";
         _status = "All Statuses";
+        _datePreset = "all";
+        _customFrom = null;
+        _customTo = null;
+        _sort = "newest";
+        _currentPage = 1;
+        _openMenuId = null;
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > TotalPages) return;
+        _currentPage = page;
+        _openMenuId = null;
     }
 
     private void OpenOrder(AdminOrder order)
     {
+        _openMenuId = null;
         _selectedOrder = order;
     }
 
     private void CloseOrder() => _selectedOrder = null;
+
+    private void ToggleMenu(string id) =>
+        _openMenuId = _openMenuId == id ? null : id;
+
+    private void CloseMenu() => _openMenuId = null;
+
+    private async Task CopyOrderNumber(string id)
+    {
+        _openMenuId = null;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", id);
+            Toast.Show("Order number copied.");
+        }
+        catch
+        {
+            Toast.Show("Could not copy the order number.");
+        }
+    }
+
+    private string DateChipLabel()
+    {
+        if (_datePreset == "today") return "Today";
+        if (_datePreset == "7") return "7 Days";
+        if (_datePreset == "30") return "30 Days";
+        if (_datePreset == "month") return "This Month";
+        var culture = System.Globalization.CultureInfo.GetCultureInfo("en-US");
+        var from = _customFrom?.ToString("MMM d", culture);
+        var to = _customTo?.ToString("MMM d", culture);
+        if (from is not null && to is not null) return $"{from} – {to}";
+        if (from is not null) return $"From {from}";
+        if (to is not null) return $"Until {to}";
+        return "Custom Range";
+    }
+
+    private static bool IsClosed(AdminOrder order) =>
+        IsStatus(order, "Completed") || IsStatus(order, "Delivered") || IsStatus(order, "Cancelled");
+
+    private static bool IsStatus(AdminOrder order, string status) =>
+        order.Status.Equals(status, StringComparison.OrdinalIgnoreCase);
+
+    private static DateTime When(AdminOrder order) => OrderFlow.DisplayTimestamp(order.Date);
+
+    private static string Initials(string? name)
+    {
+        var parts = (name ?? string.Empty).Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0) return "?";
+        if (parts.Length == 1) return parts[0][..1].ToUpperInvariant();
+        return $"{char.ToUpperInvariant(parts[0][0])}{char.ToUpperInvariant(parts[^1][0])}";
+    }
+
+    private static string AvatarTone(string? name)
+    {
+        var hash = 0;
+        foreach (var ch in name ?? string.Empty)
+            hash = unchecked(hash * 31 + ch);
+        return (Math.Abs(hash) % 6) switch
+        {
+            0 => "blue",
+            1 => "green",
+            2 => "gold",
+            3 => "purple",
+            4 => "pink",
+            _ => "cyan"
+        };
+    }
+
+    private static string DateInput(DateTime? value) => value?.ToString("yyyy-MM-dd") ?? string.Empty;
+
+    private static DateTime? ParseDate(string? value) =>
+        DateTime.TryParse(value, out var date) ? date.Date : null;
 
     public void Dispose() => OrderService.OnChange -= Refresh;
 }

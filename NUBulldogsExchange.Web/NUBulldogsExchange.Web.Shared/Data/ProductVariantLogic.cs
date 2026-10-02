@@ -84,8 +84,21 @@ public static class ProductVariantLogic
             "beige" => "#D6C3A5",
             "gold" => "#D4AF37",
             "silver" => "#C0C0C0",
-            _ => "#123A63"
+            _ => StableSwatch(key)
         };
+    }
+
+    /// <summary>Distinct fallback swatch when a custom color has no hex.</summary>
+    private static string StableSwatch(string key)
+    {
+        if (string.IsNullOrEmpty(key)) return "#123A63";
+        var hash = 0;
+        foreach (var ch in key)
+            hash = unchecked(hash * 31 + ch);
+        var r = 70 + (Math.Abs(hash) % 140);
+        var g = 70 + (Math.Abs(hash / 17) % 140);
+        var b = 70 + (Math.Abs(hash / 29) % 140);
+        return $"#{r:X2}{g:X2}{b:X2}";
     }
 
     public static string? NormalizeHex(string? hex)
@@ -205,19 +218,107 @@ public static class ProductVariantLogic
         return active.Max(v => ResolvePrice(productPrice, v));
     }
 
+    public static string FormatPeso(decimal amount) => $"₱{amount:N0}";
+
+    public static List<ProductVariant> SellableVariants(Product product) =>
+        product.Variants.Where(v => v.IsActive && v.StockQuantity > 0).ToList();
+
+    public static bool IsPurchasable(Product product) =>
+        product.HasVariants ? SellableVariants(product).Count > 0 : product.Stock > 0;
+
+    public static int SellableStock(Product product) =>
+        product.HasVariants
+            ? product.Variants.Where(v => v.IsActive).Sum(v => Math.Max(0, v.StockQuantity))
+            : Math.Max(0, product.Stock);
+
+    /// <summary>Customer stock badge. Uses the same low-stock threshold as the product inventory state.</summary>
+    public static string CustomerStockKey(Product product)
+    {
+        if (!IsPurchasable(product)) return "out";
+        return SellableStock(product) <= AdminProduct.LowStockThreshold ? "low" : "in";
+    }
+
+    public static string CustomerStockLabel(Product product) => CustomerStockKey(product) switch
+    {
+        "out" => "Out of Stock",
+        "low" => "Low Stock",
+        _ => "In Stock"
+    };
+
+    /// <summary>Positive effective prices for active variants, or the base price when there are none.</summary>
+    public static List<decimal> CustomerPrices(Product product)
+    {
+        var active = product.Variants.Where(v => v.IsActive).ToList();
+        if (active.Count == 0)
+            return product.Price > 0 ? [product.Price] : [];
+
+        return active
+            .Select(v => ResolvePrice(product.Price, v))
+            .Where(p => p > 0)
+            .ToList();
+    }
+
     /// <summary>
-    /// Catalog/admin display: shared price as ₱X, variable as "From ₱X".
+    /// Customer catalog display: shared price as ₱X, variable as "From ₱X".
     /// </summary>
     public static string FormatCatalogPrice(decimal productPrice, IEnumerable<ProductVariant>? variants)
     {
         if (variants is null || !variants.Any(v => v.IsActive))
-            return $"₱{productPrice:N0}";
+            return FormatPeso(productPrice);
 
-        if (!HasVariablePricing(variants))
-            return $"₱{productPrice:N0}";
+        var prices = variants
+            .Where(v => v.IsActive)
+            .Select(v => ResolvePrice(productPrice, v))
+            .Where(price => price > 0)
+            .ToList();
+        if (prices.Count == 0)
+            return FormatPeso(productPrice);
 
-        var min = MinActivePrice(productPrice, variants);
-        return $"From ₱{min:N0}";
+        var min = prices.Min();
+        return min == prices.Max() ? FormatPeso(min) : $"From {FormatPeso(min)}";
+    }
+
+    public enum AdminPriceMode { Fixed, Same, Variable, Unresolved }
+
+    public sealed record AdminPriceDisplay(
+        AdminPriceMode Mode,
+        string Text,
+        string? Issue = null,
+        decimal? Min = null,
+        decimal? Max = null);
+
+    /// <summary>
+    /// Admin table display: full min–max range for variable pricing (never "From ₱X").
+    /// Only active variants count; inactive variants are ignored.
+    /// </summary>
+    public static AdminPriceDisplay DescribeAdminPrice(decimal productPrice, IEnumerable<ProductVariant>? variants)
+    {
+        var all = variants?.ToList() ?? [];
+        var active = all.Where(v => v.IsActive).ToList();
+
+        if (all.Count == 0 || active.Count == 0)
+        {
+            return productPrice > 0
+                ? new AdminPriceDisplay(AdminPriceMode.Fixed, FormatPeso(productPrice), null, productPrice, productPrice)
+                : new AdminPriceDisplay(AdminPriceMode.Unresolved, "—",
+                    all.Count == 0 ? "Product price is not set." : "Product has no active variants and no base price.");
+        }
+
+        var prices = active
+            .Select(v => ResolvePrice(productPrice, v))
+            .Where(p => p > 0)
+            .ToList();
+
+        if (prices.Count == 0)
+            return new AdminPriceDisplay(AdminPriceMode.Unresolved, "—", "No active variant resolves to a valid price.");
+
+        var min = prices.Min();
+        var max = prices.Max();
+        var issue = prices.Count < active.Count ? "Some active variants resolve to an invalid price." : null;
+
+        return min == max
+            ? new AdminPriceDisplay(AdminPriceMode.Same, FormatPeso(min), issue, min, max)
+            : new AdminPriceDisplay(AdminPriceMode.Variable, $"{FormatPeso(min)} – {FormatPeso(max)}", issue, min, max);
     }
 
     public static void SetAbsolutePrice(ProductVariant variant, decimal productPrice, decimal absolutePrice) =>

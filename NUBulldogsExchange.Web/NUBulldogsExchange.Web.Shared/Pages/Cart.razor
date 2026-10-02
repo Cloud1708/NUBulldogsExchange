@@ -7,6 +7,7 @@
 @inject AuthService Auth
 @inject ToastService Toast
 @inject AdminPromotionService PromotionService
+@inject ProductCatalogService Catalog
 @inject NavigationManager Navigation
 @implements IDisposable
 
@@ -14,22 +15,24 @@
 
 @if (!CartService.Items.Any())
 {
-    <section class="empty-cart-section">
+    <section class="ct-page">
         <div class="container">
-            <div class="empty-cart">
-                <div class="empty-cart-icon">
-                    <Icon Name="shopping-bag" Size="40" />
+            <div class="ct-empty">
+                <div class="ct-empty-icon">
+                    <Icon Name="cart" Size="40" />
                 </div>
                 <h1>Your cart is empty.</h1>
-                <p>Looks like you haven't added any Bulldog gear yet.</p>
-                <a href="/shop" class="btn btn-navy empty-cart-btn">Start Shopping</a>
+                <p>Looks like you haven't added anything yet.</p>
+                <a href="/shop" class="btn btn-navy">Start Shopping</a>
             </div>
+
+            @RenderRecommendations()
         </div>
     </section>
 }
 else
 {
-    <section class="cart-page">
+    <section class="ct-page">
         <div class="container">
             <nav class="shop-breadcrumb" aria-label="Breadcrumb">
                 <a href="/">Home</a>
@@ -37,190 +40,383 @@ else
                 <span>My Shopping Cart</span>
             </nav>
 
-            <div class="cart-title-row">
-                <h1>My Shopping Cart</h1>
-                <span>@QuantityLabel(CartService.TotalCount)</span>
-            </div>
+            <header class="ct-head">
+                <h1>My Shopping Cart <span>(@ItemLabel(CartService.TotalCount))</span></h1>
+                <p>Review your items and proceed to checkout.</p>
+            </header>
 
-            <div class="cart-layout">
-                <div class="cart-list">
-                    <div class="cart-select-all">
-                        <label>
+            <div class="ct-layout">
+                <div class="ct-main">
+                    <div class="ct-card ct-toolbar">
+                        <label class="ct-check">
                             <input type="checkbox"
                                    checked="@AllSelected"
+                                   aria-label="Select all items"
                                    @onchange="OnSelectAllChanged" />
-                            <span>Select All (@LineItemLabel(CartService.Items.Count))</span>
+                            <span>Select All (@ItemLabel(CartService.Items.Count))</span>
                         </label>
+                        @if (SelectedLines.Count > 0)
+                        {
+                            <button type="button" class="ct-link-danger" @onclick="RequestClearSelected">
+                                <Icon Name="trash" Size="14" />
+                                Clear Selected
+                            </button>
+                        }
                     </div>
 
-                    @foreach (var item in CartService.Items)
-                    {
-                        var selected = _selected.Contains(item.Key);
-                        var maxStock = item.AvailableStock;
-                        var lineTotal = item.UnitPrice * item.Quantity;
+                    <div class="ct-card ct-items">
+                        @foreach (var item in CartService.Items)
+                        {
+                            var selected = CartService.IsSelected(item.Key);
+                            var stock = item.AvailableStock;
+                            var variantLabel = VariantLabel(item);
+                            var stockMessage = _stockMessages.GetValueOrDefault(item.Key);
 
-                        <article class="cart-item @(selected ? "selected" : "")">
-                            <label class="cart-item-check">
-                                <input type="checkbox"
-                                       checked="@selected"
-                                       @onchange="() => ToggleSelected(item.Key)" />
-                            </label>
+                            <article class="ct-item @(selected ? "is-selected" : "")" @key="item.Key">
+                                <label class="ct-item-check">
+                                    <input type="checkbox"
+                                           checked="@selected"
+                                           aria-label="@($"Select {item.Product.Name}")"
+                                           @onchange="e => CartService.SetSelected(item.Key, IsChecked(e))" />
+                                </label>
 
-                            <a href="/product/@item.Product.Id" class="cart-item-image">
-                                <img src="@item.Product.ImageUrl"
-                                     alt="@item.Product.Name"
-                                     onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                            </a>
+                                <a href="/product/@item.Product.Id" class="ct-item-image" aria-label="@($"View {item.Product.Name}")">
+                                    <img src="@item.Product.ImageUrl"
+                                         alt="@item.Product.Name"
+                                         onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                </a>
 
-                            <div class="cart-item-body">
-                                <div class="cart-item-top">
-                                    <div class="cart-item-info">
-                                        <small>@item.Product.Category</small>
-                                        <a href="/product/@item.Product.Id"><h3>@item.Product.Name</h3></a>
-                                        <p class="cart-item-variant">
-                                            @if (!string.IsNullOrWhiteSpace(item.SelectedColor))
+                                <div class="ct-item-info">
+                                    <small>@item.Product.Category</small>
+                                    <a href="/product/@item.Product.Id" class="ct-item-name">@item.Product.Name</a>
+                                    @if (!string.IsNullOrEmpty(variantLabel) || CanEditVariant(item))
+                                    {
+                                        <p class="ct-item-variant">
+                                            @if (!string.IsNullOrEmpty(variantLabel))
                                             {
-                                                <span>Color: @MockData.FormatColorName(item.SelectedColor)</span>
+                                                <span>@variantLabel</span>
                                             }
-                                            @if (!string.IsNullOrWhiteSpace(item.SelectedSize) && !string.IsNullOrWhiteSpace(item.SelectedColor))
+                                            @if (CanEditVariant(item))
                                             {
-                                                <span>·</span>
-                                            }
-                                            @if (!string.IsNullOrWhiteSpace(item.SelectedSize))
-                                            {
-                                                <span>Size: @item.SelectedSize</span>
+                                                @if (!string.IsNullOrEmpty(variantLabel))
+                                                {
+                                                    <span class="ct-sep" aria-hidden="true">|</span>
+                                                }
+                                                <button type="button"
+                                                        class="ct-edit-link"
+                                                        aria-label="@($"Edit options for {item.Product.Name}")"
+                                                        @onclick="() => OpenEdit(item)">
+                                                    Edit
+                                                </button>
                                             }
                                         </p>
-                                    </div>
-                                    <strong class="cart-item-price">₱@item.UnitPrice.ToString("N0")</strong>
+                                    }
+                                    <strong class="ct-item-price">@ProductVariantLogic.FormatPeso(item.UnitPrice)</strong>
+                                    @if (stock <= 0)
+                                    {
+                                        <span class="ct-stock is-out">Out of Stock</span>
+                                    }
+                                    else if (stock <= LowStockLimit)
+                                    {
+                                        <span class="ct-stock is-low">Only @stock left</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="ct-stock is-ok">● In Stock</span>
+                                    }
                                 </div>
 
-                                <div class="qty-controls cart-item-qty">
-                                    <button type="button"
-                                            disabled="@(item.Quantity <= 1)"
-                                            aria-label="Decrease quantity"
-                                            @onclick="() => CartService.UpdateQuantity(item.Key, item.Quantity - 1)">
-                                        <Icon Name="minus" Size="14" />
-                                    </button>
-                                    <span>@item.Quantity</span>
-                                    <button type="button"
-                                            disabled="@(item.Quantity >= maxStock)"
-                                            aria-label="Increase quantity"
-                                            @onclick="() => CartService.UpdateQuantity(item.Key, item.Quantity + 1)">
-                                        <Icon Name="plus" Size="14" />
-                                    </button>
-                                </div>
-
-                                <div class="cart-item-bottom">
-                                    <span class="cart-item-subtotal">Subtotal: ₱@lineTotal.ToString("N0")</span>
-                                    <div class="cart-item-actions">
+                                <div class="ct-item-qty">
+                                    <div class="ct-qty" role="group" aria-label="@($"Quantity for {item.Product.Name}")">
                                         <button type="button"
-                                                class="cart-icon-btn @(Auth.IsLoggedIn && Wishlist.Contains(item.Product.Id) ? "active" : "")"
-                                                title="Wishlist"
-                                                @onclick="() => ToggleWishlist(item.Product)">
-                                            <Icon Name="heart" Size="16" />
+                                                disabled="@(item.Quantity <= 1)"
+                                                aria-label="Decrease quantity"
+                                                @onclick="() => ChangeQuantity(item, item.Quantity - 1)">
+                                            <Icon Name="minus" Size="14" />
                                         </button>
+                                        <span aria-live="polite">@item.Quantity</span>
                                         <button type="button"
-                                                class="cart-icon-btn cart-icon-remove"
-                                                title="Remove"
-                                                @onclick="() => RemoveItem(item.Key)">
-                                            <Icon Name="trash" Size="16" />
+                                                disabled="@(stock <= 0)"
+                                                aria-label="Increase quantity"
+                                                @onclick="() => ChangeQuantity(item, item.Quantity + 1)">
+                                            <Icon Name="plus" Size="14" />
                                         </button>
                                     </div>
+                                    @if (stock > 0 && item.Quantity > stock)
+                                    {
+                                        <p class="ct-qty-msg">@AvailableMessage(stock)</p>
+                                    }
+                                    else if (!string.IsNullOrEmpty(stockMessage))
+                                    {
+                                        <p class="ct-qty-msg">@stockMessage</p>
+                                    }
                                 </div>
-                            </div>
-                        </article>
-                    }
 
-                    <a href="/shop" class="cart-continue-link">
+                                <div class="ct-item-side">
+                                    <button type="button" class="ct-action" @onclick="() => SaveForLater(item)">
+                                        <Icon Name="heart" Size="14" />
+                                        Save for Later
+                                    </button>
+                                    <button type="button"
+                                            class="ct-remove"
+                                            title="Remove"
+                                            aria-label="@($"Remove {item.Product.Name} from cart")"
+                                            @onclick="() => RemoveItem(item)">
+                                        <Icon Name="trash" Size="16" />
+                                    </button>
+                                    <span class="ct-line-total">Subtotal: <strong>@ProductVariantLogic.FormatPeso(item.UnitPrice * item.Quantity)</strong></span>
+                                </div>
+                            </article>
+                        }
+                    </div>
+
+                    <a href="/shop" class="ct-continue">
                         <Icon Name="arrow-left" Size="16" />
                         Continue Shopping
                     </a>
                 </div>
 
-                <aside class="cart-summary">
-                    <h3>Order Summary</h3>
+                <aside class="ct-card ct-summary" aria-label="Order summary">
+                    <h2>Order Summary</h2>
 
-                    <div class="summary-row">
-                        <span>Subtotal (@LineItemLabel(SelectedItems.Count()))</span>
-                        <span>₱@SelectedSubtotal.ToString("N0")</span>
+                    <div class="ct-sum-row">
+                        <span>Selected Items</span>
+                        <span>@CartService.SelectedCount</span>
                     </div>
-                    <div class="summary-row">
-                        <span>Pickup Fee</span>
-                        <span class="text-success">Free</span>
-                    </div>
-                    @if (_promoApplied && !string.IsNullOrWhiteSpace(CartService.AppliedPromoCode))
-                    {
-                        <div class="summary-row">
-                            <span>Discount (@CartService.AppliedPromoCode)</span>
-                            <span class="text-success">-₱@Discount.ToString("N0")</span>
-                        </div>
-                    }
-
-                    <div class="summary-total">
-                        <span>Estimated Total</span>
-                        <strong>₱@EstimatedTotal.ToString("N0")</strong>
+                    <div class="ct-sum-row">
+                        <span>Subtotal</span>
+                        <span>@ProductVariantLogic.FormatPeso(CartService.SelectedSubtotal)</span>
                     </div>
 
-                    <div class="cart-promo">
-                        <input type="text"
+                    <label class="ct-promo-label" for="ct-promo">Promo Code</label>
+                    <div class="ct-promo">
+                        <input id="ct-promo"
+                               type="text"
                                placeholder="Enter promo code"
                                value="@_promoCode"
-                               disabled="@_applyingPromo"
-                               @oninput="OnPromoInput" />
+                               disabled="@(_applyingPromo || _promoApplied)"
+                               @oninput="OnPromoInput"
+                               @onkeydown="OnPromoKeyDown" />
                         @if (_promoApplied)
                         {
-                            <button type="button" class="btn btn-outline-navy cart-promo-btn" @onclick="RemovePromo" disabled="@_applyingPromo">
-                                Remove
-                            </button>
+                            <button type="button" class="btn btn-outline-navy ct-promo-btn" disabled="@_applyingPromo" @onclick="RemovePromo">Remove</button>
                         }
                         else
                         {
-                            <button type="button" class="btn btn-navy cart-promo-btn" @onclick="ApplyPromoAsync" disabled="@_applyingPromo">
+                            <button type="button"
+                                    class="btn btn-navy ct-promo-btn"
+                                    disabled="@(_applyingPromo || string.IsNullOrWhiteSpace(_promoCode) || SelectedLines.Count == 0)"
+                                    @onclick="ApplyPromoAsync">
                                 @(_applyingPromo ? "Applying…" : "Apply")
                             </button>
                         }
                     </div>
-                    @if (!string.IsNullOrWhiteSpace(_promoMessage))
+                    @if (_promoApplied && !string.IsNullOrWhiteSpace(CartService.AppliedPromoCode))
                     {
-                        <p class="@(_promoApplied ? "cart-promo-success" : "cart-promo-error")">@_promoMessage</p>
+                        <p class="ct-promo-ok"><Icon Name="check-circle" Size="14" /> @CartService.AppliedPromoCode applied</p>
+                        <div class="ct-sum-row">
+                            <span>Discount</span>
+                            <span class="ct-discount">−@ProductVariantLogic.FormatPeso(Discount)</span>
+                        </div>
+                    }
+                    else if (!string.IsNullOrWhiteSpace(_promoMessage))
+                    {
+                        <p class="ct-promo-error" role="alert">@_promoMessage</p>
                     }
 
+                    <div class="ct-sum-total">
+                        <span>Estimated Total</span>
+                        <strong>@ProductVariantLogic.FormatPeso(CartService.SelectedEstimatedTotal)</strong>
+                    </div>
+                    @if (_promoApplied && Discount > 0)
+                    {
+                        <p class="ct-saved">You saved @ProductVariantLogic.FormatPeso(Discount)</p>
+                    }
+
+                    <p class="ct-fee-note">
+                        <Icon Name="truck" Size="16" />
+                        <span>Delivery or pickup fee will be calculated during checkout.</span>
+                    </p>
+
                     <button type="button"
-                            class="btn btn-navy btn-block cart-checkout-btn"
-                            disabled="@(!SelectedItems.Any())"
+                            class="btn btn-navy btn-block ct-checkout-btn"
+                            disabled="@(CheckoutBlocker is not null || _applyingPromo)"
                             @onclick="ProceedToCheckout">
                         Proceed to Checkout
                     </button>
-                    <a href="/shop" class="btn btn-outline-navy btn-block">Continue Shopping</a>
+                    @if (CheckoutBlocker is { } blocker)
+                    {
+                        <p class="ct-blocker">@blocker</p>
+                    }
+                    <p class="ct-secure"><Icon Name="lock" Size="13" /> Secure checkout</p>
                 </aside>
             </div>
+
+            @RenderRecommendations()
         </div>
     </section>
 }
 
+@if (_editItem is not null)
+{
+    var variants = ActiveVariants(_editItem.Product);
+    var colors = ProductVariantLogic.DistinctColors(variants).ToList();
+    var sizes = ProductVariantLogic.DistinctSizes(variants).ToList();
+    var chosen = EditVariant;
+    <div class="od-backdrop" @onclick="CloseEdit">
+        <div class="pf-modal ct-edit-modal" role="dialog" aria-modal="true" aria-labelledby="ct-edit-title" @onclick:stopPropagation="true">
+            <header class="pf-modal-head">
+                <h2 id="ct-edit-title">Edit Item</h2>
+                <button type="button" class="pf-modal-close" aria-label="Close" @onclick="CloseEdit">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </header>
+            <div class="pf-modal-body">
+                <div class="ct-edit-product">
+                    <img src="@_editItem.Product.ImageUrl" alt="" onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                    <div>
+                        <small>@_editItem.Product.Category</small>
+                        <strong>@_editItem.Product.Name</strong>
+                    </div>
+                </div>
+
+                @if (colors.Count > 0)
+                {
+                    <fieldset class="ct-edit-group">
+                        <legend>Color@(string.IsNullOrEmpty(_editColor) ? "" : $": {MockData.FormatColorName(_editColor)}")</legend>
+                        <div class="ct-edit-options">
+                            @foreach (var color in colors)
+                            {
+                                var soldOut = ProductVariantLogic.ColorIsSoldOut(variants, color);
+                                var hex = ProductVariantLogic.ColorHex(variants, color);
+                                <button type="button"
+                                        class="ct-option @(ProductVariantLogic.SameText(_editColor, color) ? "is-active" : "")"
+                                        disabled="@soldOut"
+                                        aria-pressed="@ProductVariantLogic.SameText(_editColor, color)"
+                                        title="@(soldOut ? $"{color} — Sold Out" : color)"
+                                        @onclick="() => PickColor(color)">
+                                    <span class="ct-swatch" style="background:@hex"></span>
+                                    @MockData.FormatColorName(color)
+                                </button>
+                            }
+                        </div>
+                    </fieldset>
+                }
+
+                @if (sizes.Count > 0)
+                {
+                    <fieldset class="ct-edit-group">
+                        <legend>Size</legend>
+                        <div class="ct-edit-options">
+                            @foreach (var size in sizes)
+                            {
+                                var match = ProductVariantLogic.Find(variants, colors.Count > 0 ? _editColor : null, size);
+                                var unavailable = match is null || match.StockQuantity <= 0;
+                                <button type="button"
+                                        class="ct-option @(ProductVariantLogic.SameText(_editSize, size) ? "is-active" : "")"
+                                        disabled="@unavailable"
+                                        aria-pressed="@ProductVariantLogic.SameText(_editSize, size)"
+                                        title="@(unavailable ? $"{size} — Unavailable" : size)"
+                                        @onclick="() => PickSize(size)">
+                                    @size
+                                </button>
+                            }
+                        </div>
+                    </fieldset>
+                }
+
+                <div class="ct-edit-meta">
+                    @if (chosen is not null)
+                    {
+                        <strong>@ProductVariantLogic.FormatPeso(ProductVariantLogic.ResolvePrice(_editItem.Product, chosen))</strong>
+                        <span class="@(chosen.StockQuantity > 0 ? "" : "is-out")">
+                            @(chosen.StockQuantity > 0 ? $"{chosen.StockQuantity} available" : "Out of stock")
+                        </span>
+                    }
+                    else
+                    {
+                        <span>Select an available option.</span>
+                    }
+                </div>
+
+                @if (!string.IsNullOrEmpty(_editError))
+                {
+                    <p class="ct-promo-error" role="alert">@_editError</p>
+                }
+
+                <div class="pf-modal-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseEdit">Cancel</button>
+                    <button type="button"
+                            class="btn btn-navy"
+                            disabled="@(chosen is null || chosen.StockQuantity <= 0)"
+                            @onclick="SaveEdit">
+                        Update Item
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_confirmClear)
+{
+    <div class="od-backdrop od-confirm-backdrop" @onclick="() => _confirmClear = false">
+        <div class="od-confirm" role="alertdialog" aria-modal="true" aria-labelledby="ct-clear-title" @onclick:stopPropagation="true">
+            <h2 id="ct-clear-title">Remove selected items from your cart?</h2>
+            <p>@ItemLabel(SelectedLines.Count) will be removed. Unselected items stay in your cart.</p>
+            <div class="od-confirm-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="() => _confirmClear = false">Cancel</button>
+                <button type="button" class="btn btn-navy" @onclick="ClearSelected">Remove</button>
+            </div>
+        </div>
+    </div>
+}
+
 @code {
-    private readonly HashSet<string> _selected = [];
-    private readonly HashSet<string> _knownKeys = [];
+    // Matches the "Only N left" threshold on Product Details.
+    private const int LowStockLimit = 10;
+    private const string InvalidPromoMessage = "Promo code is invalid, inactive, expired, or not applicable.";
+
     private string _promoCode = string.Empty;
     private bool _promoApplied;
     private bool _applyingPromo;
     private bool _refreshingPromo;
     private string? _promoMessage;
     private decimal _discount;
+    private bool _confirmClear;
+    private readonly Dictionary<string, string> _stockMessages = [];
 
-    private IEnumerable<CartItem> SelectedItems =>
-        CartService.Items.Where(i => _selected.Contains(i.Key));
+    private CartItem? _editItem;
+    private string? _editColor;
+    private string? _editSize;
+    private string? _editError;
+
+    private IReadOnlyList<CartItem> SelectedLines => CartService.SelectedItems;
 
     private bool AllSelected =>
-        CartService.Items.Count > 0 && CartService.Items.All(i => _selected.Contains(i.Key));
-
-    private decimal SelectedSubtotal =>
-        SelectedItems.Sum(i => i.UnitPrice * i.Quantity);
+        CartService.Items.Count > 0 && CartService.Items.All(i => CartService.IsSelected(i.Key));
 
     private decimal Discount => _promoApplied ? _discount : 0;
 
-    private decimal EstimatedTotal => Math.Max(0, SelectedSubtotal - Discount);
+    private string? CheckoutBlocker
+    {
+        get
+        {
+            var lines = SelectedLines;
+            if (lines.Count == 0)
+                return "Select at least one item to check out.";
+            foreach (var item in lines)
+            {
+                if (item.Product.HasVariants && ActiveVariant(item) is null)
+                    return $"Choose an available option for {item.Product.Name}.";
+                if (item.AvailableStock <= 0)
+                    return $"{item.Product.Name} is out of stock. Remove it or unselect it to continue.";
+                if (item.Quantity < 1 || item.Quantity > item.AvailableStock)
+                    return $"Reduce the quantity of {item.Product.Name} to {item.AvailableStock} or less.";
+            }
+            return null;
+        }
+    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -228,7 +424,6 @@ else
         Wishlist.OnChange += Refresh;
         Auth.OnChange += Refresh;
         CartService.EnsureVariantsResolved();
-        SyncSelection();
 
         if (!string.IsNullOrWhiteSpace(CartService.AppliedPromoCode))
         {
@@ -237,11 +432,13 @@ else
             _discount = CartService.AppliedDiscount;
             await RevalidateAppliedPromoAsync();
         }
+
+        try { await Catalog.EnsureLoadedAsync(); }
+        catch (Exception ex) { Console.Error.WriteLine(ex); }
     }
 
     private void Refresh()
     {
-        SyncSelection();
         _ = InvokeAsync(async () =>
         {
             if (_promoApplied && !_refreshingPromo && !_applyingPromo && !string.IsNullOrWhiteSpace(_promoCode))
@@ -250,102 +447,219 @@ else
         });
     }
 
-    private void SyncSelection()
-    {
-        var keys = CartService.Items.Select(i => i.Key).ToHashSet();
-        _selected.RemoveWhere(k => !keys.Contains(k));
+    private static bool IsChecked(ChangeEventArgs e) =>
+        e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
 
-        foreach (var key in keys)
+    private void OnSelectAllChanged(ChangeEventArgs e) => CartService.SelectAll(IsChecked(e));
+
+    private void RequestClearSelected()
+    {
+        if (SelectedLines.Count > 1)
+            _confirmClear = true;
+        else
+            ClearSelected();
+    }
+
+    private void ClearSelected()
+    {
+        _confirmClear = false;
+        var count = SelectedLines.Count;
+        if (count == 0)
+            return;
+        CartService.RemoveSelected();
+        Toast.Show(count == 1 ? "Item removed from your cart." : "Selected items removed from your cart.");
+    }
+
+    private void RemoveItem(CartItem item)
+    {
+        _stockMessages.Remove(item.Key);
+        CartService.Remove(item.Key);
+        Toast.Show("Item removed from your cart.");
+    }
+
+    private void ChangeQuantity(CartItem item, int quantity)
+    {
+        var stock = item.AvailableStock;
+        if (quantity < 1)
+            return;
+        if (quantity > stock)
         {
-            if (_knownKeys.Add(key))
-                _selected.Add(key);
-        }
-
-        _knownKeys.RemoveWhere(k => !keys.Contains(k));
-    }
-
-    private void OnSelectAllChanged(ChangeEventArgs e)
-    {
-        var check = e.Value is bool b && b
-                    || string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
-
-        _selected.Clear();
-        if (check)
-        {
-            foreach (var item in CartService.Items)
-                _selected.Add(item.Key);
-        }
-    }
-
-    private void ToggleSelected(string key)
-    {
-        if (!_selected.Add(key))
-            _selected.Remove(key);
-    }
-
-    private void RemoveItem(string key)
-    {
-        _selected.Remove(key);
-        CartService.Remove(key);
-    }
-
-    private void ToggleWishlist(Product product)
-    {
-        if (!Auth.IsLoggedIn)
-        {
-            Navigation.NavigateTo("/wishlist");
+            _stockMessages[item.Key] = AvailableMessage(stock);
             return;
         }
 
-        Wishlist.Toggle(product.Id);
-        Toast.Show(Wishlist.Contains(product.Id) ? "Added to wishlist." : "Removed from wishlist.");
+        _stockMessages.Remove(item.Key);
+        CartService.UpdateQuantity(item.Key, quantity);
+    }
+
+    private static string AvailableMessage(int stock) =>
+        stock == 1 ? "Only 1 item is available." : $"Only {stock} items are available.";
+
+    private void SaveForLater(CartItem item)
+    {
+        if (!Auth.IsLoggedIn)
+        {
+            Toast.Show("Please log in to save items to your wishlist.");
+            Navigation.NavigateTo("/login?returnUrl=%2Fcart");
+            return;
+        }
+
+        if (!Wishlist.Contains(item.Product.Id))
+            Wishlist.Toggle(item.Product.Id);
+        _stockMessages.Remove(item.Key);
+        CartService.Remove(item.Key);
+        Toast.Show("Item saved to your wishlist.");
+    }
+
+    private static List<ProductVariant> ActiveVariants(Product product) =>
+        product.Variants.Where(v => v.IsActive).ToList();
+
+    private static ProductVariant? ActiveVariant(CartItem item) =>
+        item.VariantId is int id ? item.Product.Variants.FirstOrDefault(v => v.Id == id && v.IsActive) : null;
+
+    private static bool CanEditVariant(CartItem item) =>
+        item.Product.HasVariants && ActiveVariants(item.Product).Count > 0;
+
+    private static string VariantLabel(CartItem item)
+    {
+        var variant = ActiveVariant(item);
+        var color = variant?.ColorName ?? item.SelectedColor;
+        var size = variant?.Size ?? item.SelectedSize;
+        var parts = new List<string>(2);
+        if (!string.IsNullOrWhiteSpace(color))
+            parts.Add($"Color: {MockData.FormatColorName(color.Trim())}");
+        if (!string.IsNullOrWhiteSpace(size))
+            parts.Add($"Size: {size.Trim()}");
+        return string.Join(" • ", parts);
+    }
+
+    private ProductVariant? EditVariant
+    {
+        get
+        {
+            if (_editItem is null)
+                return null;
+            var variants = ActiveVariants(_editItem.Product);
+            var hasColors = ProductVariantLogic.DistinctColors(variants).Any();
+            var hasSizes = ProductVariantLogic.DistinctSizes(variants).Any();
+            if ((hasColors && string.IsNullOrEmpty(_editColor)) || (hasSizes && string.IsNullOrEmpty(_editSize)))
+                return null;
+            return ProductVariantLogic.Find(variants, hasColors ? _editColor : null, hasSizes ? _editSize : null);
+        }
+    }
+
+    private void OpenEdit(CartItem item)
+    {
+        var current = ActiveVariant(item);
+        _editItem = item;
+        _editColor = current?.ColorName ?? item.SelectedColor;
+        _editSize = current?.Size ?? item.SelectedSize;
+        _editError = null;
+    }
+
+    private void CloseEdit()
+    {
+        _editItem = null;
+        _editError = null;
+    }
+
+    private void PickColor(string color)
+    {
+        _editColor = color;
+        _editError = null;
+        if (_editItem is null)
+            return;
+
+        var variants = ActiveVariants(_editItem.Product);
+        if (!ProductVariantLogic.DistinctSizes(variants).Any())
+            return;
+
+        var keep = ProductVariantLogic.Find(variants, color, _editSize);
+        if (keep is null || keep.StockQuantity <= 0)
+            _editSize = variants
+                .FirstOrDefault(v => ProductVariantLogic.SameText(v.ColorName, color) && v.StockQuantity > 0)
+                ?.Size;
+    }
+
+    private void PickSize(string size)
+    {
+        _editSize = size;
+        _editError = null;
+    }
+
+    private void SaveEdit()
+    {
+        if (_editItem is null)
+            return;
+
+        var variant = EditVariant;
+        if (variant is null)
+        {
+            _editError = "Please choose an available option.";
+            return;
+        }
+
+        var key = _editItem.Key;
+        var error = CartService.ChangeVariant(key, variant.Id);
+        if (error is not null)
+        {
+            _editError = error;
+            return;
+        }
+
+        _stockMessages.Remove(key);
+        CloseEdit();
+        Toast.Show("Item updated.");
     }
 
     private void OnPromoInput(ChangeEventArgs e)
     {
         _promoCode = e.Value?.ToString() ?? string.Empty;
-        if (_promoApplied)
-            RemovePromo();
-        else
-            _promoMessage = null;
+        _promoMessage = null;
     }
+
+    private async Task OnPromoKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !_promoApplied)
+            await ApplyPromoAsync();
+    }
+
+    private IEnumerable<PromoCartItem> PromoItems() =>
+        SelectedLines.Select(i => new PromoCartItem
+        {
+            ProductId = i.Product.Id,
+            Quantity = i.Quantity,
+            UnitPrice = i.UnitPrice,
+            Category = i.Product.Category
+        });
 
     private async Task ApplyPromoAsync()
     {
-        if (_applyingPromo || !SelectedItems.Any())
+        if (_applyingPromo || SelectedLines.Count == 0 || string.IsNullOrWhiteSpace(_promoCode))
             return;
 
         _applyingPromo = true;
         _promoMessage = null;
         try
         {
-            var items = SelectedItems.Select(i => new PromoCartItem
-            {
-                ProductId = i.Product.Id,
-                Quantity = i.Quantity,
-                UnitPrice = i.UnitPrice,
-                Category = i.Product.Category
-            });
-
-            var (success, message, promo, discount) = await PromotionService.ValidateForCartAsync(
+            var (success, _, promo, discount) = await PromotionService.ValidateForCartAsync(
                 _promoCode,
-                items,
+                PromoItems(),
                 Auth.Email,
                 Auth.UserId > 0 ? Auth.UserId : null);
 
-            _promoApplied = success;
-            _discount = discount;
-            _promoMessage = success
-                ? $"✓ Promo code {(promo?.Code ?? _promoCode.Trim().ToUpperInvariant())} applied. You saved ₱{discount:N0}."
-                : message;
-
             if (success && promo is not null)
             {
+                _promoApplied = true;
+                _discount = discount;
                 _promoCode = promo.Code;
                 CartService.SetPromo(promo.Code, discount);
             }
             else
             {
+                _promoApplied = false;
+                _discount = 0;
+                _promoMessage = InvalidPromoMessage;
                 CartService.ClearPromo();
             }
         }
@@ -369,23 +683,17 @@ else
         _refreshingPromo = true;
         try
         {
-            if (string.IsNullOrWhiteSpace(_promoCode) || !SelectedItems.Any())
+            if (string.IsNullOrWhiteSpace(_promoCode) || SelectedLines.Count == 0)
             {
-                RemovePromo();
+                _promoApplied = false;
+                _discount = 0;
+                CartService.ClearPromo();
                 return;
             }
 
-            var items = SelectedItems.Select(i => new PromoCartItem
-            {
-                ProductId = i.Product.Id,
-                Quantity = i.Quantity,
-                UnitPrice = i.UnitPrice,
-                Category = i.Product.Category
-            });
-
-            var (success, message, promo, discount) = await PromotionService.ValidateForCartAsync(
+            var (success, _, promo, discount) = await PromotionService.ValidateForCartAsync(
                 _promoCode,
-                items,
+                PromoItems(),
                 Auth.Email,
                 Auth.UserId > 0 ? Auth.UserId : null);
 
@@ -401,8 +709,12 @@ else
                 _promoApplied = false;
                 _discount = 0;
                 CartService.ClearPromo();
-                _promoMessage = message;
+                _promoMessage = InvalidPromoMessage;
             }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
         }
         finally
         {
@@ -415,15 +727,15 @@ else
         _promoApplied = false;
         _discount = 0;
         _promoMessage = null;
+        _promoCode = string.Empty;
         CartService.ClearPromo();
     }
 
     private async Task ProceedToCheckout()
     {
-        if (!SelectedItems.Any())
-            return;
-
         CartService.EnsureVariantsResolved();
+        if (CheckoutBlocker is not null)
+            return;
 
         if (!Auth.IsLoggedIn)
         {
@@ -431,16 +743,11 @@ else
             return;
         }
 
-        var keep = SelectedItems.Select(i => i.Key).ToHashSet();
-        foreach (var item in CartService.Items.Where(i => !keep.Contains(i.Key)).ToList())
-            CartService.Remove(item.Key);
-
         if (_promoApplied && !string.IsNullOrWhiteSpace(_promoCode))
         {
             await RevalidateAppliedPromoAsync();
             if (!_promoApplied)
                 return;
-            CartService.SetPromo(_promoCode, _discount);
         }
         else
         {
@@ -450,10 +757,52 @@ else
         Navigation.NavigateTo("/checkout");
     }
 
-    private static string QuantityLabel(int count) =>
-        count == 1 ? "1 item" : $"{count} items";
+    private List<Product> Recommendations()
+    {
+        var inCart = CartService.Items.Select(i => i.Product.Id).ToHashSet();
+        var categories = CartService.Items
+            .Select(i => i.Product.Category)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-    private static string LineItemLabel(int count) =>
+        return Catalog.StorefrontProducts
+            .Where(p => !inCart.Contains(p.Id) && IsPurchasable(p))
+            .OrderByDescending(p => categories.Contains(p.Category ?? string.Empty))
+            .ThenByDescending(p => p.Sold)
+            .ThenByDescending(p => p.Rating)
+            .Take(4)
+            .ToList();
+    }
+
+    private static bool IsPurchasable(Product product) =>
+        product.HasVariants
+            ? product.Variants.Any(v => v.IsActive && v.StockQuantity > 0)
+            : product.Stock > 0;
+
+    private RenderFragment RenderRecommendations() => __builder =>
+    {
+        var products = Recommendations();
+        if (products.Count == 0)
+            return;
+
+        <section class="ct-reco" aria-labelledby="ct-reco-title">
+            <div class="ct-reco-head">
+                <div>
+                    <h2 id="ct-reco-title">You May Also Like</h2>
+                    <p>Discover more NU merchandise.</p>
+                </div>
+                <a href="/shop" class="ct-reco-all">View All <Icon Name="arrow-right" Size="14" /></a>
+            </div>
+            <div class="ct-reco-grid">
+                @foreach (var product in products)
+                {
+                    <ProductCard @key="product.Id" Product="product" />
+                }
+            </div>
+        </section>
+    };
+
+    private static string ItemLabel(int count) =>
         count == 1 ? "1 item" : $"{count} items";
 
     public void Dispose()

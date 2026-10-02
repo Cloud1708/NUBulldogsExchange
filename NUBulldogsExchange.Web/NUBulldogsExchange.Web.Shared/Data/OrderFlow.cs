@@ -13,6 +13,7 @@ public static class OrderFlow
     public const string PickupLocation = "NU Lipa Campus";
     public const string PickupHoursDays = "Mon–Sat";
     public const string PickupHoursTime = "8AM–5PM";
+    public const string EstimatedDeliveryWindow = "3–7 business days";
 
     public const string ToPay = "To Pay";
     public const string ToProcess = "To Process";
@@ -99,6 +100,45 @@ public static class OrderFlow
         return method.Equals("GCash", StringComparison.OrdinalIgnoreCase)
             || method.Equals("Maya", StringComparison.OrdinalIgnoreCase)
             || method.Equals("Credit Card", StringComparison.OrdinalIgnoreCase);
+    }
+
+    public static string PaymentMethodLabel(string? method)
+    {
+        if (string.IsNullOrWhiteSpace(method))
+            return "Not recorded";
+
+        var key = new string(method.Where(char.IsLetter).ToArray()).ToLowerInvariant();
+        return key switch
+        {
+            "cashondelivery" or "cod" => "Cash on Delivery",
+            "cashonpickup" => "Cash on Pickup",
+            "gcash" => "GCash",
+            "maya" or "paymaya" => "Maya",
+            "creditcard" or "card" => "Credit Card",
+            _ => method.Trim()
+        };
+    }
+
+    /// <summary>Compact customer-facing payment badge; Key maps to a .pay-* CSS class.</summary>
+    public static (string Label, string Key) PaymentBadge(string? paymentMethod, string? paymentStatus)
+    {
+        if (EqualsStatus(paymentStatus, "Paid"))
+            return ("Paid", "paid");
+        if (EqualsStatus(paymentStatus, "Failed"))
+            return ("Payment Failed", "failed");
+        if (EqualsStatus(paymentStatus, "Refunded"))
+            return ("Refunded", "muted");
+        if (EqualsStatus(paymentStatus, "Cancelled"))
+            return ("Payment Cancelled", "muted");
+
+        return PaymentMethodLabel(paymentMethod) switch
+        {
+            "Cash on Delivery" => ("COD", "cash"),
+            "Cash on Pickup" => ("Cash on Pickup", "cash"),
+            "Credit Card" => ("Card · Pending", "pending"),
+            "Not recorded" => ("Pending", "pending"),
+            var method => ($"{method} · Pending", "pending")
+        };
     }
 
     public static bool IsPaymentPending(string? paymentStatus) =>
@@ -470,6 +510,9 @@ public static class OrderFlow
             return $"Your pickup order {orderId} has been completed. Thank you for shopping with NU Bulldogs Exchange.";
         return null;
     }
+
+    public static DateTime DisplayTimestamp(DateTime value) =>
+        value.Kind == DateTimeKind.Utc ? value.ToLocalTime() : value;
 
     public static string FormatNotificationTime(DateTime? createdAt, string? fallback = null)
     {

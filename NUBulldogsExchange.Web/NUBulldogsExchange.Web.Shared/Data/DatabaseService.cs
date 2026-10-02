@@ -2053,6 +2053,8 @@ public sealed partial class DatabaseService : IAppDatabase
 
     #region Inventory / Wishlist / Settings / Stats
 
+    public bool OrderStockWritesInventoryHistory => true;
+
     public async Task<List<InventoryHistoryEntry>> GetInventoryHistoryAsync()
     {
         await EnsureReadyAsync();
@@ -2887,17 +2889,26 @@ public sealed partial class DatabaseService : IAppDatabase
                     INSERT INTO InventoryHistory (
                         Id, ProductId, ProductName, Type, Quantity, PreviousStock, NewStock, Reason, Notes, Date, AdminName
                     ) VALUES (
-                        $id, $productId, $productName, $type, $quantity, $previous, $new, 'Order', $notes, $date, $admin
+                        $id, $productId, $productName, $type, $quantity, $previous, $new, $reason, $notes, $date, $admin
                     );
                     """;
                 hist.Parameters.AddWithValue("$id", Guid.NewGuid().ToString("N"));
                 hist.Parameters.AddWithValue("$productId", item.ProductId);
                 hist.Parameters.AddWithValue("$productName", productName);
-                hist.Parameters.AddWithValue("$type", restore ? "Restock" : "Sale");
+                hist.Parameters.AddWithValue("$type", restore ? "Restore Stock" : "Remove Stock");
                 hist.Parameters.AddWithValue("$quantity", item.Quantity);
                 hist.Parameters.AddWithValue("$previous", previousStock);
                 hist.Parameters.AddWithValue("$new", newStock);
-                hist.Parameters.AddWithValue("$notes", $"Order {orderId}");
+                hist.Parameters.AddWithValue("$reason", restore ? "Order Cancellation" : "Customer Order");
+                var variantLabel = FormatHistoryVariant(item);
+                hist.Parameters.AddWithValue(
+                    "$notes",
+                    InventoryHistoryEntry.BuildNotes(
+                        variantLabel,
+                        orderId,
+                        restore
+                            ? "Stock restored due to order cancellation."
+                            : "Stock automatically deducted due to customer order placement."));
                 hist.Parameters.AddWithValue("$date", nowText);
                 hist.Parameters.AddWithValue("$admin", adminName);
                 await hist.ExecuteNonQueryAsync();
@@ -2926,6 +2937,21 @@ public sealed partial class DatabaseService : IAppDatabase
                 await move.ExecuteNonQueryAsync();
             }
         }
+    }
+
+    private static string? FormatHistoryVariant(AdminOrderItem item)
+    {
+        var color = item.ColorName?.Trim();
+        var size = item.Size?.Trim();
+        var hasSize = !string.IsNullOrWhiteSpace(size)
+                      && !size.Equals("Free Size", StringComparison.OrdinalIgnoreCase);
+        if (!string.IsNullOrWhiteSpace(color) && hasSize)
+            return $"{color} / {size}";
+        if (!string.IsNullOrWhiteSpace(color))
+            return color;
+        if (hasSize)
+            return size;
+        return null;
     }
 
     public async Task PlaceCheckoutOrderAsync(AdminOrder order, string? promoCode, decimal discountAmount, string userEmail)
@@ -3058,7 +3084,7 @@ public sealed partial class DatabaseService : IAppDatabase
 
             if (!string.Equals(order.Status, "Pending", StringComparison.OrdinalIgnoreCase))
             {
-                await ApplySqliteOrderStockAsync(connection, tx, order.Items, restore: false, nowText, order.Id, emailKey);
+                await ApplySqliteOrderStockAsync(connection, tx, order.Items, restore: false, nowText, order.Id);
             }
 
             await AppendOrderStatusHistoryCoreAsync(connection, tx, order.Id, null, order.Status, "Order placed", emailKey);

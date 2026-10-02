@@ -1,6 +1,9 @@
 @page "/profile"
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AuthService Auth
+@inject IAppDatabase Database
 @inject ToastService Toast
 @inject IJSRuntime JS
 @implements IDisposable
@@ -24,140 +27,443 @@
 }
 else
 {
+    var user = Auth.CurrentUser;
+    var photo = _photoPreview ?? user.ProfileImage;
+    var isActive = string.IsNullOrWhiteSpace(user.Status) || user.Status.Equals("Active", StringComparison.OrdinalIgnoreCase);
+
+    @if (_editing && IsDirty)
+    {
+        <NavigationLock ConfirmExternalNavigation="true" OnBeforeInternalNavigation="ConfirmLeave" />
+    }
+
     <AccountShell Active="profile">
-        <div class="account-panel account-profile-panel">
-            <h1>My Profile</h1>
+        <div class="pf-page">
+            <header class="pf-title">
+                <h1>My Profile</h1>
+                <p>Manage your personal information and account settings.</p>
+            </header>
 
-            <dl class="profile-meta">
-                <div>
-                    <dt>Full Name</dt>
-                    <dd>@Auth.DisplayName</dd>
-                </div>
-                <div>
-                    <dt>Email</dt>
-                    <dd>@Auth.Email</dd>
-                </div>
-                <div>
-                    <dt>Account Status</dt>
-                    <dd>@(Auth.CurrentUser.Status)</dd>
-                </div>
-                <div>
-                    <dt>Member Since</dt>
-                    <dd>@Auth.CurrentUser.MemberSinceLabel</dd>
-                </div>
-            </dl>
-
-            <form class="profile-form" @onsubmit="Save" @onsubmit:preventDefault="true">
-                <div class="profile-form-grid">
-                    <label class="profile-field">
-                        <span>First Name</span>
-                        <input type="text" @bind="_firstName" @bind:event="oninput" autocomplete="given-name" disabled="@_saving" />
+            <section class="pf-card pf-header" aria-label="Profile summary">
+                <div class="pf-avatar @(_uploadingPhoto ? "is-uploading" : "")">
+                    <span class="pf-avatar-initial" aria-hidden="true">@Auth.Initial</span>
+                    @if (!string.IsNullOrWhiteSpace(photo))
+                    {
+                        <img src="@photo" alt="@($"{Auth.DisplayName} profile photo")" onerror="this.remove();" />
+                    }
+                    <label for="pf-photo-input" class="pf-avatar-cam" title="Change photo">
+                        <Icon Name="camera" Size="13" />
+                        <span class="visually-hidden">Change photo</span>
                     </label>
-                    <label class="profile-field">
-                        <span>Last Name</span>
-                        <input type="text" @bind="_lastName" @bind:event="oninput" autocomplete="family-name" disabled="@_saving" />
-                    </label>
-                    <label class="profile-field">
-                        <span>Email</span>
-                        <input type="email" value="@_email" readonly disabled />
-                    </label>
-                    <label class="profile-field">
-                        <span>Contact Number</span>
-                        <input type="tel" @bind="_phone" @bind:event="oninput" autocomplete="tel" disabled="@_saving" />
-                    </label>
-                    <label class="profile-field">
-                        <span>Student / Employee ID</span>
-                        <input type="text" @bind="_studentId" @bind:event="oninput" disabled="@_saving" />
-                    </label>
-                    <label class="profile-field">
-                        <span>College / Department</span>
-                        <input type="text" @bind="_college" @bind:event="oninput" disabled="@_saving" />
-                    </label>
-                    <label class="profile-field profile-field-full">
-                        <span>Address</span>
-                        <input type="text" @bind="_address" @bind:event="oninput" autocomplete="street-address" disabled="@_saving" />
-                    </label>
-                    <label class="profile-field profile-field-full">
-                        <span>Profile Image URL</span>
-                        <input type="url" @bind="_profileImage" @bind:event="oninput" placeholder="https://..." disabled="@_saving" />
-                    </label>
+                    @if (_uploadingPhoto)
+                    {
+                        <span class="pf-avatar-busy" role="status">Uploading…</span>
+                    }
                 </div>
 
-                @if (_profileError is not null)
-                {
-                    <p class="auth-form-error">@_profileError</p>
-                }
-
-                <div class="profile-form-actions">
-                    <button type="submit" class="btn btn-navy" disabled="@_saving">
-                        @(_saving ? "Saving..." : "Save Changes")
-                    </button>
-                    <button type="button" class="btn btn-outline-navy" @onclick="Reset" disabled="@_saving">Cancel</button>
+                <div class="pf-header-info">
+                    <h2>@Auth.DisplayName</h2>
+                    <p>@user.Email</p>
+                    <div class="pf-header-meta">
+                        <span class="pf-status @(isActive ? "is-active" : "is-muted")">
+                            @if (isActive)
+                            {
+                                <Icon Name="check" Size="12" />
+                            }
+                            @(string.IsNullOrWhiteSpace(user.Status) ? "Active" : user.Status)
+                        </span>
+                        @if (user.CreatedAt != default)
+                        {
+                            <span class="pf-since">Member since @user.MemberSinceLabel</span>
+                        }
+                    </div>
+                    @if (_photoError is not null)
+                    {
+                        <p class="pf-error" role="alert">@_photoError</p>
+                    }
                 </div>
+
+                <div class="pf-header-actions">
+                    <InputFile id="pf-photo-input"
+                               class="visually-hidden"
+                               accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                               disabled="@_uploadingPhoto"
+                               OnChange="OnPhotoSelected" />
+                    <label for="pf-photo-input" class="btn btn-outline-navy pf-btn @(_uploadingPhoto ? "is-disabled" : "")">
+                        <Icon Name="camera" Size="15" /> Change Photo
+                    </label>
+                    @if (_editing)
+                    {
+                        <button type="button" class="btn btn-outline-navy pf-btn" disabled="@_saving" @onclick="CancelEdit">Cancel</button>
+                        <button type="submit" form="pf-form" class="btn btn-navy pf-btn" disabled="@_saving">
+                            @(_saving ? "Saving..." : "Save Changes")
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-navy pf-btn" @onclick="StartEdit">
+                            <Icon Name="pencil" Size="15" /> Edit Profile
+                        </button>
+                    }
+                </div>
+            </section>
+
+            <form id="pf-form" class="pf-form" @onsubmit="Save" @onsubmit:preventDefault="true" novalidate>
+                <section class="pf-card" aria-labelledby="pf-personal-title">
+                    <header class="pf-card-head">
+                        <h2 id="pf-personal-title">Personal Information</h2>
+                        <p>Your basic information and contact details.</p>
+                    </header>
+
+                    <div class="pf-grid">
+                        <div class="pf-field">
+                            <label for="pf-first">First Name</label>
+                            @if (_editing)
+                            {
+                                <input id="pf-first" type="text" @bind="_firstName" @bind:event="oninput" autocomplete="given-name" maxlength="60" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-first" class="pf-value">@Display(_firstName)</div>
+                            }
+                            @ErrorFor("firstName")
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-last">Last Name</label>
+                            @if (_editing)
+                            {
+                                <input id="pf-last" type="text" @bind="_lastName" @bind:event="oninput" autocomplete="family-name" maxlength="60" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-last" class="pf-value">@Display(_lastName)</div>
+                            }
+                            @ErrorFor("lastName")
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-email">Email</label>
+                            <div id="pf-email" class="pf-value is-locked" aria-readonly="true">
+                                <span>@user.Email</span>
+                                <Icon Name="lock" Size="14" />
+                            </div>
+                            <small class="pf-hint">Email cannot be changed here.</small>
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-phone">Contact Number</label>
+                            @if (_editing)
+                            {
+                                <input id="pf-phone" type="tel" @bind="_phone" @bind:event="oninput" autocomplete="tel" placeholder="e.g. 09XXXXXXXXX or +63XXXXXXXXXX" maxlength="20" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-phone" class="pf-value">@Display(_phone)</div>
+                            }
+                            @ErrorFor("phone")
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-student">Student / Employee ID <em>(Optional)</em></label>
+                            @if (_editing)
+                            {
+                                <input id="pf-student" type="text" @bind="_studentId" @bind:event="oninput" placeholder="e.g. 2023-12345" maxlength="40" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-student" class="pf-value">@Display(_studentId)</div>
+                            }
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-college">College / Department <em>(Optional)</em></label>
+                            @if (_editing)
+                            {
+                                <input id="pf-college" type="text" @bind="_college" @bind:event="oninput" placeholder="e.g. College of Computer Studies" maxlength="120" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-college" class="pf-value">@Display(_college)</div>
+                            }
+                        </div>
+                    </div>
+                </section>
+
+                <section class="pf-card" aria-labelledby="pf-address-title">
+                    <header class="pf-card-head">
+                        <h2 id="pf-address-title">Delivery Address</h2>
+                        <p>Set your default delivery address for a faster checkout.</p>
+                    </header>
+
+                    <div class="pf-grid pf-grid-address">
+                        <div class="pf-field pf-span-all">
+                            <label for="pf-line">Address Line</label>
+                            @if (_editing)
+                            {
+                                <input id="pf-line" type="text" @bind="_addrLine" @bind:event="oninput" autocomplete="address-line1" placeholder="House no., street, subdivision" maxlength="200" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-line" class="pf-value">@Display(_addrLine)</div>
+                            }
+                            @ErrorFor("addrLine")
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-brgy">Barangay</label>
+                            @if (_editing)
+                            {
+                                <input id="pf-brgy" type="text" @bind="_barangay" @bind:event="oninput" maxlength="100" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-brgy" class="pf-value">@Display(_barangay)</div>
+                            }
+                            @ErrorFor("barangay")
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-city">City</label>
+                            @if (_editing)
+                            {
+                                <input id="pf-city" type="text" @bind="_city" @bind:event="oninput" autocomplete="address-level2" maxlength="100" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-city" class="pf-value">@Display(_city)</div>
+                            }
+                            @ErrorFor("city")
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-province">Province</label>
+                            @if (_editing)
+                            {
+                                <input id="pf-province" type="text" @bind="_province" @bind:event="oninput" autocomplete="address-level1" maxlength="100" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-province" class="pf-value">@Display(_province)</div>
+                            }
+                            @ErrorFor("province")
+                        </div>
+
+                        <div class="pf-field">
+                            <label for="pf-postal">Postal Code</label>
+                            @if (_editing)
+                            {
+                                <input id="pf-postal" type="text" inputmode="numeric" @bind="_postal" @bind:event="oninput" autocomplete="postal-code" maxlength="4" disabled="@_saving" />
+                            }
+                            else
+                            {
+                                <div id="pf-postal" class="pf-value">@Display(_postal)</div>
+                            }
+                            @ErrorFor("postal")
+                        </div>
+                    </div>
+
+                    <label class="pf-check">
+                        <input type="checkbox" @bind="_isDefault" disabled="@(!_editing || _saving)" />
+                        <span>Use as my default delivery address</span>
+                    </label>
+
+                    @if (_formError is not null)
+                    {
+                        <p class="pf-error" role="alert">@_formError</p>
+                    }
+
+                    @if (_editing)
+                    {
+                        <div class="pf-form-actions">
+                            <button type="button" class="btn btn-outline-navy pf-btn" disabled="@_saving" @onclick="CancelEdit">Cancel</button>
+                            <button type="submit" class="btn btn-navy pf-btn" disabled="@_saving">
+                                @(_saving ? "Saving..." : "Save Changes")
+                            </button>
+                        </div>
+                    }
+                </section>
             </form>
 
-            <section class="profile-password-panel">
-                <h2>Change Password</h2>
-                <form class="profile-form" @onsubmit="ChangePassword" @onsubmit:preventDefault="true">
-                    <div class="profile-form-grid">
-                        <label class="profile-field">
-                            <span>Current Password</span>
-                            <input type="password" @bind="_currentPassword" autocomplete="current-password" disabled="@_changingPassword" />
-                        </label>
-                        <label class="profile-field">
-                            <span>New Password</span>
-                            <input type="password" @bind="_newPassword" autocomplete="new-password" disabled="@_changingPassword" />
-                        </label>
-                        <label class="profile-field profile-field-full">
-                            <span>Confirm New Password</span>
-                            <input type="password" @bind="_confirmPassword" autocomplete="new-password" disabled="@_changingPassword" />
-                        </label>
+            <section class="pf-card pf-security" aria-labelledby="pf-security-title">
+                <header class="pf-card-head">
+                    <h2 id="pf-security-title">Account Security</h2>
+                    <p>Manage your password and keep your account secure.</p>
+                </header>
+                <div class="pf-security-row">
+                    <span class="pf-security-icon" aria-hidden="true"><Icon Name="lock" Size="18" /></span>
+                    <div>
+                        <strong>Password</strong>
+                        <span>Use a strong password you don't use anywhere else.</span>
                     </div>
+                    <button type="button" class="btn btn-outline-navy pf-btn" @onclick="OpenPasswordModal">
+                        <Icon Name="pencil" Size="15" /> Change Password
+                    </button>
+                </div>
+            </section>
+        </div>
+    </AccountShell>
+
+    @if (_confirmDiscard)
+    {
+        <div class="od-backdrop od-confirm-backdrop" @onclick="() => _confirmDiscard = false">
+            <div class="od-confirm" role="alertdialog" aria-modal="true" aria-labelledby="pf-discard-title" @onclick:stopPropagation="true">
+                <h2 id="pf-discard-title">Discard unsaved changes?</h2>
+                <p>Your profile edits will be lost.</p>
+                <div class="od-confirm-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="() => _confirmDiscard = false">Keep Editing</button>
+                    <button type="button" class="btn btn-navy" @onclick="DiscardChanges">Discard</button>
+                </div>
+            </div>
+        </div>
+    }
+
+    @if (_showPasswordModal)
+    {
+        var meetsLength = _newPassword.Length >= AuthValidation.MinPasswordLength;
+        <div class="od-backdrop" @onclick="ClosePasswordModal">
+            <div class="pf-modal" role="dialog" aria-modal="true" aria-labelledby="pf-pw-title" @onclick:stopPropagation="true">
+                <header class="pf-modal-head">
+                    <h2 id="pf-pw-title">Change Password</h2>
+                    <button type="button" class="pf-modal-close" aria-label="Close" disabled="@_changingPassword" @onclick="ClosePasswordModal">
+                        <Icon Name="x" Size="18" />
+                    </button>
+                </header>
+
+                <form class="pf-modal-body" @onsubmit="ChangePassword" @onsubmit:preventDefault="true" novalidate>
+                    <div class="pf-field">
+                        <label for="pf-pw-current">Current Password <span class="pf-req" aria-hidden="true">*</span></label>
+                        <div class="pf-password">
+                            <input id="pf-pw-current" type="@(_showCurrent ? "text" : "password")" @bind="_currentPassword" @bind:event="oninput"
+                                   autocomplete="current-password" required disabled="@_changingPassword" />
+                            <button type="button" class="pf-eye" aria-label="@(_showCurrent ? "Hide current password" : "Show current password")"
+                                    aria-pressed="@_showCurrent" @onclick="() => _showCurrent = !_showCurrent">
+                                <Icon Name="@(_showCurrent ? "eye-off" : "eye")" Size="16" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pf-field">
+                        <label for="pf-pw-new">New Password <span class="pf-req" aria-hidden="true">*</span></label>
+                        <div class="pf-password">
+                            <input id="pf-pw-new" type="@(_showNew ? "text" : "password")" @bind="_newPassword" @bind:event="oninput"
+                                   autocomplete="new-password" required disabled="@_changingPassword" />
+                            <button type="button" class="pf-eye" aria-label="@(_showNew ? "Hide new password" : "Show new password")"
+                                    aria-pressed="@_showNew" @onclick="() => _showNew = !_showNew">
+                                <Icon Name="@(_showNew ? "eye-off" : "eye")" Size="16" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pf-field">
+                        <label for="pf-pw-confirm">Confirm New Password <span class="pf-req" aria-hidden="true">*</span></label>
+                        <div class="pf-password">
+                            <input id="pf-pw-confirm" type="@(_showConfirm ? "text" : "password")" @bind="_confirmPassword" @bind:event="oninput"
+                                   autocomplete="new-password" required disabled="@_changingPassword" />
+                            <button type="button" class="pf-eye" aria-label="@(_showConfirm ? "Hide confirm password" : "Show confirm password")"
+                                    aria-pressed="@_showConfirm" @onclick="() => _showConfirm = !_showConfirm">
+                                <Icon Name="@(_showConfirm ? "eye-off" : "eye")" Size="16" />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="pf-pw-rules">
+                        <strong>Password requirements:</strong>
+                        <span class="@(meetsLength ? "is-met" : "")">
+                            <Icon Name="@(meetsLength ? "check" : "minus")" Size="12" />
+                            At least @AuthValidation.MinPasswordLength characters
+                        </span>
+                    </div>
+
                     @if (_passwordError is not null)
                     {
-                        <p class="auth-form-error">@_passwordError</p>
+                        <p class="pf-error" role="alert">@_passwordError</p>
                     }
-                    <div class="profile-form-actions">
-                        <button type="submit" class="btn btn-navy" disabled="@_changingPassword">
+
+                    <div class="pf-modal-actions">
+                        <button type="button" class="btn btn-outline-navy pf-btn" disabled="@_changingPassword" @onclick="ClosePasswordModal">Cancel</button>
+                        <button type="submit" class="btn btn-navy pf-btn" disabled="@_changingPassword">
                             @(_changingPassword ? "Updating..." : "Update Password")
                         </button>
                     </div>
                 </form>
-            </section>
+            </div>
         </div>
-    </AccountShell>
+    }
 }
 
 @code {
+    private const long MaxPhotoBytes = 5 * 1024 * 1024;
+    private const int PhotoMaxDimension = 512;
+    private static readonly string[] AllowedPhotoTypes = ["image/jpeg", "image/png", "image/webp"];
+    private static readonly string[] AllowedPhotoExtensions = [".jpg", ".jpeg", ".png", ".webp"];
+
+    private bool _editing;
+    private bool _saving;
+    private bool _confirmDiscard;
+    private string? _formError;
+    private readonly Dictionary<string, string> _errors = [];
+
     private string _firstName = string.Empty;
     private string _lastName = string.Empty;
-    private string _email = string.Empty;
     private string _phone = string.Empty;
     private string _studentId = string.Empty;
     private string _college = string.Empty;
-    private string _address = string.Empty;
-    private string _profileImage = string.Empty;
+    private string _addrLine = string.Empty;
+    private string _barangay = string.Empty;
+    private string _city = string.Empty;
+    private string _province = string.Empty;
+    private string _postal = string.Empty;
+    private bool _isDefault = true;
+
+    private List<UserAddress> _addresses = [];
+    private UserAddress? _address;
+    private string _snapshot = string.Empty;
+
+    private bool _uploadingPhoto;
+    private string? _photoPreview;
+    private string? _photoError;
+
+    private bool _showPasswordModal;
+    private bool _changingPassword;
+    private string? _passwordError;
     private string _currentPassword = string.Empty;
     private string _newPassword = string.Empty;
     private string _confirmPassword = string.Empty;
-    private bool _saving;
-    private bool _changingPassword;
-    private string? _profileError;
-    private string? _passwordError;
+    private bool _showCurrent;
+    private bool _showNew;
+    private bool _showConfirm;
 
-    protected override void OnInitialized()
+    private bool IsDirty => _editing && Snapshot() != _snapshot;
+
+    protected override async Task OnInitializedAsync()
     {
-        Auth.OnChange += Refresh;
-        Reset();
+        Auth.OnChange += OnAuthChanged;
+        LoadFromUser();
+        await LoadAddressAsync();
     }
 
-    private void Refresh()
+    private void OnAuthChanged() => InvokeAsync(async () =>
     {
-        Reset();
-        InvokeAsync(StateHasChanged);
-    }
+        if (!_editing)
+        {
+            LoadFromUser();
+            await LoadAddressAsync();
+        }
+        StateHasChanged();
+    });
 
-    private void Reset()
+    private RenderFragment ErrorFor(string key) => __builder =>
+    {
+        if (_errors.TryGetValue(key, out var message))
+        {
+            <small class="pf-field-error" role="alert">@message</small>
+        }
+    };
+
+    private static string Display(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? "—" : value.Trim();
+
+    private void LoadFromUser()
     {
         var user = Auth.CurrentUser;
         if (user is null)
@@ -165,63 +471,334 @@ else
 
         _firstName = user.FirstName;
         _lastName = user.LastName;
-        _email = user.Email;
         _phone = user.Phone;
         _studentId = user.StudentId;
         _college = user.College;
-        _address = user.Address;
-        _profileImage = user.ProfileImage;
-        _profileError = null;
+    }
+
+    private async Task LoadAddressAsync()
+    {
+        var user = Auth.CurrentUser;
+        if (user is null || user.Id == Guid.Empty)
+            return;
+
+        try
+        {
+            _addresses = await Database.GetUserAddressesAsync(user.Id);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            _addresses = [];
+        }
+
+        _address = _addresses.FirstOrDefault(a => a.IsDefault) ?? _addresses.FirstOrDefault();
+        ApplyAddress(_address);
+    }
+
+    private void ApplyAddress(UserAddress? address)
+    {
+        _addrLine = address?.AddressLine ?? string.Empty;
+        _barangay = address?.Barangay ?? string.Empty;
+        _city = address?.City ?? string.Empty;
+        _province = address?.Province ?? string.Empty;
+        _postal = address?.PostalCode ?? string.Empty;
+        _isDefault = address?.IsDefault ?? true;
+    }
+
+    private string Snapshot() => string.Join('\u001f',
+        _firstName, _lastName, _phone, _studentId, _college,
+        _addrLine, _barangay, _city, _province, _postal, _isDefault.ToString());
+
+    private void StartEdit()
+    {
+        LoadFromUser();
+        ApplyAddress(_address);
+        _errors.Clear();
+        _formError = null;
+        _snapshot = Snapshot();
+        _editing = true;
+    }
+
+    private void CancelEdit()
+    {
+        if (_saving) return;
+        if (IsDirty)
+        {
+            _confirmDiscard = true;
+            return;
+        }
+        DiscardChanges();
+    }
+
+    private void DiscardChanges()
+    {
+        _confirmDiscard = false;
+        _editing = false;
+        _errors.Clear();
+        _formError = null;
+        LoadFromUser();
+        ApplyAddress(_address);
+    }
+
+    private async Task ConfirmLeave(LocationChangingContext context)
+    {
+        if (!IsDirty) return;
+        var leave = await JS.InvokeAsync<bool>("confirm", "Discard unsaved changes?");
+        if (!leave)
+            context.PreventNavigation();
+    }
+
+    private bool HasAnyAddressInput =>
+        new[] { _addrLine, _barangay, _city, _province, _postal }.Any(v => !string.IsNullOrWhiteSpace(v));
+
+    private bool Validate()
+    {
+        _errors.Clear();
+        _formError = null;
+
+        if (string.IsNullOrWhiteSpace(_firstName))
+            _errors["firstName"] = "First name is required.";
+        if (string.IsNullOrWhiteSpace(_lastName))
+            _errors["lastName"] = "Last name is required.";
+        if (!AuthValidation.IsValidPhone(_phone))
+            _errors["phone"] = "Enter a valid contact number, e.g. 09XXXXXXXXX or +63XXXXXXXXXX.";
+
+        if (HasAnyAddressInput || _address is not null)
+        {
+            if (string.IsNullOrWhiteSpace(_addrLine)) _errors["addrLine"] = "Address line is required.";
+            if (string.IsNullOrWhiteSpace(_barangay)) _errors["barangay"] = "Barangay is required.";
+            if (string.IsNullOrWhiteSpace(_city)) _errors["city"] = "City is required.";
+            if (string.IsNullOrWhiteSpace(_province)) _errors["province"] = "Province is required.";
+            if (!string.IsNullOrWhiteSpace(_postal) &&
+                (_postal.Trim().Length != 4 || !_postal.Trim().All(char.IsDigit)))
+                _errors["postal"] = "Postal code must be 4 digits.";
+        }
+
+        return _errors.Count == 0;
     }
 
     private async Task Save()
     {
-        if (_saving) return;
-        _profileError = null;
+        if (_saving || !_editing) return;
+        if (!Validate()) return;
 
-        if (string.IsNullOrWhiteSpace(_firstName) || string.IsNullOrWhiteSpace(_lastName))
-        {
-            _profileError = "First name and last name are required.";
-            return;
-        }
-
-        if (!AuthValidation.IsValidPhone(_phone))
-        {
-            _profileError = "Please enter a valid phone number.";
-            return;
-        }
+        var user = Auth.CurrentUser;
+        if (user is null) return;
 
         _saving = true;
         try
         {
+            var hasAddress = HasAnyAddressInput;
+            var addressSummary = hasAddress
+                ? OrderFlow.FormatShippingAddress(new MockOrder
+                {
+                    ShippingAddressLine = _addrLine.Trim(),
+                    ShippingBarangay = _barangay.Trim(),
+                    ShippingCity = _city.Trim(),
+                    ShippingProvince = _province.Trim(),
+                    ShippingPostalCode = _postal.Trim()
+                })
+                : user.Address;
+
             var result = await Auth.UpdateProfileAsync(new UpdateProfileRequest
             {
-                FirstName = _firstName,
-                LastName = _lastName,
-                PhoneNumber = _phone,
-                ProfileImage = _profileImage,
-                StudentId = _studentId,
-                College = _college,
-                Address = _address
+                FirstName = _firstName.Trim(),
+                LastName = _lastName.Trim(),
+                PhoneNumber = _phone.Trim(),
+                ProfileImage = user.ProfileImage,
+                StudentId = _studentId.Trim(),
+                College = _college.Trim(),
+                Address = addressSummary
             });
 
             if (!result.Success)
             {
-                _profileError = result.Error ?? "Unable to save your profile.";
+                _formError = result.Error ?? "Unable to save your profile.";
+                return;
+            }
+
+            if (hasAddress && !await SaveAddressAsync(user.Id))
+            {
+                _formError = "Your profile was saved, but the delivery address could not be saved. Please try again.";
+                _snapshot = Snapshot();
                 return;
             }
 
             await Auth.PersistAsync(JS);
-            Toast.Show("Profile changes saved.");
+            _editing = false;
+            LoadFromUser();
+            ApplyAddress(_address);
+            Toast.Show("Profile updated successfully.");
         }
-        catch
+        catch (Exception ex)
         {
-            _profileError = "Unable to save your profile right now.";
+            Console.Error.WriteLine(ex);
+            _formError = "Unable to save your profile right now.";
         }
         finally
         {
             _saving = false;
         }
+    }
+
+    private async Task<bool> SaveAddressAsync(Guid userId)
+    {
+        if (userId == Guid.Empty)
+            return false;
+
+        try
+        {
+            var fullName = $"{_firstName.Trim()} {_lastName.Trim()}".Trim();
+            var target = _address is null ? new UserAddress { UserId = userId, Label = "Home" } : Clone(_address);
+            if (string.IsNullOrWhiteSpace(target.RecipientName)) target.RecipientName = fullName;
+            if (string.IsNullOrWhiteSpace(target.PhoneNumber)) target.PhoneNumber = _phone.Trim();
+            target.AddressLine = _addrLine.Trim();
+            target.Barangay = _barangay.Trim();
+            target.City = _city.Trim();
+            target.Province = _province.Trim();
+            target.PostalCode = string.IsNullOrWhiteSpace(_postal) ? null : _postal.Trim();
+            target.IsDefault = _isDefault;
+
+            var saved = await Database.UpsertUserAddressAsync(target);
+
+            if (_isDefault)
+            {
+                foreach (var other in _addresses.Where(a => a.IsDefault && a.Id != saved.Id && a.Id != Guid.Empty))
+                {
+                    var demoted = Clone(other);
+                    demoted.IsDefault = false;
+                    await Database.UpsertUserAddressAsync(demoted);
+                }
+            }
+
+            await LoadAddressAsync();
+            _address = _addresses.FirstOrDefault(a => a.Id == saved.Id) ?? saved;
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            return false;
+        }
+    }
+
+    private static UserAddress Clone(UserAddress a) => new()
+    {
+        Id = a.Id,
+        UserId = a.UserId,
+        Label = a.Label,
+        RecipientName = a.RecipientName,
+        PhoneNumber = a.PhoneNumber,
+        AddressLine = a.AddressLine,
+        Barangay = a.Barangay,
+        City = a.City,
+        Province = a.Province,
+        PostalCode = a.PostalCode,
+        IsDefault = a.IsDefault,
+        CreatedAt = a.CreatedAt,
+        UpdatedAt = a.UpdatedAt
+    };
+
+    private async Task OnPhotoSelected(InputFileChangeEventArgs e)
+    {
+        _photoError = null;
+        var file = e.File;
+        var user = Auth.CurrentUser;
+        if (file is null || user is null || _uploadingPhoto)
+            return;
+
+        var ext = Path.GetExtension(file.Name).ToLowerInvariant();
+        if (!AllowedPhotoTypes.Contains(file.ContentType, StringComparer.OrdinalIgnoreCase) ||
+            !AllowedPhotoExtensions.Contains(ext))
+        {
+            _photoError = "Please choose a JPG, PNG, or WEBP image.";
+            return;
+        }
+
+        if (file.Size > MaxPhotoBytes)
+        {
+            _photoError = "Image must be 5 MB or smaller.";
+            return;
+        }
+
+        _uploadingPhoto = true;
+        StateHasChanged();
+        try
+        {
+            string dataUrl;
+            try
+            {
+                var outputType = file.ContentType.Equals("image/png", StringComparison.OrdinalIgnoreCase)
+                    ? "image/png"
+                    : "image/jpeg";
+                var resized = await file.RequestImageFileAsync(outputType, PhotoMaxDimension, PhotoMaxDimension);
+                dataUrl = await ReadDataUrlAsync(resized, outputType);
+            }
+            catch
+            {
+                if (file.ContentType.Equals("image/webp", StringComparison.OrdinalIgnoreCase))
+                    throw;
+                dataUrl = await ReadDataUrlAsync(file, file.ContentType);
+            }
+
+            _photoPreview = dataUrl;
+            StateHasChanged();
+
+            var result = await Auth.UpdateProfileAsync(new UpdateProfileRequest
+            {
+                FirstName = user.FirstName,
+                LastName = user.LastName,
+                PhoneNumber = user.Phone,
+                ProfileImage = dataUrl,
+                StudentId = user.StudentId,
+                College = user.College,
+                Address = user.Address
+            });
+
+            if (!result.Success)
+            {
+                _photoError = result.Error ?? "Unable to update your photo.";
+                return;
+            }
+
+            await Auth.PersistAsync(JS);
+            Toast.Show("Profile photo updated.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            _photoError = "Unable to read or upload that image. Please try another photo.";
+        }
+        finally
+        {
+            _photoPreview = null;
+            _uploadingPhoto = false;
+        }
+    }
+
+    private static async Task<string> ReadDataUrlAsync(IBrowserFile file, string contentType)
+    {
+        await using var stream = file.OpenReadStream(MaxPhotoBytes);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer);
+        return $"data:{contentType};base64,{Convert.ToBase64String(buffer.ToArray())}";
+    }
+
+    private void OpenPasswordModal()
+    {
+        _currentPassword = _newPassword = _confirmPassword = string.Empty;
+        _showCurrent = _showNew = _showConfirm = false;
+        _passwordError = null;
+        _showPasswordModal = true;
+    }
+
+    private void ClosePasswordModal()
+    {
+        if (_changingPassword) return;
+        _currentPassword = _newPassword = _confirmPassword = string.Empty;
+        _passwordError = null;
+        _showPasswordModal = false;
     }
 
     private async Task ChangePassword()
@@ -249,6 +826,12 @@ else
             return;
         }
 
+        if (_newPassword == _currentPassword)
+        {
+            _passwordError = "New password must be different from your current password.";
+            return;
+        }
+
         _changingPassword = true;
         try
         {
@@ -265,11 +848,14 @@ else
                 return;
             }
 
-            _currentPassword = _newPassword = _confirmPassword = string.Empty;
+            await Auth.PersistAsync(JS);
+            _changingPassword = false;
+            ClosePasswordModal();
             Toast.Show("Password updated successfully.");
         }
-        catch
+        catch (Exception ex)
         {
+            Console.Error.WriteLine(ex);
             _passwordError = "Unable to change your password right now.";
         }
         finally
@@ -278,5 +864,5 @@ else
         }
     }
 
-    public void Dispose() => Auth.OnChange -= Refresh;
+    public void Dispose() => Auth.OnChange -= OnAuthChanged;
 }

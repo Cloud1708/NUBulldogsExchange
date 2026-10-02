@@ -181,7 +181,11 @@ else
 }
 
 @code {
+    [SupplyParameterFromQuery(Name = "order")]
+    public string? RequestedOrderId { get; set; }
+
     private string _filter = "All";
+    private string? _openedRequestedOrderId;
     private MockOrder? _selectedOrder;
     private MockOrder? _pendingReceived;
     private MockOrder? _reviewOrder;
@@ -193,6 +197,24 @@ else
         Auth.OnChange += OnAuthChanged;
         OrderService.OnChange += Refresh;
         await OrderService.EnsureLoadedAsync(Auth.Email);
+        OpenRequestedOrder();
+    }
+
+    protected override void OnParametersSet() => OpenRequestedOrder();
+
+    private void OpenRequestedOrder()
+    {
+        if (string.IsNullOrWhiteSpace(RequestedOrderId)
+            || string.Equals(_openedRequestedOrderId, RequestedOrderId, StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var match = OrderService.Orders.FirstOrDefault(o =>
+            o.Id.Equals(RequestedOrderId.Trim(), StringComparison.OrdinalIgnoreCase));
+        if (match is null)
+            return;
+
+        _openedRequestedOrderId = RequestedOrderId;
+        _selectedOrder = match;
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
@@ -200,6 +222,7 @@ else
     private void OnAuthChanged() => InvokeAsync(async () =>
     {
         await OrderService.EnsureLoadedAsync(Auth.Email);
+        OpenRequestedOrder();
         StateHasChanged();
     });
 

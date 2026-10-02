@@ -2,6 +2,9 @@ namespace NUBulldogsExchange.Web.Shared.Data;
 
 public class InventoryHistoryEntry
 {
+    public const string SystemActor = "System";
+    public const string ManualReference = "Manual Adjustment";
+
     public string Id { get; set; } = Guid.NewGuid().ToString("N");
     public int ProductId { get; set; }
     public string ProductName { get; set; } = string.Empty;
@@ -20,26 +23,140 @@ public class InventoryHistoryEntry
     /// <summary>Display-only; persisted inside Notes when the DB has no reference column.</summary>
     public string? Reference { get; set; }
 
-    public string QuantityLabel => Type switch
+    public int Delta => NewStock - PreviousStock;
+
+    public bool IsSystem =>
+        string.Equals(AdminName, SystemActor, StringComparison.OrdinalIgnoreCase)
+        || string.Equals(NormalizedReason, "Customer Order", StringComparison.OrdinalIgnoreCase)
+        || string.Equals(NormalizedReason, "Order Cancellation", StringComparison.OrdinalIgnoreCase);
+
+    public string NormalizedType
     {
-        "Remove Stock" => $"-{Quantity}",
-        "Set Stock" => $"→ {NewStock}",
-        _ => $"+{Quantity}"
+        get
+        {
+            if (Type.Equals("Sale", StringComparison.OrdinalIgnoreCase)
+                || Type.Equals("Remove Stock", StringComparison.OrdinalIgnoreCase))
+                return "Remove Stock";
+
+            if (Type.Equals("Restore Stock", StringComparison.OrdinalIgnoreCase))
+                return "Restore Stock";
+
+            if (Type.Equals("Restock", StringComparison.OrdinalIgnoreCase)
+                && (Reason.Equals("Order", StringComparison.OrdinalIgnoreCase)
+                    || Reason.Equals("Order Cancellation", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(AdminName, SystemActor, StringComparison.OrdinalIgnoreCase)))
+                return "Restore Stock";
+
+            if (Type.Equals("Restock", StringComparison.OrdinalIgnoreCase)
+                || Type.Equals("Add Stock", StringComparison.OrdinalIgnoreCase))
+                return "Add Stock";
+
+            if (Type.Equals("Set Stock", StringComparison.OrdinalIgnoreCase)
+                || Type.Equals("Set Exact", StringComparison.OrdinalIgnoreCase))
+                return "Set Exact";
+
+            if (Delta < 0) return "Remove Stock";
+            if (Delta > 0 && string.Equals(AdminName, SystemActor, StringComparison.OrdinalIgnoreCase))
+                return "Restore Stock";
+            if (Delta > 0) return "Add Stock";
+            return string.IsNullOrWhiteSpace(Type) ? "Add Stock" : Type;
+        }
+    }
+
+    public string NormalizedReason
+    {
+        get
+        {
+            if (Reason.Equals("Order", StringComparison.OrdinalIgnoreCase))
+            {
+                return Type.Equals("Restock", StringComparison.OrdinalIgnoreCase)
+                    || Type.Equals("Restore Stock", StringComparison.OrdinalIgnoreCase)
+                    ? "Order Cancellation"
+                    : "Customer Order";
+            }
+
+            return string.IsNullOrWhiteSpace(Reason) ? "Manual Adjustment" : Reason.Trim();
+        }
+    }
+
+    public string ActionKey => NormalizedType switch
+    {
+        "Add Stock" => "add",
+        "Remove Stock" => "remove",
+        "Set Exact" => "set",
+        "Restore Stock" => "restore",
+        _ => "add"
     };
+
+    public string TypeLabel => NormalizedType;
+
+    public string VariantDisplay
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(VariantLabel)
+                && !VariantLabel.Equals("—", StringComparison.Ordinal)
+                && !VariantLabel.Equals("-", StringComparison.Ordinal)
+                && !VariantLabel.Equals("Default", StringComparison.OrdinalIgnoreCase))
+                return VariantLabel.Trim();
+
+            return "No Variant";
+        }
+    }
+
+    public string ReferenceDisplay
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(Reference))
+                return Reference.Trim();
+            if (IsSystem)
+                return string.Empty;
+            return ManualReference;
+        }
+    }
+
+    public bool HasOrderReference =>
+        !string.IsNullOrWhiteSpace(ReferenceDisplay)
+        && !ReferenceDisplay.Equals(ManualReference, StringComparison.OrdinalIgnoreCase)
+        && ReferenceDisplay.StartsWith("NUBE-", StringComparison.OrdinalIgnoreCase);
+
+    public string QtyDisplay
+    {
+        get
+        {
+            if (NormalizedType == "Set Exact")
+                return $"= {NewStock}";
+            var delta = Delta;
+            if (delta > 0) return $"+{delta}";
+            if (delta < 0) return delta.ToString();
+            return Quantity > 0
+                ? (NormalizedType is "Remove Stock" ? $"-{Quantity}" : $"+{Quantity}")
+                : "0";
+        }
+    }
+
+    public string QuantityLabel => QtyDisplay;
 
     public string ChangeLabel
     {
         get
         {
-            var delta = NewStock - PreviousStock;
+            var delta = Delta;
             if (delta > 0) return $"+{delta}";
             if (delta < 0) return delta.ToString();
             return "0";
         }
     }
 
+    public string PerformedByDisplay =>
+        IsSystem ? SystemActor : (string.IsNullOrWhiteSpace(AdminName) ? "Admin" : AdminName);
+
     public string DateLabel => Date.ToString("MMM d, yyyy");
     public string DateTimeLabel => Date.ToString("MMM d, yyyy h:mm tt");
+    public string DateLine => Date.ToString("MMM d, yyyy");
+    public string TimeLine => Date.ToString("h:mm tt");
+    public string DetailDateTime => Date.ToString("MMMM d, yyyy • h:mm tt");
 
     public static string BuildNotes(string? variantLabel, string? reference, string? notes)
     {
@@ -74,6 +191,13 @@ public class InventoryHistoryEntry
                 string.IsNullOrWhiteSpace(Reference))
             {
                 Reference = line["Ref:".Length..].Trim();
+                continue;
+            }
+
+            if (line.StartsWith("Order ", StringComparison.OrdinalIgnoreCase) &&
+                string.IsNullOrWhiteSpace(Reference))
+            {
+                Reference = line["Order ".Length..].Trim();
                 continue;
             }
 
@@ -114,27 +238,26 @@ public class InventoryRow
             v.StockQuantity > 0 &&
             v.StockQuantity <= LowStockLevel);
 
+    /// <summary>Variant rows, or the product stock record when there are no variants.</summary>
+    public int LowStockRecordCount => HasVariants
+        ? LowStockVariantCount
+        : TotalStock > 0 && TotalStock <= LowStockLevel ? 1 : 0;
+
+    public int OutOfStockRecordCount => HasVariants
+        ? OutOfStockVariantCount
+        : TotalStock <= 0 ? 1 : 0;
+
+    public string VariantCountLabel =>
+        HasVariants
+            ? $"{Variants.Count} {(Variants.Count == 1 ? "variant" : "variants")}"
+            : "No variants";
+
     public IEnumerable<string> StockAlertLines
     {
         get
         {
-            if (!HasVariants)
-            {
-                if (TotalStock <= 0)
-                {
-                    yield return "Out of Stock";
-                    yield break;
-                }
-
-                if (TotalStock <= LowStockLevel)
-                    yield return "Low Stock";
-                yield break;
-            }
-
-            if (OutOfStockVariantCount > 0)
-                yield return $"{OutOfStockVariantCount} Out of Stock";
-            if (LowStockVariantCount > 0)
-                yield return $"{LowStockVariantCount} Low Stock";
+            yield return $"{LowStockRecordCount} Low Stock";
+            yield return $"{OutOfStockRecordCount} Out of Stock";
         }
     }
 
@@ -147,38 +270,26 @@ public class InventoryRow
         }
     }
 
-    public bool HasStockAlerts => StockAlertLines.Any();
+    public bool HasStockAlerts => LowStockRecordCount > 0 || OutOfStockRecordCount > 0;
 
     public string StockState
     {
         get
         {
-            if (!HasVariants)
-            {
-                if (TotalStock <= 0) return "Out of Stock";
-                if (TotalStock <= LowStockLevel) return "Low Stock";
-                return "In Stock";
-            }
-
-            if (TotalStock <= 0 || Variants.Where(v => v.IsActive).All(v => v.StockQuantity <= 0))
-                return "Out of Stock";
-
-            if (OutOfStockVariantCount > 0 || LowStockVariantCount > 0)
-                return "Attention";
-
-            return "In Stock";
+            if (OutOfStockRecordCount > 0) return "Critical";
+            if (LowStockRecordCount > 0) return "Attention";
+            return "Healthy";
         }
     }
 
     public string StockStateKey => StockState switch
     {
-        "Out of Stock" => "out",
-        "Low Stock" => "low",
+        "Critical" => "critical",
         "Attention" => "attention",
-        _ => "in"
+        _ => "healthy"
     };
 
-    public bool IsLowOrOut => StockStateKey is "out" or "low" or "attention";
+    public bool IsLowOrOut => StockStateKey is "critical" or "attention";
 
     public static string VariantStatus(int stock, int lowStockLevel) => stock switch
     {

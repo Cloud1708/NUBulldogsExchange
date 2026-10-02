@@ -16,6 +16,7 @@ public class ProductCatalogService
     private readonly List<CategoryItem> _categories = [];
     private bool _loaded;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private IReadOnlyDictionary<int, int>? _fulfilledUnits;
 
     public event Action? OnChange;
 
@@ -26,6 +27,16 @@ public class ProductCatalogService
 
     public IReadOnlyList<Product> Products => _products;
     public IReadOnlyList<CategoryItem> Categories => _categories;
+
+    /// <summary>Fulfilled units (Completed pickup / Delivered delivery), loaded once per catalog session.</summary>
+    public async Task EnsureFulfilledSalesAsync()
+    {
+        if (_fulfilledUnits is not null) return;
+        _fulfilledUnits = await _db.GetFulfilledUnitsSoldAsync() ?? new Dictionary<int, int>();
+    }
+
+    public int FulfilledUnits(int productId) =>
+        _fulfilledUnits is not null && _fulfilledUnits.TryGetValue(productId, out var units) ? units : 0;
 
     public async Task EnsureLoadedAsync()
     {

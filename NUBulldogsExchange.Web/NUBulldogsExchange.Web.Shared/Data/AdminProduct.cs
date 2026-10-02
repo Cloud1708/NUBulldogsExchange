@@ -92,6 +92,7 @@ public class AdminProduct
             : product.FullDescription,
         Colors = [.. product.Colors],
         Sizes = [.. product.Sizes],
-        Variants = product.Variants.Select(v => v.Clone()).ToList()
+        Variants = product.Variants.Select(v => v.Clone()).ToList(),
+        CreatedAt = product.CreatedAt ?? default
     };
 }

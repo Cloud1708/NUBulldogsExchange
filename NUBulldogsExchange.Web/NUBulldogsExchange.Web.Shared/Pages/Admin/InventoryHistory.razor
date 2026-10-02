@@ -1,71 +1,564 @@
 @page "/admin/inventory/history"
 @layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminInventoryService InventoryService
+@inject AdminProductService ProductService
+@inject AdminOrderService OrderService
+@inject ToastService Toast
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Inventory History | Admin | NU Bulldogs Exchange</PageTitle>
 
-<div class="admin-inventory">
+<div class="admin-inventory admin-inventory-history-page">
     <header class="admin-products-header">
         <div>
             <h1>Inventory History</h1>
             <p>All stock adjustments and movements</p>
         </div>
-        <a href="/admin/inventory" class="btn btn-outline-navy">Back to Inventory</a>
+        <div class="admin-history-header-actions">
+            <button type="button"
+                    class="btn btn-outline-navy admin-inventory-history-btn"
+                    disabled="@(Filtered.Count == 0)"
+                    @onclick="ExportCsv">
+                <Icon Name="download" Size="15" />
+                Export
+            </button>
+            <a href="/admin/inventory" class="btn btn-outline-navy admin-inventory-history-btn">
+                <Icon Name="arrow-left" Size="15" />
+                Back to Inventory
+            </a>
+        </div>
     </header>
 
+    <section class="admin-inventory-stats" aria-label="History summary">
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="list" Size="18" /></div>
+            <div>
+                <strong>@InventoryService.HistoryTotalMovements</strong>
+                <span>Total Movements</span>
+                <small>All time</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-green"><Icon Name="trending-up" Size="18" /></div>
+            <div>
+                <strong>@InventoryService.HistoryUnitsAdded.ToString("N0")</strong>
+                <span>Stock Added</span>
+                <small>+ units</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-red"><Icon Name="trending-down" Size="18" /></div>
+            <div>
+                <strong>@InventoryService.HistoryUnitsRemoved.ToString("N0")</strong>
+                <span>Stock Removed</span>
+                <small>- units</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="settings" Size="18" /></div>
+            <div>
+                <strong>@InventoryService.HistoryManualAdjustments</strong>
+                <span>Manual Adjustments</span>
+                <small>Admin changes</small>
+            </div>
+        </article>
+    </section>
+
+    <section class="admin-inventory-toolbar admin-history-toolbar">
+        <div class="admin-products-search">
+            <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+            <input type="search"
+                   placeholder="Search product, variant, SKU, or order number..."
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+        </div>
+        <select class="admin-products-select" aria-label="Action" value="@_action" @onchange="OnActionChange">
+            @foreach (var option in InventoryService.HistoryActionOptions)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="admin-products-select" aria-label="Reason" value="@_reason" @onchange="OnReasonChange">
+            @foreach (var option in InventoryService.HistoryReasonOptions)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="admin-products-select" aria-label="Performed by" value="@_actor" @onchange="OnActorChange">
+            @foreach (var option in InventoryService.HistoryActorOptions)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="admin-products-select" aria-label="Date range" value="@_datePreset" @onchange="OnDatePresetChange">
+            <option value="all">All Dates</option>
+            <option value="today">Today</option>
+            <option value="7">7 Days</option>
+            <option value="30">30 Days</option>
+            <option value="month">This Month</option>
+            <option value="custom">Custom Range</option>
+        </select>
+        @if (_datePreset == "custom")
+        {
+            <input class="admin-products-select admin-order-date-input"
+                   type="date"
+                   aria-label="From date"
+                   value="@DateInput(_customFrom)"
+                   @onchange="OnCustomFrom" />
+            <input class="admin-products-select admin-order-date-input"
+                   type="date"
+                   aria-label="To date"
+                   value="@DateInput(_customTo)"
+                   @onchange="OnCustomTo" />
+        }
+    </section>
+
     <section class="admin-inventory-table-card">
-        @if (!InventoryService.History.Any())
+        @if (InventoryService.History.Count == 0)
         {
             <div class="admin-products-empty">
                 <div class="admin-products-empty-icon" aria-hidden="true">
                     <Icon Name="clock" Size="36" />
                 </div>
                 <h2>No inventory history yet.</h2>
-                <p>Stock adjustments will appear here.</p>
+                <p>Stock movements will appear here when inventory changes.</p>
+            </div>
+        }
+        else if (Filtered.Count == 0)
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="search" Size="36" />
+                </div>
+                <h2>No matching inventory movements.</h2>
+                <p>Try adjusting your filters.</p>
+                <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
             </div>
         }
         else
         {
             <div class="admin-inventory-table-wrap">
-                <table class="admin-inventory-table">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Product</th>
-                                <th>Variant</th>
-                                <th>Previous</th>
-                                <th>New</th>
-                                <th>Change</th>
-                                <th>Reason</th>
-                                <th>Admin</th>
+                <table class="admin-inventory-table admin-history-table">
+                    <thead>
+                        <tr>
+                            <th>Date / Time</th>
+                            <th>Product</th>
+                            <th>Variant</th>
+                            <th>Action</th>
+                            <th>Qty</th>
+                            <th>Before</th>
+                            <th>After</th>
+                            <th>Reason</th>
+                            <th>Reference</th>
+                            <th>Performed By</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var entry in PageItems)
+                        {
+                            var product = ProductService.GetById(entry.ProductId);
+                            <tr class="admin-history-row" @onclick="() => OpenDetails(entry)">
+                                <td>
+                                    <div class="admin-history-when">
+                                        <strong>@entry.DateLine</strong>
+                                        <span>@entry.TimeLine</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="admin-history-product">
+                                        <img src="@(product?.ImageUrl ?? MockData.PlaceholderImage)"
+                                             alt="@entry.ProductName"
+                                             loading="lazy"
+                                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                        <span>
+                                            <strong>@entry.ProductName</strong>
+                                            <span>@(product?.Sku ?? "—")</span>
+                                        </span>
+                                    </div>
+                                </td>
+                                <td>@entry.VariantDisplay</td>
+                                <td>
+                                    <span class="admin-history-action is-@entry.ActionKey">
+                                        <Icon Name="@ActionIconName(entry.ActionKey)" Size="12" />
+                                        @entry.TypeLabel
+                                    </span>
+                                </td>
+                                <td><strong class="admin-history-qty is-@entry.ActionKey">@entry.QtyDisplay</strong></td>
+                                <td>@entry.PreviousStock</td>
+                                <td>@entry.NewStock</td>
+                                <td>@entry.NormalizedReason</td>
+                                <td @onclick:stopPropagation="true">
+                                    @if (entry.HasOrderReference)
+                                    {
+                                        <button type="button"
+                                                class="admin-history-ref"
+                                                @onclick="() => OpenOrder(entry.ReferenceDisplay)">
+                                            @entry.ReferenceDisplay
+                                        </button>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(entry.ReferenceDisplay))
+                                    {
+                                        <span class="admin-history-ref-muted">@entry.ReferenceDisplay</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="admin-history-ref-muted">—</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (entry.IsSystem)
+                                    {
+                                        <span class="admin-history-actor is-system">System</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="admin-history-actor">@entry.PerformedByDisplay</span>
+                                    }
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var entry in InventoryService.History)
-                            {
-                                <tr>
-                                    <td>@entry.Date.ToString("MMM d, yyyy h:mm tt")</td>
-                                    <td><strong>@entry.ProductName</strong></td>
-                                    <td>@(string.IsNullOrWhiteSpace(entry.VariantLabel) ? "—" : entry.VariantLabel)</td>
-                                    <td>@entry.PreviousStock</td>
-                                    <td>@entry.NewStock</td>
-                                    <td><strong>@entry.ChangeLabel</strong></td>
-                                    <td>@entry.Reason</td>
-                                    <td>@entry.AdminName</td>
-                                </tr>
-                            }
-                        </tbody>
+                        }
+                    </tbody>
                 </table>
+            </div>
+
+            <div class="admin-inventory-footer">
+                <span>@ShowingLabel</span>
+                <div class="admin-history-pager">
+                    <label class="admin-history-page-size">
+                        <select aria-label="Rows per page" value="@_pageSize" @onchange="OnPageSizeChange">
+                            <option value="10">10 per page</option>
+                            <option value="25">25 per page</option>
+                            <option value="50">50 per page</option>
+                        </select>
+                    </label>
+                    @if (TotalPages > 1)
+                    {
+                        <nav class="admin-pagination" aria-label="History pagination">
+                            <button type="button"
+                                    class="admin-page-btn"
+                                    aria-label="Previous page"
+                                    disabled="@(CurrentPage <= 1)"
+                                    @onclick="() => GoToPage(CurrentPage - 1)">
+                                <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
+                            </button>
+                            @for (var page = 1; page <= TotalPages; page++)
+                            {
+                                var pageNumber = page;
+                                <button type="button"
+                                        class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
+                                        @onclick="() => GoToPage(pageNumber)">
+                                    @pageNumber
+                                </button>
+                            }
+                            <button type="button"
+                                    class="admin-page-btn"
+                                    aria-label="Next page"
+                                    disabled="@(CurrentPage >= TotalPages)"
+                                    @onclick="() => GoToPage(CurrentPage + 1)">
+                                <Icon Name="chevron-right" Size="14" />
+                            </button>
+                        </nav>
+                    }
+                </div>
             </div>
         }
     </section>
 </div>
 
+@if (_selected is not null)
+{
+    var product = ProductService.GetById(_selected.ProductId);
+    <div class="admin-inventory-drawer-overlay" @onclick="CloseDetails"></div>
+    <aside class="admin-inventory-drawer admin-history-drawer" role="dialog" aria-modal="true" aria-labelledby="history-detail-title">
+        <header class="admin-inventory-drawer-header">
+            <h2 id="history-detail-title">Inventory Movement Details</h2>
+            <button type="button" class="admin-inventory-drawer-close" aria-label="Close" @onclick="CloseDetails">
+                <Icon Name="x" Size="18" />
+            </button>
+        </header>
+
+        <div class="admin-inventory-drawer-product">
+            <img src="@(product?.ImageUrl ?? MockData.PlaceholderImage)"
+                 alt="@_selected.ProductName"
+                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+            <div>
+                <strong>@_selected.ProductName</strong>
+                <span>SKU: @(product?.Sku ?? "—")</span>
+                <span>Variant: @_selected.VariantDisplay</span>
+            </div>
+        </div>
+
+        <dl class="admin-history-detail-list">
+            <div>
+                <dt><Icon Name="calendar" Size="14" /> Date &amp; Time</dt>
+                <dd>@_selected.DetailDateTime</dd>
+            </div>
+            <div>
+                <dt>Action</dt>
+                <dd>
+                    <span class="admin-history-action is-@_selected.ActionKey">
+                        <Icon Name="@ActionIconName(_selected.ActionKey)" Size="12" />
+                        @_selected.TypeLabel
+                    </span>
+                </dd>
+            </div>
+            <div>
+                <dt>Quantity</dt>
+                <dd><strong class="admin-history-qty is-@_selected.ActionKey">@_selected.QtyDisplay</strong></dd>
+            </div>
+            <div>
+                <dt>Stock Change</dt>
+                <dd>Before: @_selected.PreviousStock → After: @_selected.NewStock</dd>
+            </div>
+            <div>
+                <dt>Reason</dt>
+                <dd>@_selected.NormalizedReason</dd>
+            </div>
+            <div>
+                <dt>Reference</dt>
+                <dd>
+                    @if (_selected.HasOrderReference)
+                    {
+                        <button type="button" class="admin-history-ref" @onclick="() => OpenOrder(_selected.ReferenceDisplay)">
+                            @_selected.ReferenceDisplay
+                        </button>
+                    }
+                    else
+                    {
+                        @(!string.IsNullOrWhiteSpace(_selected.ReferenceDisplay) ? _selected.ReferenceDisplay : "—")
+                    }
+                </dd>
+            </div>
+            <div>
+                <dt><Icon Name="user" Size="14" /> Performed By</dt>
+                <dd>
+                    @if (_selected.IsSystem)
+                    {
+                        <span class="admin-history-actor is-system">System</span>
+                    }
+                    else
+                    {
+                        @_selected.PerformedByDisplay
+                    }
+                </dd>
+            </div>
+        </dl>
+
+        @if (!string.IsNullOrWhiteSpace(_selected.Notes))
+        {
+            <div class="admin-history-extra">
+                <h3>Additional Info</h3>
+                <p>@_selected.Notes</p>
+            </div>
+        }
+
+        <div class="admin-inventory-drawer-actions">
+            <button type="button" class="btn btn-outline-navy" @onclick="CloseDetails">Close</button>
+        </div>
+    </aside>
+}
+
+<AdminOrderDetailsModal Order="_selectedOrder" OnClose="CloseOrder" />
+
 @code {
-    protected override void OnInitialized() => InventoryService.OnChange += Refresh;
+    private string _search = string.Empty;
+    private string _action = "All Actions";
+    private string _reason = "All Reasons";
+    private string _actor = "All Performed By";
+    private string _datePreset = "all";
+    private DateTime? _customFrom;
+    private DateTime? _customTo;
+    private int _pageSize = AdminInventoryService.HistoryPageSize;
+    private int _currentPage = 1;
+    private InventoryHistoryEntry? _selected;
+    private AdminOrder? _selectedOrder;
+
+    private List<InventoryHistoryEntry> Filtered =>
+        InventoryService.FilterHistory(_search, _action, _reason, _actor, _datePreset, _customFrom, _customTo).ToList();
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)_pageSize));
+    private int CurrentPage => Math.Clamp(_currentPage, 1, TotalPages);
+
+    private IEnumerable<InventoryHistoryEntry> PageItems =>
+        Filtered.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize);
+
+    private string ShowingLabel
+    {
+        get
+        {
+            var total = Filtered.Count;
+            if (total == 0) return "Showing 0 movements";
+            var start = (CurrentPage - 1) * _pageSize + 1;
+            var end = Math.Min(start + _pageSize - 1, total);
+            return $"Showing {start}–{end} of {total} {(total == 1 ? "movement" : "movements")}";
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        InventoryService.OnChange += Refresh;
+        OrderService.OnChange += Refresh;
+    }
+
     private void Refresh() => InvokeAsync(StateHasChanged);
-    public void Dispose() => InventoryService.OnChange -= Refresh;
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _currentPage = 1;
+    }
+
+    private void OnActionChange(ChangeEventArgs e)
+    {
+        _action = e.Value?.ToString() ?? "All Actions";
+        _currentPage = 1;
+    }
+
+    private void OnReasonChange(ChangeEventArgs e)
+    {
+        _reason = e.Value?.ToString() ?? "All Reasons";
+        _currentPage = 1;
+    }
+
+    private void OnActorChange(ChangeEventArgs e)
+    {
+        _actor = e.Value?.ToString() ?? "All Performed By";
+        _currentPage = 1;
+    }
+
+    private void OnDatePresetChange(ChangeEventArgs e)
+    {
+        _datePreset = e.Value?.ToString() ?? "all";
+        _currentPage = 1;
+    }
+
+    private void OnCustomFrom(ChangeEventArgs e)
+    {
+        _customFrom = ParseDate(e.Value?.ToString());
+        _currentPage = 1;
+    }
+
+    private void OnCustomTo(ChangeEventArgs e)
+    {
+        _customTo = ParseDate(e.Value?.ToString());
+        _currentPage = 1;
+    }
+
+    private void OnPageSizeChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size) && size > 0)
+            _pageSize = size;
+        _currentPage = 1;
+    }
+
+    private void ClearFilters()
+    {
+        _search = string.Empty;
+        _action = "All Actions";
+        _reason = "All Reasons";
+        _actor = "All Performed By";
+        _datePreset = "all";
+        _customFrom = null;
+        _customTo = null;
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > TotalPages) return;
+        _currentPage = page;
+    }
+
+    private void OpenDetails(InventoryHistoryEntry entry) => _selected = entry;
+    private void CloseDetails() => _selected = null;
+
+    private void OpenOrder(string orderId)
+    {
+        var order = OrderService.GetById(orderId);
+        if (order is null)
+        {
+            Toast.Show("Order not found.");
+            return;
+        }
+
+        _selectedOrder = order;
+    }
+
+    private void CloseOrder() => _selectedOrder = null;
+
+    private async Task ExportCsv()
+    {
+        var rows = Filtered;
+        if (rows.Count == 0) return;
+
+        var lines = new List<string>
+        {
+            "Date,Product,SKU,Variant,Action,Qty,Before,After,Reason,Reference,Performed By,Notes"
+        };
+
+        foreach (var entry in rows)
+        {
+            var product = ProductService.GetById(entry.ProductId);
+            lines.Add(string.Join(",",
+                Csv(entry.DateTimeLabel),
+                Csv(entry.ProductName),
+                Csv(product?.Sku),
+                Csv(entry.VariantDisplay),
+                Csv(entry.TypeLabel),
+                Csv(entry.QtyDisplay),
+                entry.PreviousStock,
+                entry.NewStock,
+                Csv(entry.NormalizedReason),
+                Csv(entry.ReferenceDisplay),
+                Csv(entry.PerformedByDisplay),
+                Csv(entry.Notes)));
+        }
+
+        var csv = string.Join("\n", lines);
+        var fileName = $"NU-Bulldogs-Inventory-History-{DateTime.Now:yyyy-MM-dd}.csv";
+        try
+        {
+            await JS.InvokeVoidAsync("nubeDownloadTextFile", fileName, csv, "text/csv;charset=utf-8");
+            Toast.Show($"Exported {rows.Count} movement{(rows.Count == 1 ? "" : "s")} as CSV.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            Toast.Show("Unable to export inventory history.");
+        }
+    }
+
+    private static string ActionIconName(string key) => key switch
+    {
+        "add" => "trending-up",
+        "remove" => "trending-down",
+        "restore" => "refresh",
+        _ => "settings"
+    };
+
+    private static string DateInput(DateTime? value) => value?.ToString("yyyy-MM-dd") ?? string.Empty;
+
+    private static DateTime? ParseDate(string? value) =>
+        DateTime.TryParse(value, out var date) ? date.Date : null;
+
+    private static string Csv(string? value)
+    {
+        var text = value ?? string.Empty;
+        if (text.StartsWith('=') || text.StartsWith('+') || text.StartsWith('-') || text.StartsWith('@'))
+            text = "'" + text;
+        if (text.Contains(',') || text.Contains('"') || text.Contains('\n'))
+            return $"\"{text.Replace("\"", "\"\"")}\"";
+        return text;
+    }
+
+    public void Dispose()
+    {
+        InventoryService.OnChange -= Refresh;
+        OrderService.OnChange -= Refresh;
+    }
 }

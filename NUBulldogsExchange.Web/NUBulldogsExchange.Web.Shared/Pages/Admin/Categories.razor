@@ -4,8 +4,10 @@
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminCategoryService CategoryService
+@inject AdminProductService ProductService
 @inject ToastService Toast
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Categories | Admin | NU Bulldogs Exchange</PageTitle>
@@ -22,22 +24,34 @@
         </button>
     </header>
 
-    <div class="admin-category-stats">
-        <article class="admin-category-stat">
-            <strong>@CategoryService.TotalCount</strong>
-            <span>Total Categories</span>
+    <div class="admin-category-stats" aria-label="Category summary">
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="tag" Size="18" /></div>
+            <div>
+                <span>Total Categories</span>
+                <strong>@CategoryService.TotalCount.ToString("N0")</strong>
+            </div>
         </article>
-        <article class="admin-category-stat">
-            <strong>@CategoryService.ActiveCount</strong>
-            <span>Active</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-green"><Icon Name="check-circle" Size="18" /></div>
+            <div>
+                <span>Active Categories</span>
+                <strong>@CategoryService.ActiveCount.ToString("N0")</strong>
+            </div>
         </article>
-        <article class="admin-category-stat">
-            <strong>@CategoryService.InactiveCount</strong>
-            <span>Inactive</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-gold"><Icon Name="clock" Size="18" /></div>
+            <div>
+                <span>Inactive Categories</span>
+                <strong>@CategoryService.InactiveCount.ToString("N0")</strong>
+            </div>
         </article>
-        <article class="admin-category-stat">
-            <strong>@CategoryService.TotalProducts</strong>
-            <span>Total Products</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-purple"><Icon Name="package" Size="18" /></div>
+            <div>
+                <span>Total Products</span>
+                <strong>@ProductService.All.Count.ToString("N0")</strong>
+            </div>
         </article>
     </div>
 
@@ -48,140 +62,405 @@
                 <Icon Name="tag" Size="36" />
             </div>
             <h2>No categories yet.</h2>
-            <p>Create your first merchandise category.</p>
+            <p>Create categories to organize your merchandise catalog.</p>
             <button type="button" class="btn btn-navy" @onclick="OpenAddModal">Add Category</button>
         </div>
     }
     else
     {
-        <div class="admin-category-grid">
-            @foreach (var category in CategoryService.All)
-            {
-                <article class="admin-category-card">
-                    <a class="admin-category-media"
-                       href="@($"/admin/products?category={Uri.EscapeDataString(category.Name)}")"
-                       title="@($"View {category.Name} products")">
-                        <img src="@category.ImageUrl"
-                             alt="@category.Name"
-                             loading="lazy"
-                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
-                        <span class="admin-product-status @(category.IsActive ? "is-active" : "is-inactive")">
-                            @category.Status
-                        </span>
-                    </a>
+        <section class="admin-products-filters">
+            <div class="admin-category-toolbar">
+                <div class="admin-products-search">
+                    <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+                    <input type="search"
+                           placeholder="Search categories..."
+                           aria-label="Search categories"
+                           value="@_search"
+                           @oninput="OnSearch" />
+                </div>
+                <select class="admin-products-select" aria-label="Filter by status" value="@_statusFilter" @onchange="OnStatus">
+                    <option value="All">All Statuses</option>
+                    <option value="Active">Active</option>
+                    <option value="Inactive">Inactive</option>
+                </select>
+                <select class="admin-products-select" aria-label="Sort categories" value="@_sort" @onchange="OnSort">
+                    @foreach (var (value, label) in SortOptions)
+                    {
+                        <option value="@value">Sort By: @label</option>
+                    }
+                </select>
+                <div class="admin-category-views" role="group" aria-label="Category layout">
+                    <button type="button"
+                            class="@(_grid ? "is-active" : null)"
+                            aria-pressed="@_grid"
+                            aria-label="Grid view"
+                            title="Grid view"
+                            @onclick="() => _grid = true">
+                        <Icon Name="grid" Size="16" />
+                    </button>
+                    <button type="button"
+                            class="@(!_grid ? "is-active" : null)"
+                            aria-pressed="@(!_grid)"
+                            aria-label="List view"
+                            title="List view"
+                            @onclick="() => _grid = false">
+                        <Icon Name="list" Size="16" />
+                    </button>
+                </div>
+            </div>
+        </section>
 
-                    <div class="admin-category-body">
-                        <a class="admin-category-info"
-                           href="@($"/admin/products?category={Uri.EscapeDataString(category.Name)}")">
-                            <div class="admin-category-title">
-                                <Icon Name="tag" Size="15" />
-                                <strong>@category.Name</strong>
-                            </div>
-                            <span>@category.ProductCountLabel</span>
-                        </a>
-
-                        <div class="admin-category-actions">
-                            <button type="button"
-                                    class="admin-category-icon-btn"
-                                    title="Edit category"
-                                    aria-label="@($"Edit {category.Name}")"
-                                    @onclick="() => OpenEditModal(category)">
-                                <Icon Name="pencil" Size="15" />
-                            </button>
-                            <button type="button"
-                                    class="admin-category-icon-btn danger"
-                                    title="Delete category"
-                                    aria-label="@($"Delete {category.Name}")"
-                                    @onclick="() => OpenDeleteModal(category)">
-                                <Icon Name="trash" Size="15" />
-                            </button>
+        @if (!Filtered.Any())
+        {
+            <div class="admin-card admin-categories-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="search" Size="36" />
+                </div>
+                <h2>No categories found.</h2>
+                <p>Try another search or filter.</p>
+                <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
+            </div>
+        }
+        else if (_grid)
+        {
+            <div class="admin-category-grid">
+                @foreach (var category in Paged)
+                {
+                    var count = ProductCount(category);
+                    <article class="admin-category-card @(_openMenuId == category.Id ? "is-menu-open" : null)" @key="category.Id">
+                        <div class="admin-category-media">
+                            <img src="@ImageFor(category)"
+                                 alt="@category.Name"
+                                 loading="lazy"
+                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                            <span class="admin-product-status @(category.IsActive ? "is-active" : "is-inactive")">
+                                @category.Status
+                            </span>
                         </div>
-                    </div>
-                </article>
-            }
-        </div>
+
+                        <div class="admin-category-body">
+                            <div class="admin-category-info">
+                                <div class="admin-category-title">
+                                    <Icon Name="tag" Size="15" />
+                                    <strong title="@category.Name">@category.Name</strong>
+                                </div>
+                                <span>@CountLabel(count)</span>
+                                @if (count == 0)
+                                {
+                                    <em class="admin-category-empty-badge">Empty Category</em>
+                                }
+                            </div>
+
+                            <div class="admin-category-actions">
+                                <button type="button"
+                                        class="btn btn-outline-navy admin-category-view"
+                                        @onclick="() => ViewProducts(category)">
+                                    View Products
+                                </button>
+                                <button type="button"
+                                        class="admin-category-icon-btn"
+                                        title="Edit category"
+                                        aria-label="@($"Edit {category.Name}")"
+                                        @onclick="() => OpenEditModal(category)">
+                                    <Icon Name="pencil" Size="15" />
+                                </button>
+                                @MenuButton(category)
+                            </div>
+                        </div>
+                    </article>
+                }
+            </div>
+        }
+        else
+        {
+            <section class="admin-products-table-card @(_openMenuId is not null ? "is-menu-open" : null)">
+                <div class="admin-products-table-wrap">
+                    <table class="admin-products-table admin-category-table">
+                        <thead>
+                            <tr>
+                                <th>Image</th>
+                                <th>Category</th>
+                                <th>Products</th>
+                                <th>Status</th>
+                                <th class="col-actions">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var category in Paged)
+                            {
+                                var count = ProductCount(category);
+                                <tr @key="category.Id">
+                                    <td class="col-image">
+                                        <span class="admin-product-thumb">
+                                            <img src="@ImageFor(category)"
+                                                 alt=""
+                                                 loading="lazy"
+                                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                        </span>
+                                    </td>
+                                    <td class="col-name"><strong>@category.Name</strong></td>
+                                    <td>
+                                        @CountLabel(count)
+                                        @if (count == 0)
+                                        {
+                                            <em class="admin-category-empty-badge">Empty Category</em>
+                                        }
+                                    </td>
+                                    <td>
+                                        <span class="admin-product-status @(category.IsActive ? "is-active" : "is-inactive")">
+                                            @category.Status
+                                        </span>
+                                    </td>
+                                    <td class="col-actions">
+                                        <div class="admin-products-row-actions">
+                                            <button type="button" class="btn btn-outline-navy admin-products-inline-btn" @onclick="() => ViewProducts(category)">
+                                                View Products
+                                            </button>
+                                            <button type="button"
+                                                    class="admin-category-icon-btn"
+                                                    title="Edit category"
+                                                    aria-label="@($"Edit {category.Name}")"
+                                                    @onclick="() => OpenEditModal(category)">
+                                                <Icon Name="pencil" Size="15" />
+                                            </button>
+                                            @MenuButton(category)
+                                        </div>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        }
+
+        @if (Filtered.Any())
+        {
+            <div class="admin-products-footer admin-category-footer">
+                <span>@ResultLabel</span>
+                @if (TotalPages > 1)
+                {
+                    <nav class="admin-pagination" aria-label="Categories pagination">
+                        <button type="button" class="admin-page-btn" aria-label="Previous page" disabled="@(CurrentPage <= 1)" @onclick="() => GoToPage(CurrentPage - 1)">
+                            <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
+                        </button>
+                        @for (var page = 1; page <= TotalPages; page++)
+                        {
+                            var pageNumber = page;
+                            <button type="button"
+                                    class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
+                                    aria-current="@(CurrentPage == pageNumber ? "page" : null)"
+                                    @onclick="() => GoToPage(pageNumber)">
+                                @pageNumber
+                            </button>
+                        }
+                        <button type="button" class="admin-page-btn" aria-label="Next page" disabled="@(CurrentPage >= TotalPages)" @onclick="() => GoToPage(CurrentPage + 1)">
+                            <Icon Name="chevron-right" Size="14" />
+                        </button>
+                    </nav>
+                }
+            </div>
+        }
     }
 </div>
 
+@if (_openMenuId is not null)
+{
+    <div class="admin-menu-backdrop" @onclick="CloseMenu"></div>
+}
+
 @if (_formOpen)
 {
-    <div class="admin-modal-backdrop" @onclick="CloseForm">
-        <div class="admin-modal admin-category-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>@(_isEdit ? "Edit Category" : "Add Category")</h2>
+    <div class="admin-modal-backdrop" @onclick="RequestCloseForm">
+        <div class="admin-modal admin-category-modal" role="dialog" aria-modal="true" aria-labelledby="cat-form-title" @onclick:stopPropagation="true">
+            <header class="admin-category-modal-head">
+                <div>
+                    <h2 id="cat-form-title">@(_isEdit ? "Edit Category" : "Add Category")</h2>
+                    <p>@(_isEdit ? "Update this category." : "Create a new category to organize your merchandise catalog.")</p>
+                </div>
+                <button type="button" class="admin-category-modal-close" aria-label="Close" disabled="@_saving" @onclick="RequestCloseForm">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </header>
 
             <form class="admin-category-form" @onsubmit="SaveCategory" @onsubmit:preventDefault="true">
-                <label class="admin-field">
-                    <span>Category Name *</span>
-                    <input type="text" @bind="_name" @bind:event="oninput" placeholder="T-Shirts" />
-                    @if (!string.IsNullOrEmpty(_nameError))
-                    {
-                        <em>@_nameError</em>
-                    }
-                </label>
+                <div class="admin-category-form-grid">
+                    <div class="admin-category-form-main">
+                        <label class="admin-field @(_duplicate is not null ? "is-invalid" : null)">
+                            <span class="admin-category-label-row">
+                                <span>Category Name <em class="admin-category-req">*</em></span>
+                                <small>@_name.Length / @NameLimit</small>
+                            </span>
+                            <input type="text"
+                                   maxlength="@NameLimit"
+                                   value="@_name"
+                                   placeholder="T-Shirts"
+                                   aria-invalid="@(_duplicate is not null)"
+                                   @oninput="OnNameInput" />
+                            @if (_duplicate is not null && _duplicate.Contains("named", StringComparison.Ordinal))
+                            {
+                                <em>@_duplicate</em>
+                            }
+                        </label>
 
-                <label class="admin-field">
-                    <span>Slug</span>
-                    <input type="text" @bind="_slug" @bind:event="oninput" placeholder="t-shirts" />
-                </label>
+                        <label class="admin-field">
+                            <span>Slug</span>
+                            <div class="admin-category-slug">
+                                <input type="text" value="@CurrentSlug" readonly aria-label="Slug" />
+                                <button type="button"
+                                        aria-label="Copy slug"
+                                        title="Copy slug"
+                                        disabled="@(string.IsNullOrEmpty(CurrentSlug))"
+                                        @onclick="CopySlug">
+                                    <Icon Name="copy" Size="15" />
+                                </button>
+                            </div>
+                            <small class="admin-category-hint">Auto-generated from the category name.</small>
+                            @if (_duplicate is not null && !_duplicate.Contains("named", StringComparison.Ordinal))
+                            {
+                                <em>@_duplicate</em>
+                            }
+                        </label>
 
-                <label class="admin-field">
-                    <span>Category Image URL</span>
-                    <input type="url" @bind="_imageUrl" @bind:event="oninput" placeholder="https://..." />
-                </label>
+                        <label class="admin-field">
+                            <span class="admin-category-label-row">
+                                <span>Description (Optional)</span>
+                                <small>@_description.Length / @DescriptionLimit</small>
+                            </span>
+                            <textarea rows="4"
+                                      maxlength="@DescriptionLimit"
+                                      value="@_description"
+                                      placeholder="Describe this merchandise category..."
+                                      @oninput="OnDescriptionInput"></textarea>
+                        </label>
 
-                <label class="admin-field">
-                    <span>Description</span>
-                    <textarea rows="3" @bind="_description" @bind:event="oninput" placeholder="Category description"></textarea>
-                </label>
+                        <label class="admin-field">
+                            <span>Status <em class="admin-category-req">*</em></span>
+                            <select value="@_statusForm" @onchange="OnStatusForm">
+                                <option value="Active">Active</option>
+                                <option value="Inactive">Inactive</option>
+                            </select>
+                            <small class="admin-category-hint">
+                                @(_statusForm == "Inactive"
+                                    ? "Inactive categories remain in Admin but are hidden from customer-facing category sections."
+                                    : "Active categories are visible to customers where categories are displayed.")
+                            </small>
+                        </label>
 
-                <label class="admin-field">
-                    <span>Status</span>
-                    <select @bind="_status">
-                        <option value="Active">Active</option>
-                        <option value="Inactive">Inactive</option>
-                    </select>
-                </label>
-
-                @if (!string.IsNullOrWhiteSpace(_imageUrl))
-                {
-                    <div class="admin-form-preview">
-                        <span>Image preview</span>
-                        <img src="@_imageUrl"
-                             alt="Preview"
-                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                        <p class="admin-category-note">
+                            <span class="admin-category-note-mark" aria-hidden="true">i</span>
+                            <span>Products can be assigned to this category after it is created.</span>
+                        </p>
                     </div>
+
+                    <div class="admin-category-form-side">
+                        <span class="admin-category-side-label">Category Image</span>
+                        @if (!HasImage)
+                        {
+                            <div class="admin-category-drop @(_dragOver ? "is-dragover" : null)"
+                                 @ondragenter="OnDragEnter"
+                                 @ondragenter:preventDefault
+                                 @ondragover="OnDragOver"
+                                 @ondragover:preventDefault
+                                 @ondragleave="OnDragLeave">
+                                <InputFile OnChange="OnImageSelected"
+                                           accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                           class="admin-product-upload-input" />
+                                <div class="admin-category-drop-copy" aria-hidden="true">
+                                    <Icon Name="upload" Size="26" />
+                                    <strong>Drag &amp; drop an image here</strong>
+                                    <span>or click to browse</span>
+                                    <small>PNG, JPG, WEBP • Max 5MB</small>
+                                    <small>Recommended size: 800 × 500</small>
+                                </div>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="admin-category-preview">
+                                <span>Image Preview</span>
+                                <img src="@_imageUrl" alt="Category image preview" />
+                                @if (!string.IsNullOrWhiteSpace(_imageName))
+                                {
+                                    <strong>@_imageName</strong>
+                                }
+                                @if (!string.IsNullOrWhiteSpace(_imageSizeLabel))
+                                {
+                                    <small>@_imageSizeLabel</small>
+                                }
+                                <div class="admin-category-preview-actions">
+                                    <button type="button" class="btn btn-outline-navy" @onclick="RemoveImage">
+                                        <Icon Name="trash" Size="14" /> Remove
+                                    </button>
+                                    <button type="button" class="btn btn-outline-navy admin-category-replace">
+                                        <Icon Name="refresh" Size="14" /> Replace
+                                        <InputFile OnChange="OnImageSelected"
+                                                   accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                                                   class="admin-product-upload-input" />
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_imageError))
+                        {
+                            <em class="admin-category-image-error">@_imageError</em>
+                        }
+                    </div>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_saveError))
+                {
+                    <p class="admin-category-save-error" role="alert">@_saveError</p>
                 }
 
-                <div class="admin-modal-actions">
-                    <button type="button" class="btn btn-outline-navy" @onclick="CloseForm">Cancel</button>
-                    <button type="submit" class="btn btn-navy">@(_isEdit ? "Save Changes" : "Add Category")</button>
+                <div class="admin-modal-actions admin-category-form-actions">
+                    <button type="button" class="btn btn-outline-navy" disabled="@_saving" @onclick="RequestCloseForm">Cancel</button>
+                    <button type="submit" class="btn btn-navy" disabled="@(!CanSave)">
+                        @(_saving ? (_isEdit ? "Saving..." : "Creating...") : (_isEdit ? "Save Changes" : "Add Category"))
+                    </button>
                 </div>
             </form>
         </div>
     </div>
 }
 
+@if (_confirmDiscard)
+{
+    <div class="admin-modal-backdrop admin-discard-confirm-backdrop" @onclick="() => _confirmDiscard = false">
+        <div class="admin-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Discard changes?</h2>
+            <p>Your changes will be lost if you close this form.</p>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="() => _confirmDiscard = false">Keep Editing</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="DiscardForm">Discard</button>
+            </div>
+        </div>
+    </div>
+}
+
 @if (_deleteTarget is not null)
 {
+    var deleteCount = ProductCount(_deleteTarget);
     <div class="admin-modal-backdrop" @onclick="CloseDelete">
         <div class="admin-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>Delete Category?</h2>
-            <p>Are you sure you want to delete <strong>"@_deleteTarget.Name"</strong>?</p>
-            @if (_deleteTarget.ProductCount > 0)
+            @if (deleteCount > 0)
             {
-                <p>This category contains <strong>@_deleteTarget.ProductCount</strong> products.</p>
-                <p class="admin-modal-note">Move or remove the products in this category first.</p>
+                <h2>Cannot delete this category</h2>
+                <p>Cannot delete this category because it contains <strong>@deleteCount</strong> @(deleteCount == 1 ? "product" : "products").</p>
+                <p class="admin-modal-note">Move or remove the @(deleteCount == 1 ? "product" : "products") first.</p>
                 <div class="admin-modal-actions">
-                    <button type="button" class="btn btn-outline-navy" @onclick="CloseDelete">Cancel</button>
                     <button type="button" class="btn btn-navy" @onclick="CloseDelete">Got it</button>
                 </div>
             }
             else
             {
+                <h2>Delete @_deleteTarget.Name?</h2>
                 <p class="admin-modal-note">This action cannot be undone.</p>
                 <div class="admin-modal-actions">
-                    <button type="button" class="btn btn-outline-navy" @onclick="CloseDelete">Cancel</button>
-                    <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDelete">Delete Category</button>
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseDelete" disabled="@_busy">Cancel</button>
+                    <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDelete" disabled="@_busy">
+                        @(_busy ? "Deleting…" : "Delete Category")
+                    </button>
                 </div>
             }
         </div>
@@ -189,112 +468,503 @@
 }
 
 @code {
+    private const int PageSize = 9;
+
+    private static readonly (string Value, string Label)[] SortOptions =
+    [
+        ("az", "A - Z"),
+        ("za", "Z - A"),
+        ("most", "Most Products"),
+        ("least", "Least Products")
+    ];
+
+    private string _search = string.Empty;
+    private string _statusFilter = "All";
+    private string _sort = "az";
+    private bool _grid = true;
+    private int _currentPage = 1;
+    private string? _openMenuId;
+    private bool _busy;
+
+    private const int NameLimit = 100;
+    private const int DescriptionLimit = 300;
+    private const long MaxImageBytes = 5 * 1024 * 1024;
+
     private bool _formOpen;
     private bool _isEdit;
+    private bool _saving;
+    private bool _dragOver;
+    private bool _confirmDiscard;
     private string? _editId;
     private string _name = string.Empty;
-    private string _slug = string.Empty;
+    private string _originalName = string.Empty;
+    private string _originalSlug = string.Empty;
     private string _imageUrl = string.Empty;
+    private string _originalImageUrl = string.Empty;
+    private string? _imageName;
+    private string? _imageSizeLabel;
+    private string? _imageError;
     private string _description = string.Empty;
-    private string _status = "Active";
-    private string? _nameError;
+    private string _originalDescription = string.Empty;
+    private string _statusForm = "Active";
+    private string _originalStatus = "Active";
+    private string? _saveError;
     private AdminCategory? _deleteTarget;
 
-    protected override void OnInitialized() => CategoryService.OnChange += Refresh;
+    private string CurrentSlug =>
+        _isEdit && _name.Trim().Equals(_originalName.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? (string.IsNullOrWhiteSpace(_originalSlug) ? AdminCategory.ToSlug(_name) : _originalSlug)
+            : AdminCategory.ToSlug(_name);
+
+    private string? _duplicate =>
+        string.IsNullOrWhiteSpace(_name) ? null : CategoryService.FindDuplicate(_name, CurrentSlug, _editId);
+
+    private bool HasImage => ProductCatalogService.HasRealImage(_imageUrl);
+
+    private bool FormDirty =>
+        !_name.Equals(_originalName, StringComparison.Ordinal) ||
+        !_description.Equals(_originalDescription, StringComparison.Ordinal) ||
+        !_statusForm.Equals(_originalStatus, StringComparison.Ordinal) ||
+        !_imageUrl.Equals(_originalImageUrl, StringComparison.Ordinal);
+
+    private bool CanSave =>
+        !_saving &&
+        !string.IsNullOrWhiteSpace(_name) &&
+        _name.Length <= NameLimit &&
+        _description.Length <= DescriptionLimit &&
+        _duplicate is null &&
+        string.IsNullOrWhiteSpace(_imageError);
+
+    protected override void OnInitialized()
+    {
+        CategoryService.OnChange += Refresh;
+        ProductService.OnChange += Refresh;
+    }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 
+    private int ProductCount(AdminCategory category) =>
+        ProductService.All.Count(p =>
+            p.Category.Equals(category.Name, StringComparison.OrdinalIgnoreCase));
+
+    private static string CountLabel(int count) =>
+        count == 1 ? "1 product" : $"{count} products";
+
+    private string ImageFor(AdminCategory category)
+    {
+        if (ProductCatalogService.HasRealImage(category.ImageUrl))
+            return category.ImageUrl;
+
+        var productImage = ProductService.All
+            .Where(p => p.Category.Equals(category.Name, StringComparison.OrdinalIgnoreCase))
+            .Select(p => p.ImageUrl)
+            .FirstOrDefault(ProductCatalogService.HasRealImage);
+
+        return productImage ?? MockData.PlaceholderImage;
+    }
+
+    private List<AdminCategory> Filtered
+    {
+        get
+        {
+            IEnumerable<AdminCategory> query = CategoryService.All;
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                var term = _search.Trim();
+                query = query.Where(c =>
+                    c.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                    (c.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) ?? false));
+            }
+
+            if (!_statusFilter.Equals("All", StringComparison.OrdinalIgnoreCase))
+            {
+                var active = _statusFilter.Equals("Active", StringComparison.OrdinalIgnoreCase);
+                query = query.Where(c => c.IsActive == active);
+            }
+
+            query = _sort switch
+            {
+                "za" => query.OrderByDescending(c => c.Name, StringComparer.OrdinalIgnoreCase),
+                "most" => query.OrderByDescending(ProductCount).ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase),
+                "least" => query.OrderBy(ProductCount).ThenBy(c => c.Name, StringComparer.OrdinalIgnoreCase),
+                _ => query.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase)
+            };
+
+            return query.ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)PageSize));
+    private int CurrentPage => Math.Clamp(_currentPage, 1, TotalPages);
+
+    private List<AdminCategory> Paged =>
+        Filtered.Skip((CurrentPage - 1) * PageSize).Take(PageSize).ToList();
+
+    private string ResultLabel
+    {
+        get
+        {
+            var total = Filtered.Count;
+            if (total == 0)
+                return "Showing 0 categories";
+            var start = (CurrentPage - 1) * PageSize + 1;
+            var end = Math.Min(start + PageSize - 1, total);
+            return $"Showing {start}–{end} of {total} {(total == 1 ? "category" : "categories")}";
+        }
+    }
+
+    private void OnSearch(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void OnStatus(ChangeEventArgs e)
+    {
+        _statusFilter = e.Value?.ToString() ?? "All";
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void OnSort(ChangeEventArgs e)
+    {
+        _sort = e.Value?.ToString() ?? "az";
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void ClearFilters()
+    {
+        _search = string.Empty;
+        _statusFilter = "All";
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void GoToPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, TotalPages);
+        CloseMenu();
+    }
+
+    private void ViewProducts(AdminCategory category)
+    {
+        CloseMenu();
+        Navigation.NavigateTo($"/admin/products?category={Uri.EscapeDataString(category.Name)}");
+    }
+
+    private void ToggleMenu(string id) =>
+        _openMenuId = _openMenuId == id ? null : id;
+
+    private void CloseMenu() => _openMenuId = null;
+
+    private async Task ToggleStatus(AdminCategory category)
+    {
+        CloseMenu();
+        var next = category.IsActive ? "Inactive" : "Active";
+        if (await CategoryService.SetStatusAsync(category.Id, next))
+            Toast.Show($"{category.Name} set to {next}.");
+    }
+
+    private RenderFragment MenuButton(AdminCategory category) => __builder =>
+    {
+        <div class="admin-row-menu-wrap">
+            <button type="button"
+                    class="admin-category-icon-btn"
+                    title="More actions"
+                    aria-label="@($"More actions for {category.Name}")"
+                    @onclick="() => ToggleMenu(category.Id)"
+                    @onclick:stopPropagation="true">
+                <Icon Name="more-horizontal" Size="16" />
+            </button>
+            @if (_openMenuId == category.Id)
+            {
+                <div class="admin-row-menu admin-category-menu" role="menu" @onclick:stopPropagation="true">
+                    <button type="button" class="admin-row-menu-item" @onclick="() => OpenEditModal(category)">
+                        <Icon Name="pencil" Size="14" /> Edit Category
+                    </button>
+                    <button type="button" class="admin-row-menu-item" @onclick="() => ViewProducts(category)">
+                        <Icon Name="eye" Size="14" /> View Products
+                    </button>
+                    <button type="button" class="admin-row-menu-item" @onclick="() => ToggleStatus(category)">
+                        <Icon Name="refresh" Size="14" />
+                        @(category.IsActive ? "Set Inactive" : "Set Active")
+                    </button>
+                    <div class="admin-row-menu-sep"></div>
+                    <button type="button" class="admin-row-menu-item danger" @onclick="() => OpenDeleteModal(category)">
+                        <Icon Name="trash" Size="14" /> Delete Category
+                    </button>
+                </div>
+            }
+        </div>
+    };
+
     private void OpenAddModal()
     {
-        _isEdit = false;
-        _editId = null;
-        _name = string.Empty;
-        _slug = string.Empty;
-        _imageUrl = string.Empty;
-        _description = string.Empty;
-        _status = "Active";
-        _nameError = null;
+        CloseMenu();
+        ResetForm();
         _formOpen = true;
     }
 
     private void OpenEditModal(AdminCategory category)
     {
+        CloseMenu();
+        ResetForm();
         _isEdit = true;
         _editId = category.Id;
-        _name = category.Name;
-        _slug = category.Slug;
-        _imageUrl = category.ImageUrl;
-        _description = category.Description;
-        _status = category.Status;
-        _nameError = null;
+        _name = category.Name.Length <= NameLimit ? category.Name : category.Name[..NameLimit];
+        _originalName = _name;
+        _originalSlug = category.Slug;
+        _description = category.Description ?? string.Empty;
+        if (_description.Length > DescriptionLimit)
+            _description = _description[..DescriptionLimit];
+        _originalDescription = _description;
+        _statusForm = string.IsNullOrWhiteSpace(category.Status) ? "Active" : category.Status;
+        _originalStatus = _statusForm;
+        if (ProductCatalogService.HasRealImage(category.ImageUrl))
+        {
+            _imageUrl = category.ImageUrl;
+            _imageName = "Current image";
+        }
+        _originalImageUrl = _imageUrl;
         _formOpen = true;
     }
 
-    private void CloseForm()
+    private void ResetForm()
     {
-        _formOpen = false;
-        _nameError = null;
+        _isEdit = false;
+        _editId = null;
+        _saving = false;
+        _dragOver = false;
+        _confirmDiscard = false;
+        _name = string.Empty;
+        _originalName = string.Empty;
+        _originalSlug = string.Empty;
+        _imageUrl = string.Empty;
+        _originalImageUrl = string.Empty;
+        _imageName = null;
+        _imageSizeLabel = null;
+        _imageError = null;
+        _description = string.Empty;
+        _originalDescription = string.Empty;
+        _statusForm = "Active";
+        _originalStatus = "Active";
+        _saveError = null;
     }
 
-    private async Task SaveCategory()
+    private void RequestCloseForm()
     {
-        _nameError = null;
-        if (string.IsNullOrWhiteSpace(_name))
+        if (_saving) return;
+        if (FormDirty)
         {
-            _nameError = "Category name is required.";
+            _confirmDiscard = true;
             return;
-        }
-
-        if (_isEdit && !string.IsNullOrWhiteSpace(_editId))
-        {
-            var updated = new AdminCategory
-            {
-                Id = _editId,
-                Name = _name,
-                Slug = _slug,
-                ImageUrl = _imageUrl,
-                Description = _description,
-                Status = _status
-            };
-
-            if (!await CategoryService.UpdateAsync(updated))
-            {
-                Toast.Show("Category not found.");
-                return;
-            }
-
-            Toast.Show("Category updated successfully.");
-        }
-        else
-        {
-            await CategoryService.AddAsync(new AdminCategory
-            {
-                Name = _name,
-                Slug = _slug,
-                ImageUrl = _imageUrl,
-                Description = _description,
-                Status = _status,
-                ProductCount = 0
-            });
-            Toast.Show("Category added successfully.");
         }
 
         CloseForm();
     }
 
-    private void OpenDeleteModal(AdminCategory category) => _deleteTarget = category;
+    private void DiscardForm()
+    {
+        _confirmDiscard = false;
+        CloseForm();
+    }
+
+    private void CloseForm()
+    {
+        _formOpen = false;
+        _confirmDiscard = false;
+        _saveError = null;
+    }
+
+    private void OnNameInput(ChangeEventArgs e)
+    {
+        _name = Limit(e.Value?.ToString(), NameLimit);
+        _saveError = null;
+    }
+
+    private void OnDescriptionInput(ChangeEventArgs e) =>
+        _description = Limit(e.Value?.ToString(), DescriptionLimit);
+
+    private void OnStatusForm(ChangeEventArgs e) =>
+        _statusForm = e.Value?.ToString() == "Inactive" ? "Inactive" : "Active";
+
+    private static string Limit(string? value, int max)
+    {
+        var text = value ?? string.Empty;
+        return text.Length <= max ? text : text[..max];
+    }
+
+    private async Task CopySlug()
+    {
+        if (string.IsNullOrEmpty(CurrentSlug)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", CurrentSlug);
+            Toast.Show("Slug copied.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            Toast.Show("Unable to copy the slug.");
+        }
+    }
+
+    private void OnDragEnter(DragEventArgs _) => _dragOver = true;
+    private void OnDragOver(DragEventArgs _) => _dragOver = true;
+    private void OnDragLeave(DragEventArgs _) => _dragOver = false;
+
+    private async Task OnImageSelected(InputFileChangeEventArgs e)
+    {
+        _dragOver = false;
+        _imageError = null;
+        _saveError = null;
+        var file = e.File;
+        if (file is null) return;
+
+        var contentType = file.ContentType?.ToLowerInvariant() ?? string.Empty;
+        var name = file.Name?.ToLowerInvariant() ?? string.Empty;
+        var isPng = contentType is "image/png" || name.EndsWith(".png");
+        var isJpg = contentType is "image/jpeg" or "image/jpg" || name.EndsWith(".jpg") || name.EndsWith(".jpeg");
+        var isWebp = contentType is "image/webp" || name.EndsWith(".webp");
+        if (!isPng && !isJpg && !isWebp)
+        {
+            _imageError = "Use a PNG, JPG, or WEBP image.";
+            return;
+        }
+
+        if (file.Size > MaxImageBytes)
+        {
+            _imageError = "Image must be 5MB or smaller.";
+            return;
+        }
+
+        try
+        {
+            await using var stream = file.OpenReadStream(MaxImageBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var bytes = ms.ToArray();
+            if (bytes.Length == 0)
+            {
+                _imageError = "That image could not be read.";
+                return;
+            }
+
+            var mime = isPng ? "image/png" : isWebp ? "image/webp" : "image/jpeg";
+            _imageUrl = $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+            _imageName = string.IsNullOrWhiteSpace(file.Name) ? "category-image" : file.Name;
+            _imageSizeLabel = FormatSize(bytes.Length);
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            _imageError = "Image must be 5MB or smaller.";
+        }
+    }
+
+    private void RemoveImage()
+    {
+        _imageUrl = string.Empty;
+        _imageName = null;
+        _imageSizeLabel = null;
+        _imageError = null;
+    }
+
+    private static string FormatSize(int bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        var kb = bytes / 1024d;
+        return kb < 1024 ? $"{kb:0} KB" : $"{kb / 1024d:0.0} MB";
+    }
+
+    private async Task SaveCategory()
+    {
+        if (!CanSave) return;
+        _saving = true;
+        _saveError = null;
+        try
+        {
+            var category = new AdminCategory
+            {
+                Id = _editId ?? string.Empty,
+                Name = _name.Trim(),
+                Slug = CurrentSlug,
+                ImageUrl = _imageUrl,
+                Description = _description.Trim(),
+                Status = _statusForm
+            };
+
+            if (_isEdit)
+            {
+                if (!await CategoryService.UpdateAsync(category))
+                {
+                    _saveError = "Category not found.";
+                    return;
+                }
+
+                Toast.Show("Category updated successfully.");
+            }
+            else
+            {
+                await CategoryService.AddAsync(category);
+                Toast.Show("Category created successfully.");
+            }
+
+            CloseForm();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _saveError = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Unable to create category. Please try again."
+                : ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            _saveError = _isEdit
+                ? "Unable to update category. Please try again."
+                : "Unable to create category. Please try again.";
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private void OpenDeleteModal(AdminCategory category)
+    {
+        CloseMenu();
+        _deleteTarget = category;
+    }
 
     private void CloseDelete() => _deleteTarget = null;
 
     private async Task ConfirmDelete()
     {
-        if (_deleteTarget is null) return;
+        if (_deleteTarget is null || _busy) return;
+        if (ProductCount(_deleteTarget) > 0)
+            return;
 
-        var (success, message) = await CategoryService.TryDeleteAsync(_deleteTarget.Id);
-        Toast.Show(message);
-        CloseDelete();
-        if (!success) return;
+        _busy = true;
+        try
+        {
+            var (success, message) = await CategoryService.TryDeleteAsync(_deleteTarget.Id, 0);
+            Toast.Show(message);
+            if (success)
+                CloseDelete();
+        }
+        finally
+        {
+            _busy = false;
+        }
     }
 
-    public void Dispose() => CategoryService.OnChange -= Refresh;
+    public void Dispose()
+    {
+        CategoryService.OnChange -= Refresh;
+        ProductService.OnChange -= Refresh;
+    }
 }

@@ -24,6 +24,103 @@ public class CartService
     public decimal Subtotal => _items.Sum(i => i.UnitPrice * i.Quantity);
     public decimal EstimatedTotal => Math.Max(0, Subtotal - AppliedDiscount);
 
+    // Rows are selected for checkout unless the customer unchecks them; new rows start selected.
+    private readonly HashSet<string> _deselected = [];
+
+    public bool IsSelected(string key) => !_deselected.Contains(key);
+    public IReadOnlyList<CartItem> SelectedItems => _items.Where(i => IsSelected(i.Key)).ToList();
+    public int SelectedCount => SelectedItems.Sum(i => i.Quantity);
+    public decimal SelectedSubtotal => SelectedItems.Sum(i => i.UnitPrice * i.Quantity);
+    public decimal SelectedEstimatedTotal => Math.Max(0, SelectedSubtotal - AppliedDiscount);
+
+    public void SetSelected(string key, bool selected)
+    {
+        var changed = selected ? _deselected.Remove(key) : _deselected.Add(key);
+        if (changed)
+            OnChange?.Invoke();
+    }
+
+    public void SelectAll(bool selected)
+    {
+        if (selected)
+            _deselected.Clear();
+        else
+            foreach (var item in _items)
+                _deselected.Add(item.Key);
+        OnChange?.Invoke();
+    }
+
+    public void RemoveSelected()
+    {
+        _items.RemoveAll(i => IsSelected(i.Key));
+        PruneSelection();
+        OnChange?.Invoke();
+    }
+
+    /// <summary>Removes only the rows that were just ordered; unselected rows stay in the cart.</summary>
+    public void CompleteCheckout()
+    {
+        _items.RemoveAll(i => IsSelected(i.Key));
+        PruneSelection();
+        AppliedPromoCode = null;
+        AppliedDiscount = 0;
+        OnChange?.Invoke();
+    }
+
+    /// <summary>
+    /// Switches a row to another variant of the same product. Merges into an existing row
+    /// for that variant. Returns an error message when the change is not allowed.
+    /// </summary>
+    public string? ChangeVariant(string key, int variantId)
+    {
+        var item = _items.FirstOrDefault(i => i.Key == key);
+        if (item is null)
+            return "This item is no longer in your cart.";
+
+        var variant = item.Product.Variants.FirstOrDefault(v => v.Id == variantId && v.IsActive);
+        if (variant is null)
+            return "That option is no longer available.";
+
+        var stock = Math.Max(0, variant.StockQuantity);
+        if (stock <= 0)
+            return "That option is out of stock.";
+
+        if (item.VariantId == variantId)
+            return null;
+
+        var target = _items.FirstOrDefault(i => i.Key != key && i.Product.Id == item.Product.Id && i.VariantId == variantId);
+        if (target is not null)
+        {
+            var merged = target.Quantity + item.Quantity;
+            if (merged > stock)
+                return $"Only {stock} {(stock == 1 ? "item is" : "items are")} available for this option.";
+
+            target.Quantity = merged;
+            if (IsSelected(item.Key))
+                _deselected.Remove(target.Key);
+            _items.Remove(item);
+            PruneSelection();
+        }
+        else
+        {
+            if (item.Quantity > stock)
+                return $"Only {stock} {(stock == 1 ? "item is" : "items are")} available.";
+
+            item.VariantId = variant.Id;
+            item.SelectedColor = string.IsNullOrWhiteSpace(variant.ColorName) ? null : variant.ColorName;
+            item.SelectedSize = string.IsNullOrWhiteSpace(variant.Size) ? null : variant.Size;
+        }
+
+        OnChange?.Invoke();
+        return null;
+    }
+
+    private void PruneSelection()
+    {
+        var keys = _items.Select(i => i.Key).ToHashSet();
+        _deselected.RemoveWhere(k => !keys.Contains(k));
+    }
+
     public void SetPromo(string? code, decimal discount)
     {
         var normalized = string.IsNullOrWhiteSpace(code) ? null : code.Trim().ToUpperInvariant();
@@ -88,7 +185,10 @@ public class CartService
                 Normalize(i.SelectedSize) == sizeKey);
 
         if (existing is not null)
+        {
             existing.Quantity += quantity;
+            _deselected.Remove(existing.Key);
+        }
         else
         {
             _items.Add(new CartItem
@@ -153,12 +253,14 @@ public class CartService
     public void Remove(string key)
     {
         _items.RemoveAll(i => i.Key == key);
+        _deselected.Remove(key);
         OnChange?.Invoke();
     }
 
     public void Remove(int productId)
     {
         _items.RemoveAll(i => i.Product.Id == productId);
+        PruneSelection();
         OnChange?.Invoke();
     }
 
@@ -182,6 +284,7 @@ public class CartService
     public void Clear()
     {
         _items.Clear();
+        _deselected.Clear();
         AppliedPromoCode = null;
         AppliedDiscount = 0;
         OnChange?.Invoke();
@@ -197,6 +300,7 @@ public class CartService
             await _catalog.EnsureLoadedAsync();
             var rows = await _db.GetCartAsync(email);
             _items.Clear();
+            _deselected.Clear();
             foreach (var row in rows)
             {
                 var product = _catalog.GetById(row.ProductId) ?? await _db.GetProductByIdAsync(row.ProductId);
@@ -348,22 +452,29 @@ public class OrderService
     private readonly IAppDatabase _db;
     private readonly ProductCatalogService _catalog;
     private readonly AdminProductService _products;
+    private readonly AdminInventoryService _inventory;
     private readonly List<MockOrder> _orders = [];
     private bool _loaded;
     private bool _loading;
     private string? _loadedEmail;
     public event Action? OnChange;
 
-    public OrderService(IAppDatabase db, ProductCatalogService catalog, AdminProductService products)
+    public OrderService(
+        IAppDatabase db,
+        ProductCatalogService catalog,
+        AdminProductService products,
+        AdminInventoryService inventory)
     {
         _db = db;
         _catalog = catalog;
         _products = products;
+        _inventory = inventory;
     }
 
     public IReadOnlyList<MockOrder> Orders => _orders;
     public int TotalCount => _orders.Count;
     public int ActiveCount => _orders.Count(o => o.IsActive);
+    public int CompletedCount => _orders.Count(o => o.CustomerCategory == OrderFlow.Completed);
 
     public async Task EnsureLoadedAsync(string? email = null)
     {
@@ -424,6 +535,7 @@ public class OrderService
             _db.UpsertOrderAsync(admin).GetAwaiter().GetResult();
             if (admin.Items.Count > 0)
             {
+                _inventory.LogOrderStockMovementsAsync(admin, restore: true).GetAwaiter().GetResult();
                 _catalog.ApplyCancellation(admin.Items);
                 _products.ApplyCancellation(admin.Items);
             }
@@ -731,7 +843,14 @@ public class AuthService
         if (string.IsNullOrWhiteSpace(token))
             return new AuthResult { Success = false, Error = "Please sign in to change your password." };
 
-        return await _db.ChangePasswordAsync(token, request);
+        var result = await _db.ChangePasswordAsync(token, request);
+        if (result.Success && CurrentUser is not null && !string.IsNullOrWhiteSpace(result.SessionToken))
+        {
+            CurrentUser.SessionToken = result.SessionToken;
+            CurrentUser.MustChangePassword = false;
+        }
+
+        return result;
     }
 
     public async Task<AuthResult> CompleteForcedPasswordChangeAsync(ForcedPasswordChangeRequest request)

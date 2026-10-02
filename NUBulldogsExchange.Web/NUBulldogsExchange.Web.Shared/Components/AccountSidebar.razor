@@ -16,11 +16,17 @@
         </div>
         <strong>@Auth.DisplayName</strong>
         <span>@Auth.Email</span>
+        <a href="/profile" class="account-sidebar-edit-btn">
+            <Icon Name="pencil" Size="13" />
+            Edit Profile
+        </a>
     </div>
 
     <nav class="account-sidebar-nav" aria-label="Account">
-        <a href="/account" class="account-nav-item @(IsActive("overview") ? "active" : "")">
-            <Icon Name="user" Size="16" />
+        <a href="/account"
+           class="account-nav-item @(IsActive("overview") ? "active" : "")"
+           aria-current="@(IsActive("overview") ? "page" : null)">
+            <Icon Name="home" Size="16" />
             Overview
         </a>
         <a href="/orders" class="account-nav-item @(IsActive("orders") ? "active" : "")">
@@ -40,7 +46,7 @@
             }
         </a>
         <a href="/profile" class="account-nav-item @(IsActive("profile") ? "active" : "")">
-            <Icon Name="settings" Size="16" />
+            <Icon Name="user" Size="16" />
             My Profile
         </a>
 

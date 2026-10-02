@@ -25,6 +25,8 @@ public class AdminOrderService
 
     public static readonly string[] PaymentMethodFilters = OrderFlow.PaymentMethodFilters;
 
+    public const int PageSize = 10;
+
     public static readonly string[] FulfillmentFilters =
     [
         "All Fulfillment",
@@ -35,17 +37,23 @@ public class AdminOrderService
     private readonly IAppDatabase _db;
     private readonly ProductCatalogService _catalog;
     private readonly AdminProductService _products;
+    private readonly AdminInventoryService _inventory;
     private readonly List<AdminOrder> _orders = [];
     private bool _loaded;
     private bool _loading;
 
     public event Action? OnChange;
 
-    public AdminOrderService(IAppDatabase db, ProductCatalogService catalog, AdminProductService products)
+    public AdminOrderService(
+        IAppDatabase db,
+        ProductCatalogService catalog,
+        AdminProductService products,
+        AdminInventoryService inventory)
     {
         _db = db;
         _catalog = catalog;
         _products = products;
+        _inventory = inventory;
     }
 
     public IReadOnlyList<AdminOrder> All => _orders;
@@ -105,9 +113,12 @@ public class AdminOrderService
         string? search,
         string payment,
         string paymentMethod,
-        string status)
+        string status,
+        DateTime? from = null,
+        DateTime? to = null,
+        string sort = "newest")
     {
-        IEnumerable<AdminOrder> query = _orders.OrderByDescending(o => o.Date).ThenByDescending(o => o.Id);
+        IEnumerable<AdminOrder> query = _orders;
 
         if (!string.IsNullOrWhiteSpace(fulfillmentTab) &&
             !fulfillmentTab.Equals("All", StringComparison.OrdinalIgnoreCase) &&
@@ -134,7 +145,9 @@ public class AdminOrderService
         if (!string.IsNullOrWhiteSpace(paymentMethod) &&
             !paymentMethod.Equals("All Methods", StringComparison.OrdinalIgnoreCase))
         {
-            query = query.Where(o => o.PaymentMethod.Equals(paymentMethod, StringComparison.OrdinalIgnoreCase));
+            query = query.Where(o =>
+                OrderFlow.PaymentMethodLabel(o.PaymentMethod)
+                    .Equals(paymentMethod, StringComparison.OrdinalIgnoreCase));
         }
 
         if (!string.IsNullOrWhiteSpace(status) &&
@@ -144,7 +157,25 @@ public class AdminOrderService
             query = query.Where(o => o.Status.Equals(status, StringComparison.OrdinalIgnoreCase));
         }
 
-        return query;
+        if (from is DateTime start)
+        {
+            var day = start.Date;
+            query = query.Where(o => OrderFlow.DisplayTimestamp(o.Date) >= day);
+        }
+
+        if (to is DateTime end)
+        {
+            var next = end.Date.AddDays(1);
+            query = query.Where(o => OrderFlow.DisplayTimestamp(o.Date) < next);
+        }
+
+        return sort switch
+        {
+            "oldest" => query.OrderBy(o => o.Date).ThenBy(o => o.Id),
+            "total-desc" => query.OrderByDescending(o => o.Total).ThenByDescending(o => o.Date),
+            "total-asc" => query.OrderBy(o => o.Total).ThenByDescending(o => o.Date),
+            _ => query.OrderByDescending(o => o.Date).ThenByDescending(o => o.Id)
+        };
     }
 
     public IEnumerable<string> StatusOptionsFor(AdminOrder order) =>
@@ -206,12 +237,11 @@ public class AdminOrderService
 
         if (statusChanged && wasPending && !isPending && !isCancelled)
         {
-            _catalog.ApplyPurchase(order.Items);
-            _products.ApplyPurchase(order.Items);
+            await ApplyStockWithHistoryAsync(order, restore: false);
         }
         else if (statusChanged && isCancelled && !wasPending)
         {
-            ApplyLocalCancellation(order);
+            await ApplyStockWithHistoryAsync(order, restore: true);
         }
 
         if (notifyCustomer && statusChanged)
@@ -243,12 +273,11 @@ public class AdminOrderService
 
         if (wasPending && !isPending && !isCancelled)
         {
-            _catalog.ApplyPurchase(order.Items);
-            _products.ApplyPurchase(order.Items);
+            await ApplyStockWithHistoryAsync(order, restore: false);
         }
         else if (isCancelled && !wasPending)
         {
-            ApplyLocalCancellation(order);
+            await ApplyStockWithHistoryAsync(order, restore: true);
         }
 
         try
@@ -277,8 +306,7 @@ public class AdminOrderService
         _orders.Add(saved);
         if (!string.Equals(saved.Status, "Pending", StringComparison.OrdinalIgnoreCase))
         {
-            _catalog.ApplyPurchase(saved.Items);
-            _products.ApplyPurchase(saved.Items);
+            await ApplyStockWithHistoryAsync(saved, restore: false);
         }
         OnChange?.Invoke();
         return saved;
@@ -327,13 +355,22 @@ public class AdminOrderService
         }
     }
 
-    private static string NotificationTone(string newStatus) =>
-        newStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase) ? "gold" : "blue";
-
-    private void ApplyLocalCancellation(AdminOrder order)
+    private async Task ApplyStockWithHistoryAsync(AdminOrder order, bool restore)
     {
         if (order.Items.Count == 0) return;
-        _catalog.ApplyCancellation(order.Items);
-        _products.ApplyCancellation(order.Items);
+        await _inventory.LogOrderStockMovementsAsync(order, restore);
+        if (restore)
+        {
+            _catalog.ApplyCancellation(order.Items);
+            _products.ApplyCancellation(order.Items);
+        }
+        else
+        {
+            _catalog.ApplyPurchase(order.Items);
+            _products.ApplyPurchase(order.Items);
+        }
     }
+
+    private static string NotificationTone(string newStatus) =>
+        newStatus.Equals("Cancelled", StringComparison.OrdinalIgnoreCase) ? "gold" : "blue";
 }

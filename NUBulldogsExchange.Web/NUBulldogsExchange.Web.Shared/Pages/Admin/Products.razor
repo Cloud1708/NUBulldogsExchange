@@ -9,6 +9,8 @@
 @inject AdminProductService ProductService
 @inject AdminCategoryService CategoryService
 @inject AdminReviewService ReviewService
+@inject AdminInventoryService InventoryService
+@inject AdminOrderService OrderService
 @inject ToastService Toast
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -28,42 +30,133 @@
         </button>
     </header>
 
-    <section class="admin-products-toolbar">
-        <div class="admin-products-search">
-            <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
-            <input type="search"
-                   placeholder="Search products..."
-                   value="@_search"
-                   @oninput="OnSearchInput" />
-        </div>
-        <select class="admin-products-select" value="@_category" @onchange="OnCategoryChange">
-            <option value="All">All</option>
-            @foreach (var category in FilterCategoryNames)
-            {
-                <option value="@category">@category</option>
-            }
-        </select>
-        <select class="admin-products-select" value="@_status" @onchange="OnStatusChange">
-            @foreach (var status in AdminProductService.StatusFilters)
-            {
-                <option value="@status">@status</option>
-            }
-        </select>
+    <section class="admin-products-stats" aria-label="Product summary">
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="package" Size="18" /></div>
+            <div>
+                <span>Total Products</span>
+                <strong>@ProductService.All.Count.ToString("N0")</strong>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-green"><Icon Name="check-circle" Size="18" /></div>
+            <div>
+                <span>Active Products</span>
+                <strong>@ActiveCount.ToString("N0")</strong>
+            </div>
+        </article>
+        <article class="admin-inventory-stat" title="@(DraftCount > 0 ? $"Includes {DraftCount} draft product{(DraftCount == 1 ? "" : "s")}" : null)">
+            <div class="admin-inventory-stat-icon tone-gold"><Icon Name="clock" Size="18" /></div>
+            <div>
+                <span>Inactive Products</span>
+                <strong>@InactiveCount.ToString("N0")</strong>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-purple"><Icon Name="tag" Size="18" /></div>
+            <div>
+                <span>Total Categories</span>
+                <strong>@CategoryCount.ToString("N0")</strong>
+            </div>
+        </article>
     </section>
 
-    @if (_selectedIds.Count > 0)
-    {
-        <div class="admin-bulk-bar">
-            <span>@_selectedIds.Count product@(_selectedIds.Count == 1 ? "" : "s") selected</span>
-            <div class="admin-bulk-actions">
-                <button type="button" class="btn btn-outline-navy admin-bulk-btn" @onclick='() => BulkSetStatus("Active")'>Set Active</button>
-                <button type="button" class="btn btn-outline-navy admin-bulk-btn" @onclick='() => BulkSetStatus("Inactive")'>Set Inactive</button>
-                <button type="button" class="btn admin-bulk-btn admin-bulk-delete" @onclick="ConfirmBulkDelete">Delete</button>
+    <section class="admin-products-filters">
+        <div class="admin-products-toolbar">
+            <div class="admin-products-search">
+                <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+                <input type="search"
+                       placeholder="Search products (name, SKU, category)..."
+                       aria-label="Search products"
+                       value="@_search"
+                       @oninput="OnSearchInput" />
             </div>
+            <select class="admin-products-select" aria-label="Filter by category" value="@_category" @onchange="OnCategoryChange">
+                <option value="All">All Categories</option>
+                @foreach (var category in FilterCategoryNames)
+                {
+                    <option value="@category">@category</option>
+                }
+            </select>
+            <select class="admin-products-select" aria-label="Filter by status" value="@_status" @onchange="OnStatusChange">
+                @foreach (var (value, label) in StatusOptions)
+                {
+                    <option value="@value">@label</option>
+                }
+            </select>
+            <select class="admin-products-select" aria-label="Sort products" value="@_sort" @onchange="OnSortChange">
+                @foreach (var (value, label) in SortOptions)
+                {
+                    <option value="@value">Sort By: @label</option>
+                }
+            </select>
         </div>
-    }
+
+        @if (HasActiveFilters)
+        {
+            <div class="admin-filter-chips">
+                <span class="admin-filter-chips-label">Active Filters:</span>
+                @if (!string.IsNullOrWhiteSpace(_search))
+                {
+                    <span class="admin-filter-chip">
+                        Search: @_search.Trim()
+                        <button type="button" aria-label="Remove search filter" @onclick="ClearSearch"><Icon Name="x" Size="12" /></button>
+                    </span>
+                }
+                @if (!IsAll(_category))
+                {
+                    <span class="admin-filter-chip">
+                        Category: @_category
+                        <button type="button" aria-label="Remove category filter" @onclick="ClearCategory"><Icon Name="x" Size="12" /></button>
+                    </span>
+                }
+                @if (!IsAll(_status))
+                {
+                    <span class="admin-filter-chip">
+                        Status: @_status
+                        <button type="button" aria-label="Remove status filter" @onclick="ClearStatus"><Icon Name="x" Size="12" /></button>
+                    </span>
+                }
+                <button type="button" class="admin-filter-clear" @onclick="ClearFilters">Clear Filters</button>
+            </div>
+        }
+    </section>
 
     <section class="admin-products-table-card @(_openMenuId is not null ? "is-menu-open" : null)">
+        <div class="admin-products-actionbar">
+            @if (_selectedIds.Count > 0)
+            {
+                <div class="admin-bulk-bar" role="region" aria-label="Bulk actions">
+                    <span class="admin-bulk-count">
+                        <input type="checkbox" checked disabled aria-hidden="true" tabindex="-1" />
+                        @_selectedIds.Count product@(_selectedIds.Count == 1 ? "" : "s") selected
+                    </span>
+                    <button type="button" class="admin-bulk-btn is-activate" @onclick='() => RequestBulkStatus("Active")'>
+                        <Icon Name="check-circle" Size="14" /> Set Active
+                    </button>
+                    <button type="button" class="admin-bulk-btn is-deactivate" @onclick='() => RequestBulkStatus("Inactive")'>
+                        <Icon Name="clock" Size="14" /> Set Inactive
+                    </button>
+                    <button type="button" class="admin-bulk-btn is-delete" @onclick="ConfirmBulkDelete">
+                        <Icon Name="trash" Size="14" /> Delete
+                    </button>
+                    <button type="button" class="admin-bulk-clear" @onclick="() => _selectedIds.Clear()">Clear selection</button>
+                </div>
+            }
+            else
+            {
+                <span class="admin-products-actionbar-hint">@ResultLabel</span>
+            }
+            <button type="button"
+                    class="btn btn-outline-navy admin-products-export"
+                    disabled="@(!Filtered.Any())"
+                    title="@(_selectedIds.Count > 0 ? "Export selected products as CSV" : "Export filtered products as CSV")"
+                    @onclick="ExportCsv">
+                <Icon Name="download" Size="15" />
+                Export CSV
+            </button>
+        </div>
+
         @if (!Filtered.Any())
         {
             <div class="admin-products-empty">
@@ -71,8 +164,11 @@
                     <Icon Name="package" Size="36" />
                 </div>
                 <h2>No products found.</h2>
-                <p>Try changing your search or filters.</p>
-                <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
+                <p>Try adjusting your search or filters.</p>
+                @if (HasActiveFilters)
+                {
+                    <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
+                }
             </div>
         }
         else
@@ -119,36 +215,74 @@
                                                aria-label="@($"Select {product.Name}")" />
                                     </td>
                                     <td class="col-image">
-                                        <img src="@product.ImageUrl"
-                                             alt="@product.Name"
-                                             loading="lazy"
-                                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                        <button type="button"
+                                                class="admin-product-thumb"
+                                                aria-label="@($"View {product.Name}")"
+                                                @onclick="() => ViewProduct(product.Id)">
+                                            <img src="@(string.IsNullOrWhiteSpace(product.ImageUrl) ? MockData.PlaceholderImage : product.ImageUrl)"
+                                                 alt="@product.Name"
+                                                 loading="lazy"
+                                                 onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                        </button>
                                     </td>
                                     <td class="col-sku"><code>@product.Sku</code></td>
                                     <td class="col-name">
-                                        <strong title="@product.Name">@product.Name</strong>
+                                        <button type="button"
+                                                class="admin-product-name-link"
+                                                title="@product.Name"
+                                                @onclick="() => ViewProduct(product.Id)">
+                                            @product.Name
+                                        </button>
                                     </td>
                                     <td class="col-category">@product.Category</td>
-                                    <td class="col-price"><strong>@ProductVariantLogic.FormatCatalogPrice(product.Price, product.Variants)</strong></td>
-                                    <td class="col-stock">
-                                        <div class="admin-stock-cell">
-                                            <strong>@product.Stock</strong>
-                                            <span class="admin-stock-badge stock-@product.StockStateKey">@product.StockState</span>
+                                    @{ var priceDisplay = DescribePrice(product); }
+                                    <td class="col-price">
+                                        <div class="admin-price-cell">
+                                            <strong title="@priceDisplay.Issue">@priceDisplay.Text</strong>
+                                            @if (priceDisplay.Mode == ProductVariantLogic.AdminPriceMode.Same)
+                                            {
+                                                <span class="admin-price-badge is-same"
+                                                      title="All variants currently use the same selling price.">Same Price</span>
+                                            }
+                                            else if (priceDisplay.Mode == ProductVariantLogic.AdminPriceMode.Fixed)
+                                            {
+                                                <span class="admin-price-badge is-same"
+                                                      title="Single selling price (no variants).">Same Price</span>
+                                            }
+                                            else if (priceDisplay.Mode == ProductVariantLogic.AdminPriceMode.Variable)
+                                            {
+                                                <span class="admin-price-badge is-variable"
+                                                      title="Prices vary by product variant.">Variable Price</span>
+                                            }
                                         </div>
                                     </td>
-                                    <td class="col-sold">@product.Sold.ToString("N0")</td>
+                                    @{
+                                        var stock = StockFor(product);
+                                        var reviewStats = ReviewStatsFor(product);
+                                    }
+                                    <td class="col-stock">
+                                        <div class="admin-stock-cell" title="@stock.Detail">
+                                            <strong>@stock.Total.ToString("N0")@(stock.VariantCount > 0 ? " total" : "")</strong>
+                                            @if (stock.VariantCount > 0)
+                                            {
+                                                <small>@stock.VariantCount variant@(stock.VariantCount == 1 ? "" : "s")</small>
+                                            }
+                                            <span class="admin-stock-badge stock-@stock.Key">@stock.Label</span>
+                                        </div>
+                                    </td>
+                                    <td class="col-sold">@SoldFor(product).ToString("N0")</td>
                                     <td class="col-rating">
                                         <button type="button"
                                                 class="ar-rating-link"
                                                 title="View reviews"
                                                 @onclick="() => OpenProductReviews(product)">
-                                            @if (product.Reviews <= 0)
+                                            @if (reviewStats.Count <= 0)
                                             {
                                                 <span class="ar-rating-empty">—</span>
                                             }
                                             else
                                             {
-                                                <span class="ar-rating-value"><span class="ar-star-icon">★</span> @product.Rating.ToString("0.0")</span>
+                                                <span class="ar-rating-value"><span class="ar-star-icon">★</span> @reviewStats.Average.ToString("0.0")</span>
                                             }
                                         </button>
                                     </td>
@@ -157,7 +291,7 @@
                                                 class="ar-reviews-link"
                                                 title="View reviews"
                                                 @onclick="() => OpenProductReviews(product)">
-                                            @product.Reviews
+                                            @reviewStats.Count
                                         </button>
                                     </td>
                                     <td class="col-status">
@@ -169,13 +303,15 @@
                                         <div class="admin-products-row-actions">
                                             <button type="button"
                                                     class="btn btn-outline-navy admin-products-inline-btn"
+                                                    aria-label="@($"Edit {product.Name}")"
                                                     @onclick="() => EditProduct(product.Id)">
-                                                Edit
+                                                <Icon Name="pencil" Size="13" /> Edit
                                             </button>
                                             <button type="button"
                                                     class="btn btn-navy admin-products-inline-btn"
+                                                    aria-label="@($"Adjust price for {product.Name}")"
                                                     @onclick="() => OpenAdjustPrice(product)">
-                                                Adjust Price
+                                                <Icon Name="tag" Size="13" /> Adjust Price
                                             </button>
                                             <div class="admin-row-menu-wrap">
                                                 <button type="button"
@@ -192,6 +328,9 @@
                                                     <div class="admin-row-menu" role="menu" @onclick:stopPropagation="true">
                                                         <button type="button" class="admin-row-menu-item" @onclick="() => ViewProduct(product.Id)">
                                                             <Icon Name="eye" Size="14" /> View Product
+                                                        </button>
+                                                        <button type="button" class="admin-row-menu-item" @onclick="() => OpenProductReviews(product)">
+                                                            <Icon Name="star" Size="14" /> View Reviews
                                                         </button>
                                                         <button type="button" class="admin-row-menu-item" @onclick="() => OpenPriceHistory(product)">
                                                             <Icon Name="clock" Size="14" /> View Price History
@@ -220,18 +359,44 @@
             </div>
 
             <div class="admin-products-footer">
-                <span>Showing @Paged.Count() of @Filtered.Count() products</span>
-                <div class="admin-pagination">
-                    @for (var page = 1; page <= PageButtonCount; page++)
-                    {
-                        var pageNumber = page;
+                <span>@ResultLabel</span>
+                @if (TotalPages > 1)
+                {
+                    <nav class="admin-pagination" aria-label="Products pagination">
                         <button type="button"
-                                class="admin-page-btn @(_currentPage == pageNumber ? "active" : "")"
-                                @onclick="() => GoToPage(pageNumber)">
-                            @pageNumber
+                                class="admin-page-btn"
+                                aria-label="Previous page"
+                                disabled="@(CurrentPage <= 1)"
+                                @onclick="() => GoToPage(CurrentPage - 1)">
+                            <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
                         </button>
-                    }
-                </div>
+                        @foreach (var page in PageNumbers)
+                        {
+                            if (page is null)
+                            {
+                                <span class="admin-page-gap" aria-hidden="true">…</span>
+                            }
+                            else
+                            {
+                                var pageNumber = page.Value;
+                                <button type="button"
+                                        class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
+                                        aria-label="@($"Page {pageNumber}")"
+                                        aria-current="@(CurrentPage == pageNumber ? "page" : null)"
+                                        @onclick="() => GoToPage(pageNumber)">
+                                    @pageNumber
+                                </button>
+                            }
+                        }
+                        <button type="button"
+                                class="admin-page-btn"
+                                aria-label="Next page"
+                                disabled="@(CurrentPage >= TotalPages)"
+                                @onclick="() => GoToPage(CurrentPage + 1)">
+                            <Icon Name="chevron-right" Size="14" />
+                        </button>
+                    </nav>
+                }
             </div>
         }
     </section>
@@ -533,19 +698,35 @@
 {
     <div class="admin-modal-backdrop" @onclick="CancelDelete">
         <div class="admin-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>Delete Product@(_bulkDelete ? "s" : "")?</h2>
+            @{
+                var targets = DeleteTargets;
+                var withHistory = targets.Count(p => HasOrderHistory(p.Id));
+            }
+            <h2>@(_bulkDelete ? "Delete the selected products?" : "Delete Product?")</h2>
             @if (_bulkDelete)
             {
-                <p>Are you sure you want to delete <strong>@_selectedIds.Count</strong> selected products?</p>
+                <p><strong>@targets.Count</strong> product@(targets.Count == 1 ? "" : "s") selected.</p>
             }
             else if (_deleteTarget is not null)
             {
                 <p>Are you sure you want to delete <strong>"@_deleteTarget.Name"</strong>?</p>
             }
-            <p class="admin-modal-note">This action cannot be undone.</p>
+            @if (withHistory > 0)
+            {
+                <p class="admin-modal-note">
+                    @withHistory product@(withHistory == 1 ? " has" : "s have") order history and will be set to
+                    <strong>Inactive</strong> instead, so past orders stay intact.
+                </p>
+            }
+            @if (withHistory < targets.Count)
+            {
+                <p class="admin-modal-note">Products without orders are permanently deleted. This cannot be undone.</p>
+            }
             <div class="admin-modal-actions">
-                <button type="button" class="btn btn-outline-navy" @onclick="CancelDelete">Cancel</button>
-                <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDeleteAction">Delete Product@(_bulkDelete ? "s" : "")</button>
+                <button type="button" class="btn btn-outline-navy" @onclick="CancelDelete" disabled="@_busy">Cancel</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDeleteAction" disabled="@_busy">
+                    @(_busy ? "Working…" : withHistory == targets.Count ? "Set Inactive" : "Delete")
+                </button>
             </div>
         </div>
     </div>
@@ -568,7 +749,9 @@
     private string _search = string.Empty;
     private string _category = "All";
     private string _status = "All";
+    private string _sort = "newest";
     private int _currentPage = 1;
+    private bool _busy;
     private int? _openMenuId;
     private AdminProduct? _deleteTarget;
     private bool _bulkDelete;
@@ -601,32 +784,175 @@
 
     private bool _isEditMode => _editProductId is > 0;
 
-    private List<AdminProduct> Filtered =>
-        ProductService.Filter(_search, _category, _status).ToList();
+    private static readonly (string Value, string Label)[] SortOptions =
+    [
+        ("newest", "Newest"),
+        ("oldest", "Oldest"),
+        ("name-asc", "Name A-Z"),
+        ("name-desc", "Name Z-A"),
+        ("price-asc", "Price Low to High"),
+        ("price-desc", "Price High to Low"),
+        ("best-selling", "Best Selling"),
+        ("low-stock", "Low Stock")
+    ];
 
-    private int TotalPages
+    private IEnumerable<(string Value, string Label)> StatusOptions
     {
         get
         {
-            var count = Filtered.Count;
-            if (count == 0) return 1;
-            return (int)Math.Ceiling(count / (double)AdminProductService.PageSize);
+            yield return ("All", "All Statuses");
+            yield return ("Active", "Active");
+            yield return ("Inactive", "Inactive");
+            if (DraftCount > 0 || _status == "Draft")
+                yield return ("Draft", "Draft");
         }
     }
 
-    private int PageButtonCount => Math.Max(TotalPages, Filtered.Count > 0 ? 3 : 1);
+    private int ActiveCount => ProductService.All.Count(p => p.IsActive);
+    private int DraftCount => ProductService.All.Count(p => p.IsDraft);
+    private int InactiveCount => ProductService.All.Count(p => !p.IsActive);
+    private int CategoryCount => CategoryService.All.Count(c => c.IsActive);
 
-    private IEnumerable<AdminProduct> Paged
+    private static bool IsAll(string? value) =>
+        string.IsNullOrWhiteSpace(value) || value.Equals("All", StringComparison.OrdinalIgnoreCase);
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_search) || !IsAll(_category) || !IsAll(_status);
+
+    private List<AdminProduct> Filtered => Sort(ProductService.Filter(_search, _category, _status)).ToList();
+
+    private IEnumerable<AdminProduct> Sort(IEnumerable<AdminProduct> query) => _sort switch
+    {
+        "oldest" => query.OrderBy(p => p.CreatedAt).ThenBy(p => p.Id),
+        "name-asc" => query.OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase),
+        "name-desc" => query.OrderByDescending(p => p.Name, StringComparer.OrdinalIgnoreCase),
+        "price-asc" => query.OrderBy(p => DescribePrice(p).Min ?? decimal.MaxValue).ThenBy(p => p.Name),
+        "price-desc" => query.OrderByDescending(p => DescribePrice(p).Max ?? -1).ThenBy(p => p.Name),
+        "best-selling" => query.OrderByDescending(SoldFor).ThenBy(p => p.Name),
+        "low-stock" => query
+            .Select(p => (Product: p, Stock: StockFor(p)))
+            .OrderBy(x => x.Stock.Key switch { "low" => 0, "out" => 1, _ => 2 })
+            .ThenBy(x => x.Stock.Total)
+            .ThenBy(x => x.Product.Name)
+            .Select(x => x.Product),
+        _ => query.OrderByDescending(p => p.CreatedAt).ThenByDescending(p => p.Id)
+    };
+
+    private int TotalPages =>
+        Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)AdminProductService.PageSize));
+
+    private int CurrentPage => Math.Clamp(_currentPage, 1, TotalPages);
+
+    private List<AdminProduct> Paged =>
+        Filtered
+            .Skip((CurrentPage - 1) * AdminProductService.PageSize)
+            .Take(AdminProductService.PageSize)
+            .ToList();
+
+    private string ResultLabel
     {
         get
         {
-            var list = Filtered;
-            var start = (_currentPage - 1) * AdminProductService.PageSize;
-            if (start < 0 || start >= list.Count)
-                return [];
-            return list.Skip(start).Take(AdminProductService.PageSize);
+            var total = Filtered.Count;
+            if (total == 0)
+                return "Showing 0 products";
+            var start = (CurrentPage - 1) * AdminProductService.PageSize + 1;
+            var end = Math.Min(start + AdminProductService.PageSize - 1, total);
+            return $"Showing {start}–{end} of {total} product{(total == 1 ? "" : "s")}";
         }
     }
+
+    /// <summary>Page numbers to render; null marks an ellipsis gap.</summary>
+    private IEnumerable<int?> PageNumbers
+    {
+        get
+        {
+            var total = TotalPages;
+            var current = CurrentPage;
+            if (total <= 7)
+            {
+                for (var i = 1; i <= total; i++)
+                    yield return i;
+                yield break;
+            }
+
+            var from = Math.Max(2, current - 1);
+            var to = Math.Min(total - 1, current + 1);
+            if (current <= 3) to = 4;
+            if (current >= total - 2) from = total - 3;
+
+            yield return 1;
+            if (from > 2) yield return null;
+            for (var i = from; i <= to; i++)
+                yield return i;
+            if (to < total - 1) yield return null;
+            yield return total;
+        }
+    }
+
+    private sealed record StockDisplay(int Total, int VariantCount, string Key, string Label, string? Detail);
+
+    /// <summary>Reuses the Inventory module's row (same totals, per-product low-stock level and states).</summary>
+    private StockDisplay StockFor(AdminProduct product)
+    {
+        var row = InventoryService.GetRow(product.Id);
+        if (row is null)
+            return new StockDisplay(Math.Max(0, product.Stock), 0, product.StockStateKey, product.StockState, null);
+
+        // Inventory's Attention/Critical health maps onto the product table's Low/Out badges.
+        var key = row.StockStateKey switch
+        {
+            "attention" => "low",
+            "critical" => "out",
+            "healthy" => "in",
+            _ => row.StockStateKey
+        };
+        var label = key switch { "out" => "Out of Stock", "low" => "Low Stock", _ => "In Stock" };
+        var alerts = string.Join(", ", row.StockAlertLines);
+        var detail = $"Low-stock level: {row.LowStockLevel}" + (alerts.Length > 0 ? $" · {alerts}" : "");
+        return new StockDisplay(row.TotalStock, row.Variants.Count, key, label, detail);
+    }
+
+    private Dictionary<int, int>? _soldCache;
+
+    /// <summary>Fulfilled units (Completed pickup / Delivered delivery), all variants summed per product.</summary>
+    private int SoldFor(AdminProduct product)
+    {
+        _soldCache ??= OrderService.All
+            .Where(AdminReportService.IsFulfilledSale)
+            .SelectMany(o => o.Items)
+            .Where(i => i.ProductId > 0 && i.Quantity > 0)
+            .GroupBy(i => i.ProductId)
+            .ToDictionary(g => g.Key, g => g.Sum(i => i.Quantity));
+
+        return _soldCache.GetValueOrDefault(product.Id);
+    }
+
+    private void OnOrdersChanged()
+    {
+        _soldCache = null;
+        Refresh();
+    }
+
+    private bool HasOrderHistory(int productId) =>
+        OrderService.All.Any(o => o.Items.Any(i => i.ProductId == productId));
+
+    /// <summary>Visible reviews only, rounded like AdminReviewService's product stats.</summary>
+    private (double Average, int Count) ReviewStatsFor(AdminProduct product)
+    {
+        if (ReviewService.All.Count == 0)
+            return (product.Rating, product.Reviews);
+
+        var visible = ReviewService.ForProduct(product.Id).Where(r => r.IsVisible).ToList();
+        return visible.Count == 0
+            ? (0, 0)
+            : (Math.Round(visible.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero), visible.Count);
+    }
+
+    private List<AdminProduct> DeleteTargets =>
+        _bulkDelete
+            ? ProductService.All.Where(p => _selectedIds.Contains(p.Id)).ToList()
+            : _deleteTarget is null ? [] : [_deleteTarget];
 
     private bool AllVisibleSelected
     {
@@ -642,9 +968,13 @@
         ProductService.OnChange += Refresh;
         CategoryService.OnChange += Refresh;
         ReviewService.OnChange += Refresh;
+        InventoryService.OnChange += Refresh;
+        OrderService.OnChange += OnOrdersChanged;
         Navigation.LocationChanged += OnLocationChanged;
         SyncCategoryFromQuery();
         _ = ReviewService.EnsureLoadedAsync();
+        _ = InventoryService.EnsureLoadedAsync();
+        _ = OrderService.EnsureLoadedAsync();
     }
 
     private async Task OpenProductReviews(AdminProduct product)
@@ -685,6 +1015,19 @@
     }
 
     private void ClosePriceHistory() => _priceHistoryProduct = null;
+
+    private readonly HashSet<string> _reportedPriceIssues = [];
+
+    private ProductVariantLogic.AdminPriceDisplay DescribePrice(AdminProduct product)
+    {
+        var display = ProductVariantLogic.DescribeAdminPrice(product.Price, product.Variants);
+        if (display.Issue is not null && _reportedPriceIssues.Add($"{product.Id}:{display.Issue}"))
+        {
+            System.Diagnostics.Debug.WriteLine(
+                $"[Admin Products] Price issue for product {product.Id} ({product.Sku}): {display.Issue}");
+        }
+        return display;
+    }
 
     private IEnumerable<string> FilterCategoryNames =>
         CategoryService.All
@@ -780,6 +1123,31 @@
         CloseMenu();
     }
 
+    private void OnSortChange(ChangeEventArgs e)
+    {
+        _sort = e.Value?.ToString() ?? "newest";
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void ClearSearch()
+    {
+        _search = string.Empty;
+        _currentPage = 1;
+    }
+
+    private void ClearCategory()
+    {
+        _category = "All";
+        _currentPage = 1;
+    }
+
+    private void ClearStatus()
+    {
+        _status = "All";
+        _currentPage = 1;
+    }
+
     private void ClearFilters()
     {
         _search = string.Empty;
@@ -792,7 +1160,7 @@
 
     private void GoToPage(int page)
     {
-        _currentPage = Math.Clamp(page, 1, PageButtonCount);
+        _currentPage = Math.Clamp(page, 1, TotalPages);
         CloseMenu();
     }
 
@@ -907,37 +1275,133 @@
         _bulkDelete = false;
     }
 
+    /// <summary>
+    /// Products referenced by past orders are set to Inactive instead of hard-deleted,
+    /// so order history is never removed. Only products with no orders are deleted.
+    /// </summary>
     private async Task ConfirmDeleteAction()
     {
-        if (_bulkDelete)
+        if (_busy) return;
+        var targets = DeleteTargets;
+        if (targets.Count == 0)
         {
-            var toDelete = ProductService.All.Where(p => _selectedIds.Contains(p.Id)).ToList();
-            foreach (var group in toDelete.GroupBy(p => p.Category))
+            CancelDelete();
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var keep = targets.Where(p => HasOrderHistory(p.Id)).ToList();
+            var remove = targets.Where(p => !HasOrderHistory(p.Id)).ToList();
+
+            if (keep.Count > 0)
+                await ProductService.SetStatusManyAsync(keep.Select(p => p.Id), "Inactive");
+
+            var deletedIds = remove.Count > 0
+                ? await ProductService.DeleteManyAsync(remove.Select(p => p.Id))
+                : [];
+            foreach (var group in remove.Where(p => deletedIds.Contains(p.Id)).GroupBy(p => p.Category))
                 await CategoryService.AdjustProductCountAsync(group.Key, -group.Count());
 
-            var count = await ProductService.DeleteManyAsync(_selectedIds);
-            _selectedIds.Clear();
-            Toast.Show($"{count} product{(count == 1 ? "" : "s")} deleted.");
-        }
-        else if (_deleteTarget is not null)
-        {
-            var name = _deleteTarget.Name;
-            var category = _deleteTarget.Category;
-            await ProductService.DeleteAsync(_deleteTarget.Id);
-            await CategoryService.AdjustProductCountAsync(category, -1);
-            _selectedIds.Remove(_deleteTarget.Id);
-            Toast.Show($"Deleted \"{name}\".");
-        }
+            foreach (var product in targets)
+                _selectedIds.Remove(product.Id);
 
-        CancelDelete();
-        if (_currentPage > PageButtonCount)
-            _currentPage = PageButtonCount;
+            var failed = remove.Count - deletedIds.Count;
+            var parts = new List<string>();
+            if (deletedIds.Count > 0)
+                parts.Add($"{deletedIds.Count} deleted");
+            if (keep.Count > 0)
+                parts.Add($"{keep.Count} set to Inactive (has order history)");
+            if (failed > 0)
+                parts.Add($"{failed} could not be deleted");
+            Toast.Show(string.Join(" · ", parts) + ".");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            Toast.Show("Unable to delete products. Please try again.");
+        }
+        finally
+        {
+            _busy = false;
+            CancelDelete();
+        }
     }
 
-    private async Task BulkSetStatus(string status)
+    private async Task RequestBulkStatus(string status)
     {
-        await ProductService.SetStatusManyAsync(_selectedIds, status);
-        Toast.Show($"Selected products set to {status}.");
+        if (_busy || _selectedIds.Count == 0) return;
+        _busy = true;
+        try
+        {
+            var count = _selectedIds.Count;
+            await ProductService.SetStatusManyAsync(_selectedIds, status);
+            Toast.Show($"{count} product{(count == 1 ? "" : "s")} set to {status}.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            Toast.Show("Unable to update product status.");
+        }
+        finally
+        {
+            _busy = false;
+        }
+    }
+
+    private async Task ExportCsv()
+    {
+        var rows = _selectedIds.Count > 0
+            ? Filtered.Where(p => _selectedIds.Contains(p.Id)).ToList()
+            : Filtered;
+        if (rows.Count == 0)
+            return;
+
+        var lines = new List<string> { "SKU,Product Name,Category,Price,Price Type,Total Stock,Variants,Stock Status,Sold,Rating,Reviews,Status" };
+        foreach (var product in rows)
+        {
+            var price = DescribePrice(product);
+            var stock = StockFor(product);
+            var reviews = ReviewStatsFor(product);
+            var priceText = price.Min is decimal min && price.Max is decimal max
+                ? min == max ? min.ToString("0.00") : $"{min:0.00} - {max:0.00}"
+                : "";
+            var priceType = price.Mode switch
+            {
+                ProductVariantLogic.AdminPriceMode.Variable => "Variable Price",
+                ProductVariantLogic.AdminPriceMode.Unresolved => "Unresolved",
+                _ => "Same Price"
+            };
+            lines.Add(string.Join(",",
+                Csv(product.Sku), Csv(product.Name), Csv(product.Category), Csv(priceText), priceType,
+                stock.Total, stock.VariantCount, stock.Label, SoldFor(product),
+                reviews.Count > 0 ? reviews.Average.ToString("0.0") : "", reviews.Count, Csv(product.Status)));
+        }
+
+        var csv = string.Join("\n", lines);
+        var fileName = $"NU-Bulldogs-Products-{DateTime.Now:yyyy-MM-dd}.csv";
+        try
+        {
+            await JS.InvokeVoidAsync("nubeDownloadTextFile", fileName, csv, "text/csv;charset=utf-8");
+            Toast.Show($"Exported {rows.Count} product{(rows.Count == 1 ? "" : "s")} as CSV.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            Toast.Show("Unable to export products.");
+        }
+    }
+
+    private static string Csv(string? value)
+    {
+        var text = value ?? string.Empty;
+        // Spreadsheet apps execute cells starting with these characters as formulas.
+        if (text.Length > 0 && "=+-@".Contains(text[0]))
+            text = "'" + text;
+        return text.IndexOfAny([',', '"', '\n', '\r']) >= 0
+            ? $"\"{text.Replace("\"", "\"\"")}\""
+            : text;
     }
 
     private async Task OpenAddModal()
@@ -1496,6 +1960,8 @@
         ProductService.OnChange -= Refresh;
         CategoryService.OnChange -= Refresh;
         ReviewService.OnChange -= Refresh;
+        InventoryService.OnChange -= Refresh;
+        OrderService.OnChange -= OnOrdersChanged;
         Navigation.LocationChanged -= OnLocationChanged;
         _ = SetBodyScrollLock(false);
     }

@@ -1,7 +1,5 @@
 @namespace NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
-@using NUBulldogsExchange.Web.Shared.Services
-@inject ProductCatalogService Catalog
 
 <div class="filter-card">
     <div class="filter-card-header">
@@ -9,68 +7,94 @@
         <button type="button" class="clear-all-btn" @onclick="OnClear">Clear All</button>
     </div>
 
-    <div class="filter-group">
-        <h4>Category</h4>
-        <div class="filter-options">
-            @foreach (var category in Catalog.Categories)
-            {
-                var name = category.Name;
-                <label class="filter-check">
-                    <input type="checkbox"
-                           checked="@SelectedCategories.Contains(name)"
-                           @onchange="e => ToggleCategory(name, e)" />
-                    <span>@category.Name</span>
-                    <em>@category.Count</em>
-                </label>
-            }
-            @if (!Catalog.Categories.Any())
-            {
-                <p class="filter-empty">No categories yet.</p>
-            }
+    @if (Categories.Count > 0)
+    {
+        <div class="filter-group">
+            <h4>Category</h4>
+            <div class="filter-options">
+                @foreach (var category in Categories)
+                {
+                    var name = category.Name;
+                    <label class="filter-check">
+                        <input type="checkbox"
+                               checked="@SelectedCategories.Contains(name)"
+                               @onchange="e => Toggle(SelectedCategories, name, e)" />
+                        <span>@category.Name</span>
+                        <em>@category.Count</em>
+                    </label>
+                }
+            </div>
         </div>
-    </div>
+    }
 
-    <div class="filter-group">
-        <h4>Price Range</h4>
-        <input class="price-range"
-               type="range"
-               min="0"
-               max="@MaxPrice"
-               step="50"
-               value="@MaxPriceValue"
-               @oninput="OnPriceInput" />
-        <div class="price-range-labels">
-            <span>₱0</span>
-            <span>₱@MaxPriceValue.ToString("N0")</span>
+    @if (PriceMax > PriceMin)
+    {
+        <div class="filter-group">
+            <h4>Price Range</h4>
+            <div class="price-range-labels">
+                <span>@ProductVariantLogic.FormatPeso(SelectedMin)</span>
+                <span>@ProductVariantLogic.FormatPeso(SelectedMax)</span>
+            </div>
+            <input class="price-range" type="range" min="@PriceMin" max="@PriceMax" step="@Step"
+                   value="@SelectedMin" aria-label="Minimum price" @oninput="OnMin" />
+            <input class="price-range" type="range" min="@PriceMin" max="@PriceMax" step="@Step"
+                   value="@SelectedMax" aria-label="Maximum price" @oninput="OnMax" />
         </div>
-    </div>
+    }
 
-    <div class="filter-group">
-        <h4>Size</h4>
-        <div class="size-options">
-            @foreach (var size in SizeOptions)
+    @if (Colors.Count > 0)
+    {
+        <div class="filter-group">
+            <h4>Color</h4>
+            <div class="filter-options">
+                @foreach (var color in VisibleColors)
+                {
+                    var name = color.Name;
+                    <label class="filter-check filter-color">
+                        <input type="checkbox"
+                               checked="@SelectedColors.Contains(name)"
+                               @onchange="e => Toggle(SelectedColors, name, e)" />
+                        <span class="filter-swatch" style="background:@color.Hex"></span>
+                        <span>@name</span>
+                        <em>@color.Count</em>
+                    </label>
+                }
+            </div>
+            @if (Colors.Count > ColorPreview)
             {
-                var s = size;
-                <button type="button"
-                        class="size-chip @(SelectedSizes.Contains(s) ? "active" : "")"
-                        @onclick="() => ToggleSize(s)">
-                    @s
+                <button type="button" class="filter-more" @onclick="() => _showAllColors = !_showAllColors">
+                    @(_showAllColors ? "Show less" : $"+ Show more")
                 </button>
             }
         </div>
-    </div>
+    }
+
+    @if (Sizes.Count > 0)
+    {
+        <div class="filter-group">
+            <h4>Size</h4>
+            <div class="size-options">
+                @foreach (var size in Sizes)
+                {
+                    var name = size.Name;
+                    <button type="button"
+                            class="size-chip @(SelectedSizes.Contains(name) ? "active" : "")"
+                            @onclick="() => ToggleSize(name)">
+                        @name <span>(@size.Count)</span>
+                    </button>
+                }
+            </div>
+        </div>
+    }
 
     <div class="filter-group">
         <h4>Rating</h4>
         <div class="rating-options">
-            @for (var stars = 4; stars >= 1; stars--)
+            @foreach (var stars in new[] { 5, 4, 3, 2 })
             {
                 var value = stars;
                 <label class="rating-option">
-                    <input type="radio"
-                           name="@RadioGroupName"
-                           checked="@(MinRating == value)"
-                           @onchange="() => SetRating(value)" />
+                    <input type="radio" name="@RadioGroupName" checked="@(MinRating == value)" @onchange="() => SetRating(value)" />
                     <span class="rating-stars">
                         @for (var i = 1; i <= 5; i++)
                         {
@@ -81,10 +105,7 @@
                 </label>
             }
             <label class="rating-option">
-                <input type="radio"
-                       name="@RadioGroupName"
-                       checked="@(MinRating == 0)"
-                       @onchange="() => SetRating(0)" />
+                <input type="radio" name="@RadioGroupName" checked="@(MinRating == 0)" @onchange="() => SetRating(0)" />
                 <span>Any rating</span>
             </label>
         </div>
@@ -93,60 +114,85 @@
     <div class="filter-group">
         <h4>Availability</h4>
         <label class="filter-check">
-            <input type="checkbox"
-                   checked="@InStockOnly"
-                   @onchange="OnInStockChanged" />
+            <input type="checkbox" checked="@InStockOnly" @onchange="OnInStockChanged" />
             <span>In Stock Only</span>
+            <em>@InStockCount</em>
         </label>
     </div>
-
-    <button type="button" class="btn btn-navy apply-filters-btn" @onclick="OnApply">
-        Apply Filters
-    </button>
 </div>
 
 @code {
+    private const int ColorPreview = 5;
+
+    [Parameter] public IReadOnlyList<FilterCount> Categories { get; set; } = [];
+    [Parameter] public IReadOnlyList<ColorFilter> Colors { get; set; } = [];
+    [Parameter] public IReadOnlyList<FilterCount> Sizes { get; set; } = [];
+    [Parameter] public decimal PriceMin { get; set; }
+    [Parameter] public decimal PriceMax { get; set; }
+    [Parameter] public decimal SelectedMin { get; set; }
+    [Parameter] public decimal SelectedMax { get; set; }
+    [Parameter] public EventCallback<decimal> SelectedMinChanged { get; set; }
+    [Parameter] public EventCallback<decimal> SelectedMaxChanged { get; set; }
     [Parameter] public HashSet<string> SelectedCategories { get; set; } = [];
+    [Parameter] public HashSet<string> SelectedColors { get; set; } = [];
     [Parameter] public HashSet<string> SelectedSizes { get; set; } = [];
-    [Parameter] public decimal MaxPriceValue { get; set; } = 2000;
-    [Parameter] public EventCallback<decimal> MaxPriceValueChanged { get; set; }
     [Parameter] public int MinRating { get; set; }
     [Parameter] public EventCallback<int> MinRatingChanged { get; set; }
     [Parameter] public bool InStockOnly { get; set; }
     [Parameter] public EventCallback<bool> InStockOnlyChanged { get; set; }
-    [Parameter] public EventCallback OnApplyClicked { get; set; }
+    [Parameter] public int InStockCount { get; set; }
+    [Parameter] public EventCallback FiltersChanged { get; set; }
     [Parameter] public EventCallback OnClearClicked { get; set; }
     [Parameter] public string RadioGroupName { get; set; } = "shop-rating";
 
-    private const decimal MaxPrice = 2000;
-    private static readonly string[] SizeOptions = ["XS", "S", "M", "L", "XL", "XXL"];
+    private bool _showAllColors;
+    private IEnumerable<ColorFilter> VisibleColors => _showAllColors ? Colors : Colors.Take(ColorPreview);
+    private decimal Step => PriceMax - PriceMin > 200 ? 10 : 1;
 
-    private async Task ToggleCategory(string category, ChangeEventArgs e)
+    private async Task Toggle(HashSet<string> set, string value, ChangeEventArgs e)
     {
-        var selected = IsChecked(e.Value);
-        if (selected) SelectedCategories.Add(category);
-        else SelectedCategories.Remove(category);
-        await InvokeAsync(StateHasChanged);
+        if (IsChecked(e.Value)) set.Add(value);
+        else set.Remove(value);
+        await FiltersChanged.InvokeAsync();
     }
 
-    private void ToggleSize(string size)
+    private async Task ToggleSize(string size)
     {
         if (!SelectedSizes.Add(size))
             SelectedSizes.Remove(size);
+        await FiltersChanged.InvokeAsync();
     }
 
-    private async Task OnPriceInput(ChangeEventArgs e)
+    private async Task OnMin(ChangeEventArgs e)
     {
-        if (decimal.TryParse(e.Value?.ToString(), out var value))
-            await MaxPriceValueChanged.InvokeAsync(Math.Clamp(value, 0, MaxPrice));
+        if (!decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value)) return;
+        value = Math.Clamp(value, PriceMin, PriceMax);
+        if (value > SelectedMax) value = SelectedMax;
+        await SelectedMinChanged.InvokeAsync(value);
+        await FiltersChanged.InvokeAsync();
     }
 
-    private async Task SetRating(int value) => await MinRatingChanged.InvokeAsync(value);
+    private async Task OnMax(ChangeEventArgs e)
+    {
+        if (!decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var value)) return;
+        value = Math.Clamp(value, PriceMin, PriceMax);
+        if (value < SelectedMin) value = SelectedMin;
+        await SelectedMaxChanged.InvokeAsync(value);
+        await FiltersChanged.InvokeAsync();
+    }
 
-    private async Task OnInStockChanged(ChangeEventArgs e) =>
+    private async Task SetRating(int value)
+    {
+        await MinRatingChanged.InvokeAsync(value);
+        await FiltersChanged.InvokeAsync();
+    }
+
+    private async Task OnInStockChanged(ChangeEventArgs e)
+    {
         await InStockOnlyChanged.InvokeAsync(IsChecked(e.Value));
+        await FiltersChanged.InvokeAsync();
+    }
 
-    private async Task OnApply() => await OnApplyClicked.InvokeAsync();
     private async Task OnClear() => await OnClearClicked.InvokeAsync();
 
     private static bool IsChecked(object? value) => value switch
@@ -155,4 +201,7 @@
         string s => string.Equals(s, "true", StringComparison.OrdinalIgnoreCase) || s == "on",
         _ => false
     };
+
+    public sealed record FilterCount(string Name, int Count);
+    public sealed record ColorFilter(string Name, string Hex, int Count);
 }

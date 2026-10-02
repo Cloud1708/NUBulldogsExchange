@@ -10,17 +10,13 @@
 
 <article class="product-list-card" @onclick="GoToDetails">
     <div class="product-list-image">
-        @if (!string.IsNullOrWhiteSpace(Product.Badge))
-        {
-            <span class="badge @BadgeClass">@Product.Badge</span>
-        }
         <img src="@Product.ImageUrl"
              alt="@Product.Name"
              loading="lazy"
              onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
     </div>
 
-    <div class="product-list-info">
+    <div class="product-list-main">
         <small>@Product.Category</small>
         <h3>@Product.Name</h3>
         <div class="rating">
@@ -28,56 +24,86 @@
             {
                 <span class="star @(i <= Math.Round(Product.Rating) ? "filled" : "")">★</span>
             }
-            <span>(@Product.Reviews) · @Product.Sold sold</span>
+            <span>@Product.Rating.ToString("0.0") (@Product.Reviews) · @((SoldCount ?? 0).ToString("N0")) sold</span>
         </div>
-        @if (Product.Colors.Count > 0)
+        @if (!string.IsNullOrWhiteSpace(Product.Description))
         {
-            <div class="colors">
-                @foreach (var color in Product.Colors)
+            <p class="product-list-desc">@Product.Description</p>
+        }
+        @if (CardColors.Count > 0)
+        {
+            <div class="shop-card-swatches">
+                @foreach (var color in CardColors.Take(4))
                 {
-                    <span class="dot @color" title="@color"></span>
+                    <span class="filter-swatch" style="background:@color.Hex" title="@color.Name"></span>
+                    <span class="shop-color-name">@color.Name</span>
+                }
+                @if (CardColors.Count > 4)
+                {
+                    <small>+@(CardColors.Count - 4)</small>
                 }
             </div>
         }
-        <p class="product-list-desc">@Product.Description</p>
+        @if (CardSizes.Count > 0)
+        {
+            <div class="shop-card-sizes">
+                @foreach (var size in CardSizes)
+                {
+                    <span>@size</span>
+                }
+            </div>
+        }
+        <span class="shop-list-stock is-@StockKey">
+            <i></i> @ProductVariantLogic.CustomerStockLabel(Product)
+        </span>
     </div>
 
     <div class="product-list-actions">
-        <div class="price-wrap">
+        <div class="product-list-top">
             <strong>@ProductVariantLogic.FormatCatalogPrice(Product.Price, Product.Variants)</strong>
-            @if (Product.OriginalPrice is decimal original)
-            {
-                <s>₱@original.ToString("N0")</s>
-            }
+            <button type="button"
+                    class="favorite @(IsWishlisted ? "active" : "")"
+                    title="Wishlist"
+                    @onclick="ToggleWishlist"
+                    @onclick:stopPropagation="true">
+                <Icon Name="heart" Size="16" />
+            </button>
         </div>
         <button type="button"
-                class="favorite @(IsWishlisted ? "active" : "")"
-                title="Wishlist"
-                @onclick="ToggleWishlist"
-                @onclick:stopPropagation="true">
-            <Icon Name="heart" Size="16" />
-        </button>
-        <button type="button"
                 class="btn btn-gold product-list-cart"
+                disabled="@OutOfStock"
                 @onclick="AddToCart"
                 @onclick:stopPropagation="true">
-            <Icon Name="cart" Size="16" /> Add to Cart
+            @ActionLabel
         </button>
     </div>
 </article>
 
 @code {
     [Parameter, EditorRequired] public Product Product { get; set; } = null!;
-
-    private string BadgeClass => Product.Badge switch
-    {
-        "Best Seller" => "badge-best",
-        "Sale" => "badge-sale",
-        "New" => "badge-new",
-        _ => "badge-best"
-    };
+    [Parameter] public int? SoldCount { get; set; }
 
     private bool IsWishlisted => Auth.IsLoggedIn && Wishlist.Contains(Product.Id);
+    private List<ProductVariant> Sellable => ProductVariantLogic.SellableVariants(Product);
+    private bool OutOfStock => !ProductVariantLogic.IsPurchasable(Product);
+    private bool NeedsOptions => Sellable.Count > 1;
+    private string StockKey => ProductVariantLogic.CustomerStockKey(Product);
+    private string ActionLabel => OutOfStock ? "Out of Stock" : NeedsOptions ? "Select Options" : "Add to Cart";
+
+    private List<(string Name, string Hex)> CardColors =>
+        Sellable
+            .Where(v => !string.IsNullOrWhiteSpace(v.ColorName))
+            .GroupBy(v => v.ColorName!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, ProductVariantLogic.ColorHex(Product.Variants, g.Key)))
+            .ToList();
+
+    private List<string> CardSizes =>
+        Sellable
+            .Where(v => !string.IsNullOrWhiteSpace(v.Size))
+            .Select(v => v.Size.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(InventoryRow.SizeSortRank)
+            .ToList();
 
     protected override void OnInitialized()
     {
@@ -91,7 +117,9 @@
     {
         if (!Auth.IsLoggedIn)
         {
-            Navigation.NavigateTo("/wishlist");
+            Toast.Show("Please log in to save items to your wishlist.");
+            var returnUrl = "/" + Navigation.ToBaseRelativePath(Navigation.Uri);
+            Navigation.NavigateTo($"/login?returnUrl={Uri.EscapeDataString(returnUrl)}");
             return;
         }
 
@@ -101,13 +129,25 @@
 
     private void AddToCart()
     {
-        if (Product.HasSizeVariants)
+        if (OutOfStock)
+            return;
+
+        if (NeedsOptions)
         {
             Navigation.NavigateTo($"/product/{Product.Id}");
             return;
         }
 
-        Cart.Add(Product);
+        if (Sellable.Count == 1)
+        {
+            var variant = Sellable[0];
+            Cart.Add(Product, 1, variant.ColorName, variant.Size, variant.Id);
+        }
+        else
+        {
+            Cart.Add(Product);
+        }
+
         Toast.Show("Product added to cart.");
     }
 

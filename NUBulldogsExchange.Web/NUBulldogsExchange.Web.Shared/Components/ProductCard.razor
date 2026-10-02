@@ -10,7 +10,11 @@
 
 <article class="product-card" @onclick="GoToDetails">
     <div class="product-image">
-        @if (Rank is > 0)
+        @if (ShowCatalogExtras)
+        {
+            <span class="shop-stock-badge is-@StockKey">@ProductVariantLogic.CustomerStockLabel(Product)</span>
+        }
+        else if (Rank is > 0)
         {
             <span class="rank-badge rank-@Rank">#@Rank</span>
         }
@@ -49,10 +53,44 @@
             {
                 <span class="star @(i <= Math.Round(Product.Rating) ? "filled" : "")">★</span>
             }
-            <span>(@Product.Reviews) · @((SoldCount ?? Product.Sold).ToString("N0")) sold</span>
+            @if (ShowCatalogExtras)
+            {
+                <span>@Product.Rating.ToString("0.0") (@Product.Reviews) · @((SoldCount ?? Product.Sold).ToString("N0")) sold</span>
+            }
+            else
+            {
+                <span>(@Product.Reviews) · @((SoldCount ?? Product.Sold).ToString("N0")) sold</span>
+            }
         </div>
 
-        @if (Product.Colors.Count > 0)
+        @if (ShowCatalogExtras)
+        {
+            var swatches = CardColors;
+            var sizes = CardSizes;
+            @if (swatches.Count > 0)
+            {
+                <div class="shop-card-swatches">
+                    @foreach (var color in swatches.Take(4))
+                    {
+                        <span class="filter-swatch" style="background:@color.Hex" title="@color.Name"></span>
+                    }
+                    @if (swatches.Count > 4)
+                    {
+                        <small>+@(swatches.Count - 4)</small>
+                    }
+                </div>
+            }
+            @if (sizes.Count > 0)
+            {
+                <div class="shop-card-sizes">
+                    @foreach (var size in sizes.Take(4))
+                    {
+                        <span>@size</span>
+                    }
+                </div>
+            }
+        }
+        else if (Product.Colors.Count > 0)
         {
             <div class="colors">
                 @foreach (var color in Product.Colors)
@@ -70,13 +108,27 @@
                     <s>₱@original.ToString("N0")</s>
                 }
             </div>
-            <button type="button"
-                    class="cart-button"
-                    title="Add to cart"
-                    @onclick="AddToCart"
-                    @onclick:stopPropagation="true">
-                <Icon Name="cart" Size="16" />
-            </button>
+            @if (ShowCatalogExtras)
+            {
+                <button type="button"
+                        class="btn btn-gold shop-card-action"
+                        disabled="@OutOfStock"
+                        @onclick="AddToCart"
+                        @onclick:stopPropagation="true">
+                    @ActionLabel
+                </button>
+            }
+            else
+            {
+                <button type="button"
+                        class="cart-button"
+                        title="@ActionLabel"
+                        disabled="@OutOfStock"
+                        @onclick="AddToCart"
+                        @onclick:stopPropagation="true">
+                    <Icon Name="cart" Size="16" />
+                </button>
+            }
         </div>
     </div>
 </article>
@@ -87,6 +139,7 @@
     [Parameter] public bool ShowNewBadge { get; set; }
     /// <summary>Overrides the cached <see cref="Product.Sold"/> (e.g. fulfilled-only totals on Home).</summary>
     [Parameter] public int? SoldCount { get; set; }
+    [Parameter] public bool ShowCatalogExtras { get; set; }
 
     private string BadgeClass => Product.Badge switch
     {
@@ -97,6 +150,26 @@
     };
 
     private bool IsWishlisted => Auth.IsLoggedIn && Wishlist.Contains(Product.Id);
+    private List<ProductVariant> Sellable => ProductVariantLogic.SellableVariants(Product);
+    private bool OutOfStock => !ProductVariantLogic.IsPurchasable(Product);
+    private bool NeedsOptions => Sellable.Count > 1;
+    private string StockKey => ProductVariantLogic.CustomerStockKey(Product);
+    private string ActionLabel => OutOfStock ? "Out of Stock" : NeedsOptions ? "Select Options" : "Add to Cart";
+
+    private List<(string Name, string Hex)> CardColors =>
+        Sellable
+            .Where(v => !string.IsNullOrWhiteSpace(v.ColorName))
+            .GroupBy(v => v.ColorName!.Trim(), StringComparer.OrdinalIgnoreCase)
+            .Select(g => (g.Key, ProductVariantLogic.ColorHex(Product.Variants, g.Key)))
+            .ToList();
+
+    private List<string> CardSizes =>
+        Sellable
+            .Where(v => !string.IsNullOrWhiteSpace(v.Size))
+            .Select(v => v.Size.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(InventoryRow.SizeSortRank)
+            .ToList();
 
     protected override void OnInitialized()
     {
@@ -124,14 +197,25 @@
 
     private void AddToCart()
     {
-        // Size/color must be chosen by the customer; never add an arbitrary variant.
-        if (Product.HasVariants)
+        if (OutOfStock)
+            return;
+
+        if (NeedsOptions)
         {
             Navigation.NavigateTo($"/product/{Product.Id}");
             return;
         }
 
-        Cart.Add(Product);
+        if (Sellable.Count == 1)
+        {
+            var variant = Sellable[0];
+            Cart.Add(Product, 1, variant.ColorName, variant.Size, variant.Id);
+        }
+        else
+        {
+            Cart.Add(Product);
+        }
+
         Toast.Show("Product added to cart.");
     }
 
