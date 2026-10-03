@@ -82,13 +82,17 @@
                         _ => null
                     };
 
-                    if (permissionKey is not null &&
-                        !string.IsNullOrWhiteSpace(Auth.Email) &&
-                        !StaffService.HasPermission(Auth.Email, permissionKey))
+                    if (permissionKey is not null)
                     {
-                        // If staff list isn't loaded yet, allow module (avoid empty nav flash).
-                        if (StaffService.All.Count > 0)
+                        // Until staff permissions are loaded, hide gated modules (safer than showing all).
+                        if (!StaffService.IsLoaded)
                             continue;
+
+                        if (string.IsNullOrWhiteSpace(Auth.Email) ||
+                            !StaffService.HasPermission(Auth.Email, permissionKey))
+                        {
+                            continue;
+                        }
                     }
                 }
 
@@ -113,7 +117,11 @@
         ("settings", "Settings", "/admin/settings", "settings")
     ];
 
-    protected override void OnInitialized() => Auth.OnChange += Refresh;
+    protected override void OnInitialized()
+    {
+        Auth.OnChange += Refresh;
+        StaffService.OnChange += Refresh;
+    }
 
     private bool IsActive(string key) =>
         string.Equals(Active, key, StringComparison.OrdinalIgnoreCase);
@@ -141,5 +149,10 @@
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
-    public void Dispose() => Auth.OnChange -= Refresh;
+
+    public void Dispose()
+    {
+        Auth.OnChange -= Refresh;
+        StaffService.OnChange -= Refresh;
+    }
 }

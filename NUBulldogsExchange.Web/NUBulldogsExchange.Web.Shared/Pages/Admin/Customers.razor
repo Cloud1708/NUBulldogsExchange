@@ -1,9 +1,15 @@
 @page "/admin/customers"
 @layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminCustomerService CustomerService
+@inject AdminOrderService OrderService
+@inject IAppDatabase Database
+@inject AuthService Auth
+@inject ToastService Toast
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <PageTitle>Customers | Admin | NU Bulldogs Exchange</PageTitle>
@@ -22,6 +28,7 @@
             <div>
                 <strong>@CustomerService.TotalCustomers</strong>
                 <span>Total Customers</span>
+                <small>All registered customers</small>
             </div>
         </article>
         <article class="admin-inventory-stat">
@@ -29,13 +36,23 @@
             <div>
                 <strong>@CustomerService.ActiveCustomers</strong>
                 <span>Active Customers</span>
+                <small>Currently active</small>
             </div>
         </article>
         <article class="admin-inventory-stat">
-            <div class="admin-inventory-stat-icon tone-purple"><Icon Name="wallet" Size="18" /></div>
+            <div class="admin-inventory-stat-icon tone-purple"><Icon Name="user" Size="18" /></div>
             <div>
-                <strong>@CustomerService.TotalRevenueLabel</strong>
-                <span>Total Revenue</span>
+                <strong>@CustomerService.NewThisMonth</strong>
+                <span>New This Month</span>
+                <small>@CustomerService.NewThisMonthCaption</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-gold"><Icon Name="refresh" Size="18" /></div>
+            <div>
+                <strong>@CustomerService.ReturningCustomers</strong>
+                <span>Returning Customers</span>
+                <small>Customers with 2+ orders</small>
             </div>
         </article>
     </div>
@@ -44,22 +61,53 @@
         <div class="admin-products-search admin-customers-search">
             <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
             <input type="search"
-                   placeholder="Search customers..."
+                   placeholder="Search name, email, or contact number..."
                    value="@_search"
                    @oninput="OnSearchInput" />
         </div>
+        <select class="admin-products-select" aria-label="Status filter" value="@_status" @onchange="OnStatusChange">
+            @foreach (var option in AdminCustomerService.StatusFilters)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="admin-products-select" aria-label="Customer type filter" value="@_type" @onchange="OnTypeChange">
+            @foreach (var option in AdminCustomerService.TypeFilters)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="admin-products-select" aria-label="Sort customers" value="@_sort" @onchange="OnSortChange">
+            <option value="newest">Sort: Newest First</option>
+            <option value="oldest">Sort: Oldest First</option>
+            <option value="name-asc">Sort: Name A–Z</option>
+            <option value="name-desc">Sort: Name Z–A</option>
+            <option value="orders-desc">Sort: Most Orders</option>
+            <option value="spent-desc">Sort: Highest Spent</option>
+            <option value="spent-asc">Sort: Lowest Spent</option>
+        </select>
     </section>
 
-    <section class="admin-customers-table-card">
-        @if (!Filtered.Any())
+    <section class="admin-customers-table-card @(_openMenuId is not null ? "is-menu-open" : "")">
+        @if (CustomerService.All.Count == 0)
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="users" Size="36" />
+                </div>
+                <h2>No customers yet.</h2>
+                <p>Customer accounts will appear here after registration.</p>
+            </div>
+        }
+        else if (!Filtered.Any())
         {
             <div class="admin-products-empty">
                 <div class="admin-products-empty-icon" aria-hidden="true">
                     <Icon Name="users" Size="36" />
                 </div>
                 <h2>No customers found.</h2>
-                <p>@(string.IsNullOrWhiteSpace(_search) ? "Registered customers will appear here automatically." : "Try another search term.")</p>
-                <button type="button" class="btn btn-navy" @onclick="ClearSearch">Clear Search</button>
+                <p>Try adjusting your search or filters.</p>
+                <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
             </div>
         }
         else
@@ -68,66 +116,583 @@
                 <table class="admin-customers-table">
                     <thead>
                         <tr>
-                            <th>Customer ID</th>
-                            <th>Name</th>
-                            <th>Email</th>
+                            <th>Customer</th>
                             <th>Contact</th>
                             <th>Date Joined</th>
-                            <th>Last Login</th>
-                            <th>Total Orders</th>
+                            <th>Last Order</th>
+                            <th>Orders</th>
                             <th>Total Spent</th>
+                            <th>Customer Type</th>
                             <th>Status</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var customer in Filtered)
+                        @foreach (var customer in PageItems)
                         {
                             <tr>
-                                <td><code class="admin-customer-id">@customer.Id</code></td>
                                 <td>
-                                    <div class="admin-customer-name">
-                                        <span class="admin-customer-avatar" aria-hidden="true">@customer.Initial</span>
-                                        <strong>@customer.Name</strong>
+                                    <div class="admin-customer-cell">
+                                        @if (customer.HasProfileImage)
+                                        {
+                                            <img class="admin-customer-avatar-img"
+                                                 src="@customer.ProfileImage"
+                                                 alt=""
+                                                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+                                            <span class="admin-customer-avatar" style="display:none" aria-hidden="true">@customer.Initial</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="admin-customer-avatar" aria-hidden="true">@customer.Initial</span>
+                                        }
+                                        <div class="admin-customer-cell-text">
+                                            <strong>@customer.Name</strong>
+                                            <span title="@customer.Email">@customer.Email</span>
+                                        </div>
                                     </div>
                                 </td>
-                                <td><span class="admin-customer-email" title="@customer.Email">@customer.Email</span></td>
-                                <td>@customer.Contact</td>
+                                <td>@customer.ContactDisplay</td>
                                 <td>@customer.DateJoinedLabel</td>
-                                <td>@customer.LastLoginLabel</td>
+                                <td>@customer.LastOrderLabel</td>
                                 <td><strong>@customer.TotalOrders</strong></td>
                                 <td><strong>@customer.TotalSpentLabel</strong></td>
                                 <td>
-                                    <span class="admin-customer-status status-@customer.StatusKey">@customer.Status</span>
+                                    <span class="admin-customer-type type-@customer.CustomerTypeKey">@customer.CustomerType</span>
                                 </td>
                                 <td>
-                                    <a href="@($"/admin/customers/{customer.Id}")"
-                                       class="btn btn-navy admin-customer-view-btn">
-                                        <Icon Name="eye" Size="14" />
-                                        View
-                                    </a>
+                                    <span class="admin-customer-status status-@customer.StatusKey">@customer.Status</span>
+                                </td>
+                                <td @onclick:stopPropagation="true">
+                                    <div class="admin-customer-actions">
+                                        <button type="button"
+                                                class="btn btn-navy admin-customer-view-btn"
+                                                @onclick="() => OpenDrawer(customer)">
+                                            <Icon Name="eye" Size="14" />
+                                            View
+                                        </button>
+                                        <div class="admin-customer-more">
+                                            <button type="button"
+                                                    class="admin-customer-more-btn"
+                                                    title="More actions"
+                                                    aria-label="More actions"
+                                                    @onclick="() => ToggleMenu(customer.Id)">
+                                                <Icon Name="more-horizontal" Size="16" />
+                                            </button>
+                                            @if (_openMenuId == customer.Id)
+                                            {
+                                                <div class="admin-customer-menu" role="menu" @onclick:stopPropagation="true">
+                                                    <button type="button" class="admin-customer-menu-item" @onclick="() => OpenDrawer(customer)">
+                                                        View Details
+                                                    </button>
+                                                    <button type="button" class="admin-customer-menu-item" @onclick="() => ViewAllOrders(customer)">
+                                                        View Orders
+                                                    </button>
+                                                    @if (customer.IsActive)
+                                                    {
+                                                        <button type="button" class="admin-customer-menu-item" @onclick="() => SetInactive(customer)">
+                                                            Set Inactive
+                                                        </button>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button type="button" class="admin-customer-menu-item" @onclick="() => SetActive(customer)">
+                                                            Set Active
+                                                        </button>
+                                                    }
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
                                 </td>
                             </tr>
                         }
                     </tbody>
                 </table>
             </div>
+
+            <div class="admin-customers-pager">
+                <span>@ShowingLabel</span>
+                <div class="admin-customers-pager-controls">
+                    <label class="admin-customers-page-size">
+                        <select aria-label="Rows per page" value="@_pageSize" @onchange="OnPageSizeChange">
+                            <option value="10">10 per page</option>
+                            <option value="25">25 per page</option>
+                            <option value="50">50 per page</option>
+                        </select>
+                    </label>
+                    @if (TotalPages > 1)
+                    {
+                        <nav class="admin-pagination" aria-label="Customers pagination">
+                            <button type="button"
+                                    class="admin-page-btn"
+                                    aria-label="Previous page"
+                                    disabled="@(CurrentPage <= 1)"
+                                    @onclick="() => GoToPage(CurrentPage - 1)">
+                                <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
+                            </button>
+                            @for (var page = 1; page <= TotalPages; page++)
+                            {
+                                var pageNumber = page;
+                                <button type="button"
+                                        class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
+                                        @onclick="() => GoToPage(pageNumber)">
+                                    @pageNumber
+                                </button>
+                            }
+                            <button type="button"
+                                    class="admin-page-btn"
+                                    aria-label="Next page"
+                                    disabled="@(CurrentPage >= TotalPages)"
+                                    @onclick="() => GoToPage(CurrentPage + 1)">
+                                <Icon Name="chevron-right" Size="14" />
+                            </button>
+                        </nav>
+                    }
+                </div>
+            </div>
         }
     </section>
 </div>
 
-@code {
-    private string _search = string.Empty;
+@if (_openMenuId is not null)
+{
+    <div class="admin-menu-backdrop" @onclick="CloseMenu"></div>
+}
 
-    private List<AdminCustomer> Filtered => CustomerService.Search(_search).ToList();
+@if (_selected is not null)
+{
+    var orders = CustomerService.OrdersForCustomer(_selected.Id);
+    var recent = orders.Take(3).ToList();
+    <div class="admin-inventory-drawer-overlay" @onclick="CloseDrawer"></div>
+    <aside class="admin-inventory-drawer admin-customer-drawer" role="dialog" aria-modal="true" aria-labelledby="customer-detail-title">
+        <header class="admin-inventory-drawer-header">
+            <h2 id="customer-detail-title">Customer Details</h2>
+            <button type="button" class="admin-inventory-drawer-close" aria-label="Close" @onclick="CloseDrawer">
+                <Icon Name="x" Size="18" />
+            </button>
+        </header>
+
+        <div class="admin-customer-drawer-hero">
+            @if (_selected.HasProfileImage)
+            {
+                <img class="admin-customer-avatar-img lg"
+                     src="@_selected.ProfileImage"
+                     alt=""
+                     onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+                <span class="admin-customer-avatar lg" style="display:none" aria-hidden="true">@_selected.Initial</span>
+            }
+            else
+            {
+                <span class="admin-customer-avatar lg" aria-hidden="true">@_selected.Initial</span>
+            }
+            <div>
+                <strong>@_selected.Name</strong>
+                <span>@_selected.Email</span>
+                <span class="admin-customer-status status-@_selected.StatusKey">@_selected.Status</span>
+            </div>
+        </div>
+
+        <nav class="admin-customer-drawer-tabs" aria-label="Customer sections">
+            <button type="button"
+                    class="@(_drawerTab == "overview" ? "active" : "")"
+                    @onclick='() => _drawerTab = "overview"'>
+                Overview
+            </button>
+            <button type="button"
+                    class="@(_drawerTab == "orders" ? "active" : "")"
+                    @onclick='() => _drawerTab = "orders"'>
+                Orders (@orders.Count)
+            </button>
+            @if (_addresses.Count > 0)
+            {
+                <button type="button"
+                        class="@(_drawerTab == "addresses" ? "active" : "")"
+                        @onclick='() => _drawerTab = "addresses"'>
+                    Addresses
+                </button>
+            }
+        </nav>
+
+        <div class="admin-customer-drawer-body">
+            @if (_drawerTab == "overview")
+            {
+                <section class="admin-customer-drawer-section">
+                    <h3>Customer Information</h3>
+                    <dl class="admin-customer-drawer-dl">
+                        <div>
+                            <dt><Icon Name="user" Size="14" /> Name</dt>
+                            <dd>@_selected.Name</dd>
+                        </div>
+                        <div>
+                            <dt><Icon Name="mail" Size="14" /> Email</dt>
+                            <dd>@_selected.Email</dd>
+                        </div>
+                        <div>
+                            <dt><Icon Name="phone" Size="14" /> Contact Number</dt>
+                            <dd>@_selected.ContactDisplay</dd>
+                        </div>
+                        <div>
+                            <dt><Icon Name="calendar" Size="14" /> Date Joined</dt>
+                            <dd>@_selected.DateJoinedLabel</dd>
+                        </div>
+                        <div>
+                            <dt><Icon Name="award" Size="14" /> Student / Employee ID</dt>
+                            <dd>@_selected.StudentIdDisplay</dd>
+                        </div>
+                        <div>
+                            <dt><Icon Name="store" Size="14" /> College / Department</dt>
+                            <dd>@_selected.CollegeDisplay</dd>
+                        </div>
+                        <div>
+                            <dt><Icon Name="map-pin" Size="14" /> Default Address</dt>
+                            <dd>@DefaultAddressLabel</dd>
+                        </div>
+                        <div>
+                            <dt>Customer ID</dt>
+                            <dd><code>@_selected.ShortId</code></dd>
+                        </div>
+                    </dl>
+                </section>
+
+                <section class="admin-customer-drawer-section">
+                    <h3>Order Statistics</h3>
+                    <div class="admin-customer-stat-grid">
+                        <article>
+                            <strong>@_selected.TotalOrders</strong>
+                            <span>Total Orders</span>
+                        </article>
+                        <article>
+                            <strong>@_selected.TotalSpentLabel</strong>
+                            <span>Total Spent</span>
+                        </article>
+                    </div>
+                    <div class="admin-customer-stat-row">
+                        <div>
+                            <strong class="tone-green">@CustomerService.CompletedOrderCount(_selected.Id)</strong>
+                            <span>Completed</span>
+                        </div>
+                        <div>
+                            <strong class="tone-blue">@CustomerService.ActiveOrderCount(_selected.Id)</strong>
+                            <span>Processing</span>
+                        </div>
+                        <div>
+                            <strong class="tone-red">@CustomerService.CancelledOrderCount(_selected.Id)</strong>
+                            <span>Cancelled</span>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="admin-customer-drawer-section">
+                    <div class="admin-customer-section-head">
+                        <h3>Recent Orders</h3>
+                        @if (orders.Count > 0)
+                        {
+                            <button type="button" class="admin-customer-link" @onclick="() => ViewAllOrders(_selected)">View All</button>
+                        }
+                    </div>
+                    @if (recent.Count == 0)
+                    {
+                        <p class="admin-modal-note">No orders found for this customer.</p>
+                    }
+                    else
+                    {
+                        <ul class="admin-customer-recent-orders">
+                            @foreach (var order in recent)
+                            {
+                                var thumb = order.Items.FirstOrDefault()?.ImageUrl;
+                                <li>
+                                    <button type="button" class="admin-customer-recent-order" @onclick="() => OpenOrder(order)">
+                                        <img src="@(string.IsNullOrWhiteSpace(thumb) ? MockData.PlaceholderImage : thumb)"
+                                             alt=""
+                                             onerror="this.onerror=null;this.src='@MockData.PlaceholderImage';" />
+                                        <div class="admin-customer-recent-meta">
+                                            <strong>@order.Id</strong>
+                                            <span>@order.Date.ToLocalTime().ToString("MMM d, yyyy")</span>
+                                            <span class="admin-customer-fulfillment">@(order.IsDelivery ? "Delivery" : "Campus Pickup")</span>
+                                        </div>
+                                        <div class="admin-customer-recent-side">
+                                            <strong>₱@order.Total.ToString("N0")</strong>
+                                            <span class="order-status status-@order.StatusKey">@order.Status</span>
+                                        </div>
+                                    </button>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            }
+            else if (_drawerTab == "orders")
+            {
+                <section class="admin-customer-drawer-section">
+                    <div class="admin-customer-section-head">
+                        <h3>All Orders</h3>
+                        <button type="button" class="admin-customer-link" @onclick="() => ViewAllOrders(_selected)">Open in Orders</button>
+                    </div>
+                    @if (orders.Count == 0)
+                    {
+                        <p class="admin-modal-note">No orders found for this customer.</p>
+                    }
+                    else
+                    {
+                        <div class="admin-customers-table-wrap">
+                            <table class="admin-customers-table admin-customer-orders-table">
+                                <thead>
+                                    <tr>
+                                        <th>Order Number</th>
+                                        <th>Date</th>
+                                        <th>Fulfillment</th>
+                                        <th>Payment</th>
+                                        <th>Total</th>
+                                        <th>Status</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var order in orders.Skip((_orderPage - 1) * OrderPageSize).Take(OrderPageSize))
+                                    {
+                                        <tr class="is-clickable" @onclick="() => OpenOrder(order)">
+                                            <td><code>@order.Id</code></td>
+                                            <td>@order.Date.ToLocalTime().ToString("MMM d, yyyy")</td>
+                                            <td>@(order.IsDelivery ? "Delivery" : "Campus Pickup")</td>
+                                            <td>@order.PaymentStatus</td>
+                                            <td><strong>₱@order.Total.ToString("N0")</strong></td>
+                                            <td><span class="order-status status-@order.StatusKey">@order.Status</span></td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                        @if (OrderTotalPages > 1)
+                        {
+                            <div class="admin-customers-pager compact">
+                                <span>Page @_orderPage of @OrderTotalPages</span>
+                                <nav class="admin-pagination" aria-label="Customer orders pagination">
+                                    <button type="button" class="admin-page-btn" disabled="@(_orderPage <= 1)" @onclick="() => _orderPage--">
+                                        <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
+                                    </button>
+                                    <button type="button" class="admin-page-btn" disabled="@(_orderPage >= OrderTotalPages)" @onclick="() => _orderPage++">
+                                        <Icon Name="chevron-right" Size="14" />
+                                    </button>
+                                </nav>
+                            </div>
+                        }
+                    }
+                </section>
+            }
+            else if (_drawerTab == "addresses")
+            {
+                <section class="admin-customer-drawer-section">
+                    <h3>Saved Addresses</h3>
+                    @if (_addresses.Count == 0)
+                    {
+                        <p class="admin-modal-note">No saved addresses for this customer.</p>
+                    }
+                    else
+                    {
+                        <ul class="admin-customer-address-list">
+                            @foreach (var addr in _addresses)
+                            {
+                                <li>
+                                    <div class="admin-customer-address-card">
+                                        <div class="admin-customer-address-head">
+                                            <strong>@addr.Label</strong>
+                                            @if (addr.IsDefault)
+                                            {
+                                                <span class="admin-customer-type type-frequent">Default</span>
+                                            }
+                                        </div>
+                                        <span>@addr.RecipientName</span>
+                                        <span>@addr.AddressLine</span>
+                                        <span>@addr.SummaryLine</span>
+                                        <span>@addr.PhoneNumber</span>
+                                    </div>
+                                </li>
+                            }
+                        </ul>
+                    }
+                </section>
+            }
+        </div>
+    </aside>
+}
+
+<AdminOrderDetailsModal Order="_selectedOrder" OnClose="CloseOrder" />
+
+@code {
+    private const int OrderPageSize = 8;
+
+    private string _search = string.Empty;
+    private string _status = "All Status";
+    private string _type = "All Customer Types";
+    private string _sort = "newest";
+    private int _pageSize = AdminCustomerService.PageSize;
+    private int _currentPage = 1;
+    private string? _openMenuId;
+    private AdminCustomer? _selected;
+    private string _drawerTab = "overview";
+    private int _orderPage = 1;
+    private List<UserAddress> _addresses = [];
+    private AdminOrder? _selectedOrder;
+
+    private List<AdminCustomer> Filtered =>
+        CustomerService.Filter(_search, _status, _type, _sort).ToList();
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)_pageSize));
+    private int CurrentPage => Math.Clamp(_currentPage, 1, TotalPages);
+
+    private IEnumerable<AdminCustomer> PageItems =>
+        Filtered.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize);
+
+    private int OrderTotalPages
+    {
+        get
+        {
+            if (_selected is null) return 1;
+            var count = CustomerService.OrdersForCustomer(_selected.Id).Count;
+            return Math.Max(1, (int)Math.Ceiling(count / (double)OrderPageSize));
+        }
+    }
+
+    private string ShowingLabel
+    {
+        get
+        {
+            var total = Filtered.Count;
+            if (total == 0) return "Showing 0 customers";
+            var start = (CurrentPage - 1) * _pageSize + 1;
+            var end = Math.Min(start + _pageSize - 1, total);
+            return $"Showing {start}–{end} of {total} {(total == 1 ? "customer" : "customers")}";
+        }
+    }
+
+    private string DefaultAddressLabel
+    {
+        get
+        {
+            if (_selected is null) return "Not provided";
+            var def = _addresses.FirstOrDefault(a => a.IsDefault) ?? _addresses.FirstOrDefault();
+            if (def is not null)
+            {
+                var parts = new[] { def.AddressLine, def.SummaryLine }
+                    .Where(s => !string.IsNullOrWhiteSpace(s));
+                var line = string.Join(", ", parts);
+                return string.IsNullOrWhiteSpace(line) ? _selected.DefaultAddressDisplay : line;
+            }
+
+            return _selected.DefaultAddressDisplay;
+        }
+    }
 
     protected override void OnInitialized() => CustomerService.OnChange += Refresh;
 
     protected override async Task OnInitializedAsync() => await CustomerService.EnsureLoadedAsync();
 
-    private void OnSearchInput(ChangeEventArgs e) => _search = e.Value?.ToString() ?? string.Empty;
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _currentPage = 1;
+    }
 
-    private void ClearSearch() => _search = string.Empty;
+    private void OnStatusChange(ChangeEventArgs e)
+    {
+        _status = e.Value?.ToString() ?? "All Status";
+        _currentPage = 1;
+    }
+
+    private void OnTypeChange(ChangeEventArgs e)
+    {
+        _type = e.Value?.ToString() ?? "All Customer Types";
+        _currentPage = 1;
+    }
+
+    private void OnSortChange(ChangeEventArgs e)
+    {
+        _sort = e.Value?.ToString() ?? "newest";
+        _currentPage = 1;
+    }
+
+    private void OnPageSizeChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size) && size > 0)
+            _pageSize = size;
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page) => _currentPage = Math.Clamp(page, 1, TotalPages);
+
+    private void ClearFilters()
+    {
+        _search = string.Empty;
+        _status = "All Status";
+        _type = "All Customer Types";
+        _sort = "newest";
+        _currentPage = 1;
+    }
+
+    private void ToggleMenu(string id) =>
+        _openMenuId = _openMenuId == id ? null : id;
+
+    private void CloseMenu() => _openMenuId = null;
+
+    private async Task OpenDrawer(AdminCustomer customer)
+    {
+        CloseMenu();
+        _selected = customer;
+        _drawerTab = "overview";
+        _orderPage = 1;
+        _addresses = [];
+        await InvokeAsync(StateHasChanged);
+
+        if (Guid.TryParse(customer.Id, out var userId))
+        {
+            try
+            {
+                _addresses = await Database.GetUserAddressesAsync(userId);
+            }
+            catch
+            {
+                _addresses = [];
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private void CloseDrawer()
+    {
+        _selected = null;
+        _addresses = [];
+        _drawerTab = "overview";
+    }
+
+    private void OpenOrder(AdminOrder order)
+    {
+        CloseMenu();
+        _selectedOrder = order;
+    }
+
+    private void CloseOrder() => _selectedOrder = null;
+
+    private void ViewAllOrders(AdminCustomer? customer)
+    {
+        CloseMenu();
+        if (customer is null) return;
+        var term = Uri.EscapeDataString(customer.Email);
+        Navigation.NavigateTo($"/admin/orders?customer={term}");
+    }
+
+    private Task SetActive(AdminCustomer customer) => SetStatus(customer, "Active");
+
+    private Task SetInactive(AdminCustomer customer) => SetStatus(customer, "Inactive");
+
+    private async Task SetStatus(AdminCustomer customer, string status)
+    {
+        CloseMenu();
+        var ok = await CustomerService.SetStatusAsync(customer.Id, status, Auth.UserId > 0 ? Auth.UserId : null);
+        if (ok)
+            Toast.Show($"Customer status updated to {status}.");
+        else
+            Toast.Show("Unable to update customer status.");
+    }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 

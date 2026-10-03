@@ -25,15 +25,61 @@
     </header>
 
     <div class="admin-staff-stats">
-        <article class="admin-staff-stat">
-            <strong>@StaffService.TotalStaff</strong>
-            <span>Total Staff</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="users" Size="18" /></div>
+            <div>
+                <strong>@StaffService.TotalStaff</strong>
+                <span>Total Staff</span>
+                <small>All staff accounts</small>
+            </div>
         </article>
-        <article class="admin-staff-stat">
-            <strong>@StaffService.ActiveCount</strong>
-            <span>Active</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-green"><Icon Name="user-check" Size="18" /></div>
+            <div>
+                <strong>@StaffService.ActiveCount</strong>
+                <span>Active Staff</span>
+                <small>Currently active</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-red"><Icon Name="user" Size="18" /></div>
+            <div>
+                <strong>@StaffService.InactiveCount</strong>
+                <span>Inactive Staff</span>
+                <small>Deactivated accounts</small>
+            </div>
+        </article>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-purple"><Icon Name="clock" Size="18" /></div>
+            <div>
+                <strong>@StaffService.RecentlyActiveCount</strong>
+                <span>Recently Active</span>
+                <small>Logged in within 7 days</small>
+            </div>
         </article>
     </div>
+
+    <section class="admin-staff-toolbar">
+        <div class="admin-products-search admin-staff-search">
+            <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+            <input type="search"
+                   placeholder="Search staff by name or email..."
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+        </div>
+        <select class="admin-products-select" aria-label="Status filter" value="@_statusFilter" @onchange="OnStatusFilterChange">
+            @foreach (var option in AdminStaffService.StatusFilters)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="admin-products-select" aria-label="Sort staff" value="@_sort" @onchange="OnSortChange">
+            @foreach (var option in AdminStaffService.SortOptions)
+            {
+                <option value="@option.Key">@option.Label</option>
+            }
+        </select>
+    </section>
 
     <section class="admin-staff-table-card">
         @if (!StaffService.All.Any())
@@ -42,9 +88,20 @@
                 <div class="admin-products-empty-icon" aria-hidden="true">
                     <Icon Name="users" Size="36" />
                 </div>
-                <h2>No staff members found.</h2>
-                <p>Add staff members to help manage the NU Bulldogs Exchange store.</p>
+                <h2>No staff accounts yet.</h2>
+                <p>Add staff members to help manage the store.</p>
                 <button type="button" class="btn btn-navy" @onclick="OpenAdd">Add Staff</button>
+            </div>
+        }
+        else if (!Filtered.Any())
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="users" Size="36" />
+                </div>
+                <h2>No staff members found.</h2>
+                <p>Try adjusting your search or filters.</p>
+                <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
             </div>
         }
         else
@@ -53,36 +110,63 @@
                 <table class="admin-staff-table">
                     <thead>
                         <tr>
-                            <th>Name</th>
+                            <th>Staff Member</th>
                             <th>Email</th>
-                            <th>Role</th>
+                            <th>Access</th>
                             <th>Status</th>
                             <th>Last Login</th>
                             <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var member in StaffService.All)
+                        @foreach (var member in PageItems)
                         {
                             <tr>
                                 <td>
                                     <div class="admin-staff-name">
-                                        <span class="admin-staff-avatar @(member.IsAdmin ? "is-admin" : "")"
-                                              aria-hidden="true">@member.Initial</span>
+                                        @if (member.HasProfileImage)
+                                        {
+                                            <img class="admin-staff-avatar-img"
+                                                 src="@member.ProfileImage"
+                                                 alt=""
+                                                 onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+                                            <span class="admin-staff-avatar" style="display:none" aria-hidden="true">@member.Initial</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="admin-staff-avatar" aria-hidden="true">@member.Initial</span>
+                                        }
                                         <strong>@member.FullName</strong>
                                     </div>
                                 </td>
                                 <td><span class="admin-staff-email">@member.Email</span></td>
                                 <td>
-                                    <span class="admin-staff-role role-@member.RoleKey">
-                                        <Icon Name="@(member.IsAdmin ? "shield" : "users")" Size="12" />
-                                        @member.Role
-                                    </span>
+                                    <button type="button"
+                                            class="admin-staff-access-btn"
+                                            @onclick="() => OpenPermissions(member)">
+                                        <strong>@member.Permissions.AccessCountLabel</strong>
+                                        @if (!string.IsNullOrEmpty(member.Permissions.AccessSummaryLabel))
+                                        {
+                                            <span>@member.Permissions.AccessSummaryLabel</span>
+                                        }
+                                    </button>
                                 </td>
                                 <td>
                                     <span class="admin-customer-status status-@member.StatusKey">@member.Status</span>
                                 </td>
-                                <td><span class="admin-staff-login">@member.LastLoginLabel</span></td>
+                                <td>
+                                    @if (member.HasLastLogin)
+                                    {
+                                        <span class="admin-staff-login-stack">
+                                            <strong>@member.LastLoginDateLabel</strong>
+                                            <span>@member.LastLoginTimeLabel</span>
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="admin-staff-login">Never</span>
+                                    }
+                                </td>
                                 <td>
                                     <div class="admin-staff-menu-wrap">
                                         <button type="button"
@@ -101,6 +185,44 @@
                     </tbody>
                 </table>
             </div>
+
+            <div class="admin-customers-pager admin-staff-pager">
+                <span>@ShowingLabel</span>
+                <div class="admin-customers-pager-controls">
+                    <label class="admin-customers-page-size">
+                        <select aria-label="Rows per page" value="@_pageSize" @onchange="OnPageSizeChange">
+                            <option value="10">10 per page</option>
+                            <option value="25">25 per page</option>
+                            <option value="50">50 per page</option>
+                        </select>
+                    </label>
+                    <nav class="admin-pagination" aria-label="Staff pagination">
+                        <button type="button"
+                                class="admin-page-btn"
+                                aria-label="Previous page"
+                                disabled="@(CurrentPage <= 1)"
+                                @onclick="() => GoToPage(CurrentPage - 1)">
+                            <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
+                        </button>
+                        @for (var page = 1; page <= TotalPages; page++)
+                        {
+                            var pageNumber = page;
+                            <button type="button"
+                                    class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
+                                    @onclick="() => GoToPage(pageNumber)">
+                                @pageNumber
+                            </button>
+                        }
+                        <button type="button"
+                                class="admin-page-btn"
+                                aria-label="Next page"
+                                disabled="@(CurrentPage >= TotalPages)"
+                                @onclick="() => GoToPage(CurrentPage + 1)">
+                            <Icon Name="chevron-right" Size="14" />
+                        </button>
+                    </nav>
+                </div>
+            </div>
         }
     </section>
 </div>
@@ -111,196 +233,255 @@
     <div class="admin-staff-menu is-floating"
          style="@($"top:{_menuTop.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;left:{_menuLeft.ToString(System.Globalization.CultureInfo.InvariantCulture)}px;")"
          @onclick:stopPropagation="true">
-        <button type="button" @onclick="() => OpenEdit(_menuMember!)">Edit Staff</button>
-        <button type="button" @onclick="() => OpenPermissions(_menuMember!)">Manage Permissions</button>
+        <button type="button" @onclick="() => OpenEdit(_menuMember!)">
+            <Icon Name="pencil" Size="14" />
+            Edit Staff
+        </button>
+        <button type="button" @onclick="() => OpenPermissions(_menuMember!)">
+            <Icon Name="users" Size="14" />
+            Manage Permissions
+        </button>
         @if (_menuMember.IsActive)
         {
-            <button type="button" class="is-danger" @onclick="() => OpenDeactivate(_menuMember!)">Deactivate Account</button>
+            <button type="button" class="is-danger" @onclick="() => OpenDeactivate(_menuMember!)">
+                <Icon Name="alert-triangle" Size="14" />
+                Deactivate Account
+            </button>
+        }
+        else
+        {
+            <button type="button" @onclick="() => ConfirmActivate(_menuMember!)">
+                <Icon Name="check-circle" Size="14" />
+                Activate Account
+            </button>
         }
     </div>
 }
 
-@if (_showAdd || _editMember is not null)
+@if (_showAdd)
 {
     <div class="admin-modal-backdrop" @onclick="CloseForm">
         <div class="admin-modal admin-staff-modal admin-staff-add-modal"
              role="dialog"
              aria-modal="true"
-             aria-labelledby="staff-form-title"
+             aria-labelledby="staff-add-title"
              @onclick:stopPropagation="true">
             <div class="admin-staff-modal-head">
-                <h2 id="staff-form-title">@(_editMember is null ? "Add Staff Member" : "Edit Staff")</h2>
+                <h2 id="staff-add-title">Add Staff Member</h2>
                 <button type="button" class="admin-staff-modal-close" aria-label="Close" @onclick="CloseForm">
                     <Icon Name="x" Size="18" />
                 </button>
             </div>
 
-            @if (_editMember is null)
-            {
-                <form class="admin-staff-add-form" @onsubmit="SaveAdd" @onsubmit:preventDefault="true">
-                    <section class="admin-staff-section">
-                        <h3>Account Information</h3>
-                        <p class="admin-staff-section-note">Create a new staff account with login credentials.</p>
-                        <div class="admin-staff-form-grid">
-                            <label class="admin-field">
-                                <span>First Name <em class="admin-req">*</em></span>
-                                <input @bind="_firstName" @bind:event="oninput" autocomplete="given-name" disabled="@_saving" />
-                                @if (!string.IsNullOrEmpty(_firstNameError))
-                                {
-                                    <span class="admin-field-error">@_firstNameError</span>
-                                }
-                            </label>
-                            <label class="admin-field">
-                                <span>Last Name <em class="admin-req">*</em></span>
-                                <input @bind="_lastName" @bind:event="oninput" autocomplete="family-name" disabled="@_saving" />
-                                @if (!string.IsNullOrEmpty(_lastNameError))
-                                {
-                                    <span class="admin-field-error">@_lastNameError</span>
-                                }
-                            </label>
-                        </div>
-                        <label class="admin-field">
-                            <span>Email Address <em class="admin-req">*</em></span>
-                            <input type="email"
-                                   @bind="_email"
-                                   @bind:event="oninput"
-                                   autocomplete="email"
-                                   disabled="@_saving" />
-                            @if (!string.IsNullOrEmpty(_emailError))
-                            {
-                                <span class="admin-field-error">@_emailError</span>
-                            }
-                        </label>
-                    </section>
-
-                    <section class="admin-staff-section">
-                        <h3>Login Credentials</h3>
-                        <p class="admin-staff-section-note">Set a temporary password for the staff member.</p>
-                        <div class="admin-staff-form-grid">
-                            <label class="admin-field">
-                                <span>Temporary Password <em class="admin-req">*</em></span>
-                                <div class="admin-password-wrap">
-                                    <input type="@(_showPassword ? "text" : "password")"
-                                           @bind="_password"
-                                           @bind:event="oninput"
-                                           autocomplete="new-password"
-                                           disabled="@_saving" />
-                                    <button type="button"
-                                            class="admin-password-toggle"
-                                            aria-label="@(_showPassword ? "Hide password" : "Show password")"
-                                            @onclick="() => _showPassword = !_showPassword">
-                                        <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="16" />
-                                    </button>
-                                </div>
-                                <span class="admin-staff-helper">Minimum @AuthValidation.MinPasswordLength characters.</span>
-                                @if (!string.IsNullOrEmpty(_passwordError))
-                                {
-                                    <span class="admin-field-error">@_passwordError</span>
-                                }
-                            </label>
-                            <label class="admin-field">
-                                <span>Confirm Password <em class="admin-req">*</em></span>
-                                <div class="admin-password-wrap">
-                                    <input type="@(_showConfirmPassword ? "text" : "password")"
-                                           @bind="_confirmPassword"
-                                           @bind:event="oninput"
-                                           autocomplete="new-password"
-                                           disabled="@_saving" />
-                                    <button type="button"
-                                            class="admin-password-toggle"
-                                            aria-label="@(_showConfirmPassword ? "Hide password" : "Show password")"
-                                            @onclick="() => _showConfirmPassword = !_showConfirmPassword">
-                                        <Icon Name="@(_showConfirmPassword ? "eye-off" : "eye")" Size="16" />
-                                    </button>
-                                </div>
-                                @if (!string.IsNullOrEmpty(_confirmPasswordError))
-                                {
-                                    <span class="admin-field-error">@_confirmPasswordError</span>
-                                }
-                            </label>
-                        </div>
-                        <label class="admin-staff-check admin-staff-must-change">
-                            <input type="checkbox" @bind="_mustChangePassword" disabled="@_saving" />
-                            <span>Require password change on first login</span>
-                        </label>
-                        <p class="admin-staff-helper">The staff member will be required to create a new password after their first login.</p>
-                    </section>
-
-                    <section class="admin-staff-section">
-                        <h3>Account Details</h3>
-                        <div class="admin-staff-form-grid">
-                            <label class="admin-field">
-                                <span>Role</span>
-                                <input value="Staff" readonly class="is-readonly" tabindex="-1" />
-                            </label>
-                            <label class="admin-field">
-                                <span>Status <em class="admin-req">*</em></span>
-                                <select @bind="_status" disabled="@_saving">
-                                    @foreach (var status in AdminStaffService.Statuses)
-                                    {
-                                        <option value="@status">@status</option>
-                                    }
-                                </select>
-                            </label>
-                        </div>
-                        <p class="admin-staff-helper">Staff accounts have access to manage products, orders, inventory, and other allowed features.</p>
-                    </section>
-
-                    @if (!string.IsNullOrEmpty(_formError))
-                    {
-                        <p class="admin-staff-error">@_formError</p>
-                    }
-
-                    <div class="admin-modal-actions">
-                        <button type="button" class="btn btn-outline-navy" @onclick="CloseForm" disabled="@_saving">Cancel</button>
-                        <button type="submit" class="btn btn-navy" disabled="@_saving">
-                            @(_saving ? "Creating Account..." : "Add Staff")
-                        </button>
-                    </div>
-                </form>
-            }
-            else
-            {
-                <form class="admin-staff-add-form" @onsubmit="SaveEdit" @onsubmit:preventDefault="true">
+            <form class="admin-staff-add-form" @onsubmit="SaveAdd" @onsubmit:preventDefault="true">
+                <section class="admin-staff-section">
+                    <h3>Account Information</h3>
+                    <p class="admin-staff-section-note">Create a new staff account with login credentials.</p>
                     <div class="admin-staff-form-grid">
                         <label class="admin-field">
                             <span>First Name <em class="admin-req">*</em></span>
-                            <input @bind="_firstName" @bind:event="oninput" />
+                            <input @bind="_firstName" @bind:event="oninput" autocomplete="given-name" disabled="@_saving" />
+                            @if (!string.IsNullOrEmpty(_firstNameError))
+                            {
+                                <span class="admin-field-error">@_firstNameError</span>
+                            }
                         </label>
                         <label class="admin-field">
                             <span>Last Name <em class="admin-req">*</em></span>
-                            <input @bind="_lastName" @bind:event="oninput" />
+                            <input @bind="_lastName" @bind:event="oninput" autocomplete="family-name" disabled="@_saving" />
+                            @if (!string.IsNullOrEmpty(_lastNameError))
+                            {
+                                <span class="admin-field-error">@_lastNameError</span>
+                            }
                         </label>
                     </div>
                     <label class="admin-field">
-                        <span>Email Address</span>
-                        <input type="email" value="@_email" disabled class="is-readonly" />
+                        <span>Email Address <em class="admin-req">*</em></span>
+                        <input type="email"
+                               @bind="_email"
+                               @bind:event="oninput"
+                               autocomplete="email"
+                               disabled="@_saving" />
+                        @if (!string.IsNullOrEmpty(_emailError))
+                        {
+                            <span class="admin-field-error">@_emailError</span>
+                        }
                     </label>
+                </section>
+
+                <section class="admin-staff-section">
+                    <h3>Login Credentials</h3>
+                    <p class="admin-staff-section-note">Set a temporary password for the staff member.</p>
                     <div class="admin-staff-form-grid">
                         <label class="admin-field">
-                            <span>Role</span>
-                            <input value="@_role" readonly class="is-readonly" tabindex="-1" />
+                            <span>Temporary Password <em class="admin-req">*</em></span>
+                            <div class="admin-password-wrap">
+                                <input type="@(_showPassword ? "text" : "password")"
+                                       @bind="_password"
+                                       @bind:event="oninput"
+                                       autocomplete="new-password"
+                                       disabled="@_saving" />
+                                <button type="button"
+                                        class="admin-password-toggle"
+                                        aria-label="@(_showPassword ? "Hide password" : "Show password")"
+                                        @onclick="() => _showPassword = !_showPassword">
+                                    <Icon Name="@(_showPassword ? "eye-off" : "eye")" Size="16" />
+                                </button>
+                            </div>
+                            <span class="admin-staff-helper">Minimum @AuthValidation.MinPasswordLength characters.</span>
+                            @if (!string.IsNullOrEmpty(_passwordError))
+                            {
+                                <span class="admin-field-error">@_passwordError</span>
+                            }
                         </label>
                         <label class="admin-field">
-                            <span>Status <em class="admin-req">*</em></span>
-                            <select @bind="_status" disabled="@(_editMember?.IsPrimaryAdmin == true)">
-                                @foreach (var status in AdminStaffService.Statuses)
-                                {
-                                    <option value="@status">@status</option>
-                                }
-                            </select>
+                            <span>Confirm Password <em class="admin-req">*</em></span>
+                            <div class="admin-password-wrap">
+                                <input type="@(_showConfirmPassword ? "text" : "password")"
+                                       @bind="_confirmPassword"
+                                       @bind:event="oninput"
+                                       autocomplete="new-password"
+                                       disabled="@_saving" />
+                                <button type="button"
+                                        class="admin-password-toggle"
+                                        aria-label="@(_showConfirmPassword ? "Hide password" : "Show password")"
+                                        @onclick="() => _showConfirmPassword = !_showConfirmPassword">
+                                    <Icon Name="@(_showConfirmPassword ? "eye-off" : "eye")" Size="16" />
+                                </button>
+                            </div>
+                            @if (!string.IsNullOrEmpty(_confirmPasswordError))
+                            {
+                                <span class="admin-field-error">@_confirmPasswordError</span>
+                            }
                         </label>
                     </div>
-                    @if (!string.IsNullOrEmpty(_formError))
+                    <label class="admin-staff-check admin-staff-must-change">
+                        <input type="checkbox" @bind="_mustChangePassword" disabled="@_saving" />
+                        <span>Require password change on first login</span>
+                    </label>
+                    <p class="admin-staff-helper">The staff member will be required to create a new password after their first login.</p>
+                </section>
+
+                <section class="admin-staff-section">
+                    <h3>Account Details</h3>
+                    <label class="admin-field">
+                        <span>Status <em class="admin-req">*</em></span>
+                        <select @bind="_status" disabled="@_saving">
+                            @foreach (var status in AdminStaffService.Statuses)
+                            {
+                                <option value="@status">@status</option>
+                            }
+                        </select>
+                    </label>
+                    <p class="admin-staff-helper">Staff accounts receive default module permissions. You can adjust them after creation.</p>
+                </section>
+
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <p class="admin-staff-error">@_formError</p>
+                }
+
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseForm" disabled="@_saving">Cancel</button>
+                    <button type="submit" class="btn btn-navy" disabled="@_saving">
+                        @(_saving ? "Creating Account..." : "Add Staff")
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+}
+
+@if (_editMember is not null)
+{
+    <div class="admin-modal-backdrop" @onclick="CloseForm">
+        <div class="admin-modal admin-staff-modal admin-staff-edit-modal"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="staff-edit-title"
+             @onclick:stopPropagation="true">
+            <div class="admin-staff-modal-head">
+                <h2 id="staff-edit-title">Edit Staff</h2>
+                <button type="button" class="admin-staff-modal-close" aria-label="Close" @onclick="CloseForm">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </div>
+
+            <form class="admin-staff-add-form" @onsubmit="SaveEdit" @onsubmit:preventDefault="true">
+                <div class="admin-staff-edit-profile">
+                    @if (_editMember.HasProfileImage)
                     {
-                        <p class="admin-staff-error">@_formError</p>
+                        <img class="admin-staff-edit-avatar-img"
+                             src="@_editMember.ProfileImage"
+                             alt=""
+                             onerror="this.style.display='none';this.nextElementSibling.style.display='inline-flex';" />
+                        <span class="admin-staff-edit-avatar" style="display:none" aria-hidden="true">@_editMember.Initial</span>
                     }
-                    <div class="admin-modal-actions">
-                        <button type="button" class="btn btn-outline-navy" @onclick="CloseForm">Cancel</button>
-                        <button type="submit" class="btn btn-navy">Save Changes</button>
+                    else
+                    {
+                        <span class="admin-staff-edit-avatar" aria-hidden="true">@_editMember.Initial</span>
+                    }
+                    <p class="admin-staff-helper">Profile photo uses the account avatar when available.</p>
+                </div>
+
+                <div class="admin-staff-form-grid">
+                    <label class="admin-field">
+                        <span>First Name <em class="admin-req">*</em></span>
+                        <input @bind="_firstName" @bind:event="oninput" />
+                        @if (!string.IsNullOrEmpty(_firstNameError))
+                        {
+                            <span class="admin-field-error">@_firstNameError</span>
+                        }
+                    </label>
+                    <label class="admin-field">
+                        <span>Last Name <em class="admin-req">*</em></span>
+                        <input @bind="_lastName" @bind:event="oninput" />
+                        @if (!string.IsNullOrEmpty(_lastNameError))
+                        {
+                            <span class="admin-field-error">@_lastNameError</span>
+                        }
+                    </label>
+                </div>
+
+                <label class="admin-field">
+                    <span>Email Address</span>
+                    <div class="admin-staff-email-readonly">
+                        <input type="email" value="@_email" readonly class="is-readonly" tabindex="-1" />
+                        <Icon Name="lock" Size="15" />
                     </div>
-                </form>
-            }
+                    <span class="admin-staff-helper">Email is used for account login and cannot be changed here.</span>
+                </label>
+
+                <label class="admin-field">
+                    <span>Account Status <em class="admin-req">*</em></span>
+                    <select @bind="_status" disabled="@(_editMember.IsPrimaryAdmin)">
+                        @foreach (var status in AdminStaffService.Statuses)
+                        {
+                            <option value="@status">@status</option>
+                        }
+                    </select>
+                </label>
+
+                <div class="admin-staff-edit-permissions">
+                    <div>
+                        <span class="admin-staff-permissions-label">Permissions</span>
+                        <p>@_editMember.Permissions.AccessCountLabel assigned</p>
+                    </div>
+                    <button type="button" class="btn btn-outline-navy" @onclick="() => OpenPermissionsFromEdit(_editMember)">
+                        Manage Permissions
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrEmpty(_formError))
+                {
+                    <p class="admin-staff-error">@_formError</p>
+                }
+
+                <div class="admin-modal-actions">
+                    <button type="button" class="btn btn-outline-navy" @onclick="CloseForm">Cancel</button>
+                    <button type="submit" class="btn btn-navy">Save Changes</button>
+                </div>
+            </form>
         </div>
     </div>
 }
@@ -332,11 +513,27 @@
 
 @if (_permissionsMember is not null && _permDraft is not null)
 {
-    <div class="admin-modal-backdrop" @onclick="ClosePermissions">
-        <div class="admin-modal admin-staff-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>Manage Permissions</h2>
-            <p class="admin-inventory-modal-product">@_permissionsMember.FullName</p>
-            <p class="admin-modal-note">@_permissionsMember.Role</p>
+    <div class="admin-modal-backdrop" @onclick="TryClosePermissions">
+        <div class="admin-modal admin-staff-modal admin-staff-permissions-modal"
+             role="dialog"
+             aria-modal="true"
+             aria-labelledby="staff-perm-title"
+             @onclick:stopPropagation="true">
+            <div class="admin-staff-modal-head">
+                <h2 id="staff-perm-title">Manage Permissions</h2>
+                <button type="button" class="admin-staff-modal-close" aria-label="Close" @onclick="TryClosePermissions">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </div>
+
+            <div class="admin-staff-perm-header">
+                <span class="admin-staff-avatar" aria-hidden="true">@_permissionsMember.Initial</span>
+                <div>
+                    <strong>@_permissionsMember.FullName</strong>
+                    <span>Staff</span>
+                    <p>@_permDraft.AccessCountLabel assigned</p>
+                </div>
+            </div>
 
             @if (_permissionsMember.IsAdmin)
             {
@@ -344,25 +541,62 @@
             }
             else
             {
-                <div class="admin-staff-permissions">
-                    <span class="admin-staff-permissions-label">Permissions</span>
-                    @foreach (var option in AdminStaffService.PermissionOptions)
+                <div class="admin-staff-perm-toolbar">
+                    <label class="admin-field admin-staff-preset-field">
+                        <span>Permission Preset</span>
+                        <select value="@_permPreset" @onchange="OnPresetChange">
+                            @foreach (var preset in AdminStaffService.PermissionPresets)
+                            {
+                                <option value="@preset.Key">@preset.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <div class="admin-staff-perm-bulk">
+                        <button type="button" class="admin-staff-link-btn" @onclick="SelectAllPermissions">Select All</button>
+                        <button type="button" class="admin-staff-link-btn" @onclick="ClearAllPermissions">Clear All</button>
+                    </div>
+                </div>
+
+                <div class="admin-staff-perm-groups">
+                    @foreach (var group in AdminStaffService.PermissionGroups)
                     {
-                        var key = option.Key;
-                        var label = option.Label;
-                        <label class="admin-staff-check">
-                            <input type="checkbox"
-                                   checked="@AdminStaffService.GetPermission(_permDraft, key)"
-                                   @onchange="e => OnPermissionToggle(key, e)" />
-                            <span>@label</span>
-                        </label>
+                        <section class="admin-staff-perm-group">
+                            <h3>@group.Group</h3>
+                            @foreach (var key in group.Keys)
+                            {
+                                var option = AdminStaffService.PermissionOptions.First(o => o.Key == key);
+                                <label class="admin-staff-check admin-staff-perm-check">
+                                    <input type="checkbox"
+                                           checked="@AdminStaffService.GetPermission(_permDraft, key)"
+                                           @onchange="e => OnPermissionToggle(key, e)" />
+                                    <span>
+                                        <strong>@option.Label</strong>
+                                        <small>@option.Description</small>
+                                    </span>
+                                </label>
+                            }
+                        </section>
                     }
                 </div>
             }
 
             <div class="admin-modal-actions">
-                <button type="button" class="btn btn-outline-navy" @onclick="ClosePermissions">Cancel</button>
+                <button type="button" class="btn btn-outline-navy" @onclick="TryClosePermissions">Cancel</button>
                 <button type="button" class="btn btn-navy" @onclick="SavePermissions">Save Permissions</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (_discardPermissionsConfirm)
+{
+    <div class="admin-modal-backdrop" @onclick="() => _discardPermissionsConfirm = false">
+        <div class="admin-modal admin-staff-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <h2>Discard permission changes?</h2>
+            <p class="admin-modal-note">You have unsaved permission changes. Close without saving?</p>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="() => _discardPermissionsConfirm = false">Keep Editing</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="ForceClosePermissions">Discard</button>
             </div>
         </div>
     </div>
@@ -372,12 +606,12 @@
 {
     <div class="admin-modal-backdrop" @onclick="CloseDeactivate">
         <div class="admin-modal admin-staff-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>Deactivate Staff Account?</h2>
-            <p>Are you sure you want to deactivate <strong>@_deactivateMember.FullName</strong>?</p>
-            <p class="admin-modal-note">The account stays in records, but Web login will be rejected.</p>
+            <h2>Deactivate @_deactivateMember.FullName?</h2>
+            <p>This staff member will no longer be able to sign in.</p>
+            <p class="admin-modal-note">Existing activity and audit records will be retained.</p>
             <div class="admin-modal-actions">
                 <button type="button" class="btn btn-outline-navy" @onclick="CloseDeactivate">Cancel</button>
-                <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDeactivate">Deactivate Account</button>
+                <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDeactivate">Deactivate</button>
             </div>
         </div>
     </div>
@@ -387,22 +621,30 @@
     private bool _showAdd;
     private bool _showSuccess;
     private bool _saving;
+    private bool _discardPermissionsConfirm;
     private AdminStaffMember? _editMember;
     private AdminStaffMember? _createdMember;
     private string? _successNote;
     private AdminStaffMember? _permissionsMember;
     private AdminStaffMember? _deactivateMember;
     private AdminStaffPermissions? _permDraft;
+    private AdminStaffPermissions? _permOriginal;
+    private string _permPreset = "custom";
     private AdminStaffMember? _menuMember;
     private double _menuTop;
     private double _menuLeft;
+
+    private string _search = string.Empty;
+    private string _statusFilter = "All Status";
+    private string _sort = "newest";
+    private int _page = 1;
+    private int _pageSize = 10;
 
     private string _firstName = string.Empty;
     private string _lastName = string.Empty;
     private string _email = string.Empty;
     private string _password = string.Empty;
     private string _confirmPassword = string.Empty;
-    private string _role = "Staff";
     private string _status = "Active";
     private bool _mustChangePassword = true;
     private bool _showPassword;
@@ -414,6 +656,31 @@
     private string? _emailError;
     private string? _passwordError;
     private string? _confirmPasswordError;
+
+    private IEnumerable<AdminStaffMember> Filtered =>
+        StaffService.FilterSort(_search, _statusFilter, _sort);
+
+    private List<AdminStaffMember> FilteredList => Filtered.ToList();
+
+    private int TotalCount => FilteredList.Count;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)_pageSize));
+
+    private int CurrentPage => Math.Clamp(_page, 1, TotalPages);
+
+    private IEnumerable<AdminStaffMember> PageItems =>
+        FilteredList.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize);
+
+    private string ShowingLabel
+    {
+        get
+        {
+            if (TotalCount == 0) return "Showing 0 of 0 staff";
+            var start = ((CurrentPage - 1) * _pageSize) + 1;
+            var end = Math.Min(CurrentPage * _pageSize, TotalCount);
+            return $"Showing {start}–{end} of {TotalCount} staff";
+        }
+    }
 
     private sealed class DomRect
     {
@@ -427,7 +694,7 @@
         public double ViewportWidth { get; set; }
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         if (!Auth.IsAdmin)
         {
@@ -435,7 +702,43 @@
             return;
         }
 
+        await StaffService.EnsureLoadedAsync();
         StaffService.OnChange += Refresh;
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _page = 1;
+    }
+
+    private void OnStatusFilterChange(ChangeEventArgs e)
+    {
+        _statusFilter = e.Value?.ToString() ?? "All Status";
+        _page = 1;
+    }
+
+    private void OnSortChange(ChangeEventArgs e)
+    {
+        _sort = e.Value?.ToString() ?? "newest";
+        _page = 1;
+    }
+
+    private void OnPageSizeChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size) && size > 0)
+            _pageSize = size;
+        _page = 1;
+    }
+
+    private void GoToPage(int page) => _page = Math.Clamp(page, 1, TotalPages);
+
+    private void ClearFilters()
+    {
+        _search = string.Empty;
+        _statusFilter = "All Status";
+        _sort = "newest";
+        _page = 1;
     }
 
     private async Task ToggleMenuAsync(AdminStaffMember member)
@@ -452,8 +755,8 @@
                 "nubeGetRectBySelector",
                 $"[data-staff-menu=\"{member.Id}\"]");
 
-            const double menuWidth = 200;
-            const double menuHeight = 150;
+            const double menuWidth = 220;
+            const double menuHeight = 170;
             var top = (rect?.Bottom ?? 0) + 6;
             var left = (rect?.Right ?? menuWidth) - menuWidth;
 
@@ -473,7 +776,6 @@
         }
         catch
         {
-            // Fallback near top-right if JS rect is unavailable.
             _menuTop = 120;
             _menuLeft = 40;
             _menuMember = member;
@@ -488,8 +790,8 @@
         _showSuccess = false;
         _createdMember = null;
         _successNote = null;
-        _showAdd = true;
         _editMember = null;
+        _showAdd = true;
         ResetAddForm();
     }
 
@@ -500,7 +802,6 @@
         _email = string.Empty;
         _password = string.Empty;
         _confirmPassword = string.Empty;
-        _role = "Staff";
         _status = "Active";
         _mustChangePassword = true;
         _showPassword = false;
@@ -528,7 +829,6 @@
         _firstName = member.FirstName;
         _lastName = member.LastName;
         _email = member.Email;
-        _role = member.IsAdmin ? "Admin" : "Staff";
         _status = member.Status;
         ClearErrors();
     }
@@ -656,6 +956,18 @@
         if (_editMember is null) return;
         ClearErrors();
 
+        if (string.IsNullOrWhiteSpace(_firstName))
+        {
+            _firstNameError = "First name is required.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_lastName))
+        {
+            _lastNameError = "Last name is required.";
+            return;
+        }
+
         var (ok, msg) = await StaffService.UpdateAsync(_editMember.Id, _firstName, _lastName, _status);
         if (!ok)
         {
@@ -688,12 +1000,36 @@
         CloseMenu();
         _permissionsMember = member;
         _permDraft = member.Permissions.Clone();
+        _permOriginal = member.Permissions.Clone();
+        _permPreset = AdminStaffService.DetectPreset(_permDraft);
+        _discardPermissionsConfirm = false;
     }
 
-    private void ClosePermissions()
+    private void OpenPermissionsFromEdit(AdminStaffMember member)
     {
+        OpenPermissions(member);
+    }
+
+    private void TryClosePermissions()
+    {
+        if (_permDraft is not null &&
+            _permOriginal is not null &&
+            !_permDraft.Matches(_permOriginal))
+        {
+            _discardPermissionsConfirm = true;
+            return;
+        }
+
+        ForceClosePermissions();
+    }
+
+    private void ForceClosePermissions()
+    {
+        _discardPermissionsConfirm = false;
         _permissionsMember = null;
         _permDraft = null;
+        _permOriginal = null;
+        _permPreset = "custom";
     }
 
     private void OnPermissionToggle(string key, ChangeEventArgs e)
@@ -701,6 +1037,31 @@
         if (_permDraft is null) return;
         var value = e.Value is bool b ? b : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
         AdminStaffService.SetPermission(_permDraft, key, value);
+        _permPreset = AdminStaffService.DetectPreset(_permDraft);
+    }
+
+    private void OnPresetChange(ChangeEventArgs e)
+    {
+        if (_permDraft is null) return;
+        _permPreset = e.Value?.ToString() ?? "custom";
+        if (_permPreset == "custom")
+            return;
+
+        AdminStaffService.ApplyPreset(_permDraft, _permPreset);
+    }
+
+    private void SelectAllPermissions()
+    {
+        if (_permDraft is null) return;
+        AdminStaffService.SelectAllStaffSafe(_permDraft);
+        _permPreset = AdminStaffService.DetectPreset(_permDraft);
+    }
+
+    private void ClearAllPermissions()
+    {
+        if (_permDraft is null) return;
+        AdminStaffService.ClearAllOptional(_permDraft);
+        _permPreset = AdminStaffService.DetectPreset(_permDraft);
     }
 
     private async Task SavePermissions()
@@ -708,7 +1069,13 @@
         if (_permissionsMember is null || _permDraft is null) return;
         var (success, message) = await StaffService.UpdatePermissionsAsync(_permissionsMember.Id, _permDraft);
         Toast.Show(message);
-        if (success) ClosePermissions();
+        if (success)
+        {
+            // Refresh edit modal badge if open on same member.
+            if (_editMember?.Id == _permissionsMember.Id)
+                _editMember = StaffService.GetById(_permissionsMember.Id) ?? _editMember;
+            ForceClosePermissions();
+        }
     }
 
     private void OpenDeactivate(AdminStaffMember member)
@@ -725,6 +1092,13 @@
         var (success, message) = await StaffService.DeactivateAsync(_deactivateMember.Id, Auth.CurrentUser?.Email);
         Toast.Show(message);
         if (success) CloseDeactivate();
+    }
+
+    private async Task ConfirmActivate(AdminStaffMember member)
+    {
+        CloseMenu();
+        var (success, message) = await StaffService.ActivateAsync(member.Id);
+        Toast.Show(message);
     }
 
     private void Refresh() => InvokeAsync(StateHasChanged);

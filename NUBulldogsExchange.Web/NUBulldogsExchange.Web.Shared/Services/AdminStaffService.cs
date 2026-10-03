@@ -7,16 +7,45 @@ public class AdminStaffService
 {
     public static readonly string[] Statuses = ["Active", "Inactive"];
 
-    public static readonly (string Key, string Label)[] PermissionOptions =
+    public static readonly string[] StatusFilters = ["All Status", "Active", "Inactive"];
+
+    public static readonly (string Key, string Label)[] SortOptions =
     [
-        ("products", "Manage Products"),
-        ("categories", "Manage Categories"),
-        ("orders", "Manage Orders"),
-        ("inventory", "Manage Inventory"),
-        ("customers", "View Customers"),
-        ("promotions", "Manage Promotions"),
-        ("reports", "View Reports")
+        ("newest", "Sort: Newest First"),
+        ("oldest", "Sort: Oldest First"),
+        ("name-asc", "Sort: Name A-Z"),
+        ("name-desc", "Sort: Name Z-A"),
+        ("recent", "Sort: Recently Active")
     ];
+
+    public static readonly (string Key, string Label, string Description)[] PermissionOptions =
+    [
+        ("products", "Manage Products", "View and manage merchandise"),
+        ("categories", "Manage Categories", "Create and organize categories"),
+        ("orders", "Manage Orders", "Review and process customer orders"),
+        ("inventory", "Manage Inventory", "View and adjust stock"),
+        ("customers", "View Customers", "View customer information"),
+        ("promotions", "Manage Promotions", "Create and manage promotions"),
+        ("reports", "View Reports", "Access reports and analytics")
+    ];
+
+    public static readonly (string Group, string[] Keys)[] PermissionGroups =
+    [
+        ("Catalog Management", ["products", "categories", "promotions"]),
+        ("Orders & Inventory", ["orders", "inventory"]),
+        ("Customer & Reports", ["customers", "reports"])
+    ];
+
+    public static readonly (string Key, string Label)[] PermissionPresets =
+    [
+        ("custom", "Custom"),
+        ("order", "Order Staff"),
+        ("inventory", "Inventory Staff"),
+        ("catalog", "Catalog Staff"),
+        ("full", "Full Staff Access")
+    ];
+
+    private static readonly TimeSpan RecentlyActiveWindow = TimeSpan.FromDays(7);
 
     private static readonly Regex EmailRegex =
         new(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -50,11 +79,24 @@ public class AdminStaffService
 
     public IReadOnlyList<AdminStaffMember> All => _staff;
 
+    public bool IsLoaded => _loaded;
+
     /// <summary>Staff accounts only (role_id = 2).</summary>
     public int TotalStaff => _staff.Count;
 
     /// <summary>Active Staff accounts.</summary>
     public int ActiveCount => _staff.Count(s => s.IsActive);
+
+    /// <summary>Inactive Staff accounts.</summary>
+    public int InactiveCount => _staff.Count(s => !s.IsActive);
+
+    /// <summary>Staff who logged in within the last 7 days (real last_login_at).</summary>
+    public int RecentlyActiveCount =>
+        _staff.Count(s => s.IsRecentlyActive(RecentlyActiveWindow));
+
+    /// <summary>Staff with at least one optional permission assigned.</summary>
+    public int StaffWithPermissionsCount =>
+        _staff.Count(s => s.Permissions.CountAssigned() > 0);
 
     public AdminStaffMember? GetById(string id) =>
         _staff.FirstOrDefault(s => s.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
@@ -64,6 +106,9 @@ public class AdminStaffService
 
     public bool HasPermission(string email, string permissionKey)
     {
+        if (string.IsNullOrWhiteSpace(email))
+            return false;
+
         var member = GetByEmail(email);
         if (member is null) return false;
         if (!member.IsActive) return false;
@@ -246,6 +291,74 @@ public class AdminStaffService
         }
     }
 
+    public async Task<(bool Success, string Message)> ActivateAsync(string id)
+    {
+        var member = GetById(id);
+        if (member is null)
+            return (false, "Staff member not found.");
+
+        if (member.IsActive)
+            return (true, "Account is already active.");
+
+        member.Status = "Active";
+        try
+        {
+            await _db.UpsertStaffAsync(member);
+            OnChange?.Invoke();
+            return (true, "Staff account activated. Login is restored.");
+        }
+        catch (Exception ex)
+        {
+            return (false, CleanError(ex.Message));
+        }
+    }
+
+    public IEnumerable<AdminStaffMember> FilterSort(
+        string? search,
+        string statusFilter,
+        string sortKey)
+    {
+        IEnumerable<AdminStaffMember> query = _staff;
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim();
+            query = query.Where(s =>
+                s.FirstName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                s.LastName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                s.FullName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                s.Email.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(statusFilter) &&
+            !statusFilter.Equals("All Status", StringComparison.OrdinalIgnoreCase))
+        {
+            query = query.Where(s => s.Status.Equals(statusFilter, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return sortKey switch
+        {
+            "oldest" => query
+                .OrderBy(s => s.CreatedAt == default ? DateTime.MaxValue : s.CreatedAt)
+                .ThenBy(s => s.LastName)
+                .ThenBy(s => s.FirstName),
+            "name-asc" => query
+                .OrderBy(s => s.LastName, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(s => s.FirstName, StringComparer.OrdinalIgnoreCase),
+            "name-desc" => query
+                .OrderByDescending(s => s.LastName, StringComparer.OrdinalIgnoreCase)
+                .ThenByDescending(s => s.FirstName, StringComparer.OrdinalIgnoreCase),
+            "recent" => query
+                .OrderByDescending(s => s.HasLastLogin)
+                .ThenByDescending(s => s.LastLogin ?? DateTime.MinValue)
+                .ThenBy(s => s.LastName),
+            _ => query
+                .OrderByDescending(s => s.CreatedAt == default ? DateTime.MinValue : s.CreatedAt)
+                .ThenBy(s => s.LastName)
+                .ThenBy(s => s.FirstName)
+        };
+    }
+
     public static bool GetPermission(AdminStaffPermissions permissions, string key) =>
         key switch
         {
@@ -273,6 +386,92 @@ public class AdminStaffService
             case "promotions": permissions.ManagePromotions = value; break;
             case "reports": permissions.ViewReports = value; break;
         }
+    }
+
+    public static void SelectAllStaffSafe(AdminStaffPermissions permissions)
+    {
+        foreach (var option in PermissionOptions)
+            SetPermission(permissions, option.Key, true);
+    }
+
+    public static void ClearAllOptional(AdminStaffPermissions permissions)
+    {
+        foreach (var option in PermissionOptions)
+            SetPermission(permissions, option.Key, false);
+    }
+
+    public static void ApplyPreset(AdminStaffPermissions permissions, string presetKey)
+    {
+        ClearAllOptional(permissions);
+        switch (presetKey)
+        {
+            case "order":
+                permissions.ManageOrders = true;
+                permissions.ViewCustomers = true;
+                break;
+            case "inventory":
+                permissions.ManageProducts = true;
+                permissions.ManageInventory = true;
+                break;
+            case "catalog":
+                permissions.ManageProducts = true;
+                permissions.ManageCategories = true;
+                permissions.ManagePromotions = true;
+                break;
+            case "full":
+                SelectAllStaffSafe(permissions);
+                break;
+            // "custom" leaves cleared — caller may have already set checkboxes
+        }
+    }
+
+    public static string DetectPreset(AdminStaffPermissions permissions)
+    {
+        var order = new AdminStaffPermissions { ManageOrders = true, ViewCustomers = true };
+        var inventory = new AdminStaffPermissions { ManageProducts = true, ManageInventory = true };
+        var catalog = new AdminStaffPermissions
+        {
+            ManageProducts = true,
+            ManageCategories = true,
+            ManagePromotions = true
+        };
+        var full = AdminStaffPermissions.FullAccess();
+
+        if (permissions.Matches(full)) return "full";
+        if (permissions.Matches(order)) return "order";
+        if (permissions.Matches(inventory)) return "inventory";
+        if (permissions.Matches(catalog)) return "catalog";
+        return "custom";
+    }
+
+    public static string? GetPermissionDescription(string key) =>
+        PermissionOptions.FirstOrDefault(o => o.Key == key).Description;
+
+    public static string? GetPermissionLabel(string key) =>
+        PermissionOptions.FirstOrDefault(o => o.Key == key).Label;
+
+    /// <summary>
+    /// Maps an admin route path segment to a staff-assignable permission key.
+    /// Null means open to all admin-portal users (Dashboard / Reviews / Notifications).
+    /// "admin-only" means Admin role required.
+    /// </summary>
+    public static string? ResolveRoutePermission(string absolutePath)
+    {
+        var path = absolutePath.TrimEnd('/').ToLowerInvariant();
+        if (path.EndsWith("/admin") || path.EndsWith("/admin/dashboard") || path.Contains("/admin/change-password"))
+            return null;
+        if (path.Contains("/admin/staff")) return "admin-only";
+        if (path.Contains("/admin/settings")) return "admin-only";
+        if (path.Contains("/admin/products")) return "products";
+        if (path.Contains("/admin/categories")) return "categories";
+        if (path.Contains("/admin/orders")) return "orders";
+        if (path.Contains("/admin/inventory")) return "inventory";
+        if (path.Contains("/admin/customers")) return "customers";
+        if (path.Contains("/admin/promotions")) return "promotions";
+        if (path.Contains("/admin/reports")) return "reports";
+        if (path.Contains("/admin/reviews") || path.Contains("/admin/notifications") || path.Contains("/admin/access-denied"))
+            return null;
+        return null;
     }
 
     private static string CleanError(string message)

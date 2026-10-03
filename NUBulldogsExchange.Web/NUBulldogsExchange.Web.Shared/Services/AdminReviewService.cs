@@ -28,16 +28,35 @@ public class AdminReviewService
     }
 
     public IReadOnlyList<ProductReview> All => _reviews;
+    public bool IsLoaded => _loaded;
+
+    public static readonly (string Key, string Label)[] SortOptions =
+    [
+        ("newest", "Sort: Newest First"),
+        ("oldest", "Sort: Oldest First"),
+        ("rating-desc", "Sort: Highest Rating"),
+        ("rating-asc", "Sort: Lowest Rating")
+    ];
 
     public int TotalReviews => _reviews.Count;
 
+    /// <summary>Matches the customer rating rule (nube_refresh_product_review_stats): Visible reviews only.</summary>
     public double AverageRating =>
-        _reviews.Count == 0
+        VisibleCount == 0
             ? 0
-            : Math.Round(_reviews.Average(r => r.Rating), 1, MidpointRounding.AwayFromZero);
+            : Math.Round(_reviews.Where(r => r.IsVisible).Average(r => r.Rating), 1, MidpointRounding.AwayFromZero);
 
     public int ProductsReviewed =>
         _reviews.Select(r => r.ProductId).Where(id => id > 0).Distinct().Count();
+
+    /// <summary>Products that have at least one review, for the product filter.</summary>
+    public IReadOnlyList<(int Id, string Name)> ReviewedProducts =>
+        _reviews
+            .Where(r => r.ProductId > 0)
+            .GroupBy(r => r.ProductId)
+            .Select(g => (Id: g.Key, Name: g.First().ProductName ?? $"Product #{g.Key}"))
+            .OrderBy(p => p.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     public int VisibleCount => _reviews.Count(r => r.IsVisible);
     public int HiddenCount => _reviews.Count(r => !r.IsVisible);
@@ -70,7 +89,8 @@ public class AdminReviewService
         string? search,
         int? rating,
         int? productId,
-        string? status)
+        string? status,
+        string? sort = "newest")
     {
         IEnumerable<ProductReview> query = _reviews;
 
@@ -80,6 +100,7 @@ public class AdminReviewService
             query = query.Where(r =>
                 (r.ProductName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
                 || r.PublicAuthor.Contains(q, StringComparison.OrdinalIgnoreCase)
+                || (r.CustomerEmail?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
                 || (r.Title?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
                 || (r.Comment?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)
                 || (r.OrderId?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false));
@@ -97,7 +118,13 @@ public class AdminReviewService
             query = query.Where(r => r.IsVisible == visible);
         }
 
-        return query.OrderByDescending(r => r.Date).ThenByDescending(r => r.Id);
+        return sort switch
+        {
+            "oldest" => query.OrderBy(r => r.Date).ThenBy(r => r.Id),
+            "rating-desc" => query.OrderByDescending(r => r.Rating).ThenByDescending(r => r.Date),
+            "rating-asc" => query.OrderBy(r => r.Rating).ThenByDescending(r => r.Date),
+            _ => query.OrderByDescending(r => r.Date).ThenByDescending(r => r.Id)
+        };
     }
 
     public async Task<ProductReview> SetVisibilityAsync(long reviewId, bool isVisible)
@@ -155,7 +182,7 @@ public class AdminReviewService
     {
         var productMap = _products.All.ToDictionary(p => p.Id);
         var itemMap = _orders.All
-            .SelectMany(o => o.Items.Select(i => (OrderId: o.Id, Item: i)))
+            .SelectMany(o => o.Items.Select(i => (Order: o, OrderId: o.Id, Item: i)))
             .Where(x => x.Item.Id > 0)
             .GroupBy(x => x.Item.Id)
             .ToDictionary(g => g.Key, g => g.First());
@@ -181,6 +208,15 @@ public class AdminReviewService
                 review.PurchasedSize = match.Item.Size;
                 if (string.IsNullOrWhiteSpace(review.OrderId))
                     review.OrderId = match.OrderId;
+                if (!string.IsNullOrWhiteSpace(match.Order.CustomerEmail))
+                    review.CustomerEmail = match.Order.CustomerEmail;
+
+                var sameOrder = string.Equals(review.OrderId, match.OrderId, StringComparison.OrdinalIgnoreCase);
+                var sameProduct = match.Item.ProductId <= 0 || match.Item.ProductId == review.ProductId;
+                var sameCustomer = string.IsNullOrWhiteSpace(review.AuthUserId) ||
+                                   string.IsNullOrWhiteSpace(match.Order.CustomerId) ||
+                                   string.Equals(review.AuthUserId, match.Order.CustomerId, StringComparison.OrdinalIgnoreCase);
+                review.PurchaseConfirmed = sameOrder && sameProduct && sameCustomer;
             }
         }
     }

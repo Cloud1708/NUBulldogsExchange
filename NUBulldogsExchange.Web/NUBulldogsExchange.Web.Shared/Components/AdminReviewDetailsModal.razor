@@ -5,7 +5,7 @@
 @inject AdminReviewService Reviews
 @inject ToastService Toast
 
-@if (Review is not null)
+@if (Review is not null && !_confirmOpen)
 {
     <div class="admin-modal-backdrop ar-backdrop" @onclick="Cancel">
         <div class="ar-details-modal" role="dialog" aria-modal="true" aria-labelledby="ar-details-title" @onclick:stopPropagation="true">
@@ -25,14 +25,14 @@
                                  alt="@(Review.ProductName ?? "Product")"
                                  width="88"
                                  height="88"
-                                 style="width:88px;height:88px;max-width:88px;object-fit:cover;border-radius:10px;flex-shrink:0;"
                                  onerror="this.onerror=null;this.src='@CatalogHelpers.PlaceholderImage';" />
                             <div class="ar-details-product-copy">
                                 <strong>@(Review.ProductName ?? "Product")</strong>
-                                @if (!string.IsNullOrWhiteSpace(Review.VariantLabel))
+                                @if (!string.IsNullOrWhiteSpace(Review.ProductCategory) && Review.ProductCategory != "—")
                                 {
-                                    <p>@Review.VariantLabel</p>
+                                    <p>@Review.ProductCategory</p>
                                 }
+                                <p>@Review.ShortVariantLabel</p>
                                 @if (Review.IsVerifiedPurchase)
                                 {
                                     <span class="ar-verified-badge">✓ Verified Purchase</span>
@@ -47,11 +47,20 @@
                             </div>
                             <div class="ar-details-meta-row">
                                 <dt>Order</dt>
-                                <dd>@(string.IsNullOrWhiteSpace(Review.OrderId) ? "—" : Review.OrderId)</dd>
+                                <dd>
+                                    @if (string.IsNullOrWhiteSpace(Review.OrderId))
+                                    {
+                                        <text>—</text>
+                                    }
+                                    else
+                                    {
+                                        <a class="ar-order-link" href="@($"/admin/orders/{Uri.EscapeDataString(Review.OrderId)}")">@Review.OrderId</a>
+                                    }
+                                </dd>
                             </div>
                             <div class="ar-details-meta-row">
                                 <dt>Submitted</dt>
-                                <dd>@Review.Date.ToString("MMMM d, yyyy, h:mm tt", CultureInfo.InvariantCulture)</dd>
+                                <dd>@Review.Date.ToString("MMMM d, yyyy • h:mm tt", CultureInfo.InvariantCulture)</dd>
                             </div>
                         </dl>
                     </aside>
@@ -66,13 +75,13 @@
                                         <span class="@(i <= Review.Rating ? "filled" : "")">★</span>
                                     }
                                 </div>
-                                <span>@Review.Rating out of 5</span>
+                                <span>@Review.Rating.ToString("0.0", CultureInfo.InvariantCulture) out of 5</span>
                             </div>
                         </div>
 
                         <div class="ar-details-field">
                             <span class="ar-details-label">Review Title</span>
-                            <p class="ar-details-title-text">@(string.IsNullOrWhiteSpace(Review.Title) ? "—" : Review.Title)</p>
+                            <div class="ar-details-readonly">@(string.IsNullOrWhiteSpace(Review.Title) ? "—" : Review.Title)</div>
                         </div>
 
                         <div class="ar-details-field">
@@ -93,27 +102,40 @@
                             </div>
                         }
 
-                        <label class="ar-details-field ar-details-status">
-                            <span class="ar-details-label">Review Status</span>
-                            <select class="admin-products-select ar-details-select" @bind="_draftVisible">
-                                <option value="true">Visible</option>
-                                <option value="false">Hidden</option>
-                            </select>
-                            <small class="ar-hint">Hidden reviews will not be shown to customers.</small>
-                        </label>
+                        <div class="ar-details-moderation">
+                            <h3>Moderation</h3>
+                            <label class="ar-details-field ar-details-status">
+                                <span class="ar-details-label">Review Status</span>
+                                <select class="admin-products-select ar-details-select" @bind="_draftVisible">
+                                    <option value="true">Visible</option>
+                                    <option value="false">Hidden</option>
+                                </select>
+                                <small class="ar-hint">
+                                    @(_draftVisible == "true"
+                                        ? "This review will be displayed on the product page."
+                                        : "This review will be hidden from customers.")
+                                </small>
+                            </label>
+                        </div>
                     </section>
                 </div>
+            </div>
 
-                <div class="ar-details-footer">
-                    <button type="button" class="btn btn-outline-navy" disabled="@_saving" @onclick="Cancel">Cancel</button>
-                    <button type="button" class="btn btn-navy" disabled="@(_saving || !IsDirty)" @onclick="Save">
-                        @(_saving ? "Saving..." : "Save Changes")
-                    </button>
-                </div>
+            <div class="ar-details-footer">
+                <button type="button" class="btn btn-outline-navy" disabled="@_saving" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn btn-navy" disabled="@(_saving || !IsDirty)" @onclick="RequestSave">
+                    Save Changes
+                </button>
             </div>
         </div>
     </div>
 }
+
+<AdminReviewVisibilityDialog Open="@(Review is not null && _confirmOpen)"
+                             MakeVisible="@(_draftVisible == "true")"
+                             Busy="_saving"
+                             OnCancel="() => _confirmOpen = false"
+                             OnConfirm="Save" />
 
 @code {
     [Parameter] public ProductReview? Review { get; set; }
@@ -122,6 +144,7 @@
 
     private string _draftVisible = "true";
     private bool _saving;
+    private bool _confirmOpen;
     private long? _boundId;
 
     private bool IsDirty =>
@@ -134,6 +157,7 @@
         if (Review is null)
         {
             _boundId = null;
+            _confirmOpen = false;
             return;
         }
 
@@ -141,6 +165,7 @@
         {
             _boundId = Review.Id;
             _draftVisible = Review.IsVisible ? "true" : "false";
+            _confirmOpen = false;
         }
     }
 
@@ -148,6 +173,12 @@
     {
         if (_saving) return;
         await OnClose.InvokeAsync();
+    }
+
+    private void RequestSave()
+    {
+        if (Review is null || _saving || !IsDirty) return;
+        _confirmOpen = true;
     }
 
     private async Task Save()
@@ -159,7 +190,8 @@
         try
         {
             await Reviews.SetVisibilityAsync(Review.Id, visible);
-            Toast.Show(visible ? "Review is now Visible." : "Review is now Hidden.");
+            Toast.Show(visible ? "Review is now visible to customers." : "Review hidden from customers.");
+            _confirmOpen = false;
             await OnChanged.InvokeAsync();
             await OnClose.InvokeAsync();
         }

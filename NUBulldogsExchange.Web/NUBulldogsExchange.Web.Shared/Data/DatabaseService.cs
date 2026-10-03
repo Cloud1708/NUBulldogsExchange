@@ -1487,6 +1487,7 @@ public sealed partial class DatabaseService : IAppDatabase
                 u.CreatedAt,
                 COALESCE(u.Status, 'Active') AS Status,
                 u.LastLoginAt,
+                COALESCE(u.ProfileImage, '') AS ProfileImage,
                 (
                     SELECT COUNT(*)
                     FROM Orders o
@@ -1495,13 +1496,32 @@ public sealed partial class DatabaseService : IAppDatabase
                        OR o.CustomerId = CAST(u.Id AS TEXT)
                 ) AS TotalOrders,
                 (
+                    SELECT COUNT(*)
+                    FROM Orders o
+                    WHERE (o.UserId = u.Id
+                        OR lower(o.CustomerEmail) = lower(u.Email)
+                        OR o.CustomerId = CAST(u.Id AS TEXT))
+                      AND o.Status <> 'Cancelled'
+                ) AS QualifyingOrders,
+                (
                     SELECT COALESCE(SUM(o.Total), 0)
                     FROM Orders o
                     WHERE (o.UserId = u.Id
                         OR lower(o.CustomerEmail) = lower(u.Email)
                         OR o.CustomerId = CAST(u.Id AS TEXT))
-                      AND o.Status = 'Completed'
-                ) AS TotalSpent
+                      AND (
+                            o.Status = 'Completed'
+                            OR o.Status = 'Delivered'
+                          )
+                ) AS TotalSpent,
+                (
+                    SELECT MAX(o.Date)
+                    FROM Orders o
+                    WHERE (o.UserId = u.Id
+                        OR lower(o.CustomerEmail) = lower(u.Email)
+                        OR o.CustomerId = CAST(u.Id AS TEXT))
+                      AND o.Status <> 'Cancelled'
+                ) AS LastOrderAt
             FROM Users u
             INNER JOIN Roles r ON r.Id = u.RoleId
             WHERE r.Name = 'Customer'
@@ -1519,18 +1539,26 @@ public sealed partial class DatabaseService : IAppDatabase
             DateTime? lastLogin = null;
             if (!reader.IsDBNull(7) && DateTime.TryParse(reader.GetString(7), out var parsedLogin))
                 lastLogin = parsedLogin;
+            DateTime? lastOrder = null;
+            if (!reader.IsDBNull(12) && DateTime.TryParse(reader.GetString(12), out var parsedOrder))
+                lastOrder = parsedOrder;
 
             list.Add(new AdminCustomer
             {
                 Id = reader.GetInt32(0).ToString(),
+                FirstName = first,
+                LastName = last,
                 Name = string.IsNullOrWhiteSpace(name) ? reader.GetString(3) : name,
                 Email = reader.GetString(3),
                 Contact = reader.GetString(4),
                 DateJoined = joined,
                 Status = reader.GetString(6),
                 LastLoginAt = lastLogin,
-                TotalOrders = Convert.ToInt32(reader.GetValue(8)),
-                TotalSpent = Convert.ToDecimal(reader.GetValue(9))
+                ProfileImage = reader.IsDBNull(8) ? string.Empty : reader.GetString(8),
+                TotalOrders = Convert.ToInt32(reader.GetValue(9)),
+                QualifyingOrderCount = Convert.ToInt32(reader.GetValue(10)),
+                TotalSpent = Convert.ToDecimal(reader.GetValue(11)),
+                LastOrderAt = lastOrder
             });
         }
 

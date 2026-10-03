@@ -324,6 +324,9 @@
     private string? _openMenuId;
     private AdminOrder? _selectedOrder;
 
+    [SupplyParameterFromQuery(Name = "customer")]
+    public string? CustomerQuery { get; set; }
+
     private int TotalOrders => OrderService.All.Count;
     private int ToConfirm => OrderService.All.Count(o => IsStatus(o, "Pending"));
     private int Processing => OrderService.All.Count(o => IsStatus(o, "Processing"));
@@ -429,6 +432,16 @@
     }
 
     protected override void OnInitialized() => OrderService.OnChange += Refresh;
+
+    protected override void OnParametersSet()
+    {
+        if (!string.IsNullOrWhiteSpace(CustomerQuery)
+            && string.IsNullOrWhiteSpace(_search))
+        {
+            _search = Uri.UnescapeDataString(CustomerQuery.Trim());
+            _currentPage = 1;
+        }
+    }
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 

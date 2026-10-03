@@ -1,5 +1,6 @@
 @page "/admin/customers/{Id}"
 @layout AdminLayout
+@using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
@@ -25,7 +26,7 @@
         <header class="admin-products-header">
             <div>
                 <h1>@Customer.Name</h1>
-                <p>Customer details · @Customer.Id</p>
+                <p>Customer details · @Customer.ShortId</p>
             </div>
             <a href="/admin/customers" class="btn btn-outline-navy">Back to Customers</a>
         </header>
@@ -65,17 +66,27 @@
             <section class="admin-card admin-customer-info">
                 <h2>Customer Information</h2>
                 <div class="admin-customer-profile">
-                    <span class="admin-customer-avatar lg" aria-hidden="true">@Customer.Initial</span>
+                    @if (Customer.HasProfileImage)
+                    {
+                        <img class="admin-customer-avatar-img lg" src="@Customer.ProfileImage" alt="" />
+                    }
+                    else
+                    {
+                        <span class="admin-customer-avatar lg" aria-hidden="true">@Customer.Initial</span>
+                    }
                     <div>
                         <strong>@Customer.Name</strong>
                         <span>@Customer.Email</span>
                     </div>
                 </div>
                 <dl>
-                    <div><dt>Customer ID</dt><dd><code>@Customer.Id</code></dd></div>
-                    <div><dt>Contact Number</dt><dd>@Customer.Contact</dd></div>
+                    <div><dt>Contact Number</dt><dd>@Customer.ContactDisplay</dd></div>
                     <div><dt>Date Joined</dt><dd>@Customer.DateJoinedLabel</dd></div>
-                    <div><dt>Last Login</dt><dd>@Customer.LastLoginLabel</dd></div>
+                    <div><dt>Last Order</dt><dd>@Customer.LastOrderLabel</dd></div>
+                    <div><dt>Student / Employee ID</dt><dd>@Customer.StudentIdDisplay</dd></div>
+                    <div><dt>College / Department</dt><dd>@Customer.CollegeDisplay</dd></div>
+                    <div><dt>Default Address</dt><dd>@Customer.DefaultAddressDisplay</dd></div>
+                    <div><dt>Customer Type</dt><dd><span class="admin-customer-type type-@Customer.CustomerTypeKey">@Customer.CustomerType</span></dd></div>
                     <div>
                         <dt>Status</dt>
                         <dd><span class="admin-customer-status status-@Customer.StatusKey">@Customer.Status</span></dd>
@@ -85,7 +96,7 @@
 
             <section class="admin-card admin-customer-status-panel">
                 <h2>Account Status</h2>
-                <p class="admin-modal-note">Deactivate or suspend accounts instead of deleting them. Customers with order history stay in the records.</p>
+                <p class="admin-modal-note">Deactivate accounts instead of deleting them. Customers with order history stay in the records.</p>
                 <label class="admin-field">
                     <span>Status</span>
                     <select value="@Customer.Status" @onchange="OnStatusChange">
@@ -113,6 +124,7 @@
                                 <tr>
                                     <th>Order ID</th>
                                     <th>Date</th>
+                                    <th>Fulfillment</th>
                                     <th>Total</th>
                                     <th>Status</th>
                                     <th></th>
@@ -123,13 +135,14 @@
                                 {
                                     <tr>
                                         <td><code>@order.Id</code></td>
-                                        <td>@order.Date.ToString("MMM d, yyyy")</td>
+                                        <td>@order.Date.ToLocalTime().ToString("MMM d, yyyy")</td>
+                                        <td>@(order.IsDelivery ? "Delivery" : "Campus Pickup")</td>
                                         <td><strong>₱@order.Total.ToString("N0")</strong></td>
                                         <td><span class="order-status status-@order.StatusKey">@order.Status</span></td>
                                         <td>
-                                            <a href="@($"/admin/orders/{order.Id}")" class="btn btn-outline-navy admin-customer-view-btn">
+                                            <button type="button" class="btn btn-outline-navy admin-customer-view-btn" @onclick="() => OpenOrder(order)">
                                                 View
-                                            </a>
+                                            </button>
                                         </td>
                                     </tr>
                                 }
@@ -142,10 +155,13 @@
     }
 </div>
 
+<AdminOrderDetailsModal Order="_selectedOrder" OnClose="CloseOrder" />
+
 @code {
     [Parameter] public string Id { get; set; } = string.Empty;
 
     private AdminCustomer? Customer => CustomerService.GetById(Id);
+    private AdminOrder? _selectedOrder;
 
     protected override void OnInitialized() => CustomerService.OnChange += Refresh;
 
@@ -160,6 +176,10 @@
         if (await CustomerService.SetStatusAsync(Customer.Id, status, Auth.UserId > 0 ? Auth.UserId : null))
             Toast.Show($"Customer status updated to {status}.");
     }
+
+    private void OpenOrder(AdminOrder order) => _selectedOrder = order;
+
+    private void CloseOrder() => _selectedOrder = null;
 
     private void Refresh() => InvokeAsync(StateHasChanged);
 

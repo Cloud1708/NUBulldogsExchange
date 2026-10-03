@@ -1,0 +1,19 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+
+@if (!string.IsNullOrWhiteSpace(LogoUrl))
+{
+    <span class="brand-icon has-logo @CssClass" style="@Style">
+        <img src="@LogoUrl" alt="@($"{StoreName} logo")" />
+    </span>
+}
+else
+{
+    <span class="brand-icon @CssClass" style="@Style" aria-hidden="true">NU</span>
+}
+
+@code {
+    [Parameter] public string? LogoUrl { get; set; }
+    [Parameter] public string StoreName { get; set; } = "NU Bulldogs Exchange";
+    [Parameter] public string? CssClass { get; set; }
+    [Parameter] public string? Style { get; set; }
+}

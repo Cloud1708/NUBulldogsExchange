@@ -1,0 +1,50 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+
+@if (Open)
+{
+    <div class="admin-modal-backdrop ar-confirm-backdrop" @onclick="Cancel">
+        <div class="ar-confirm-modal" role="alertdialog" aria-modal="true" aria-labelledby="ar-confirm-title" @onclick:stopPropagation="true">
+            <button type="button" class="admin-product-modal-close ar-confirm-close" aria-label="Close" @onclick="Cancel">
+                <Icon Name="x" Size="16" />
+            </button>
+            <div class="ar-confirm-head">
+                <span class="ar-confirm-icon @(MakeVisible ? "is-show" : "is-hide")" aria-hidden="true">
+                    <Icon Name="@(MakeVisible ? "eye" : "eye-off")" Size="20" />
+                </span>
+                <div>
+                    <h2 id="ar-confirm-title">@(MakeVisible ? "Show this review?" : "Hide this review?")</h2>
+                    <p>
+                        @if (MakeVisible)
+                        {
+                            <text>It will become visible to customers again.</text>
+                        }
+                        else
+                        {
+                            <text>This review will no longer appear on the product page for customers. You can show it again anytime.</text>
+                        }
+                    </p>
+                </div>
+            </div>
+            <div class="ar-confirm-actions">
+                <button type="button" class="btn btn-outline-navy" disabled="@Busy" @onclick="Cancel">Cancel</button>
+                <button type="button"
+                        class="btn @(MakeVisible ? "btn-navy" : "admin-btn-danger")"
+                        disabled="@Busy"
+                        @onclick="Confirm">
+                    @(Busy ? "Saving..." : MakeVisible ? "Show Review" : "Hide Review")
+                </button>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public bool MakeVisible { get; set; }
+    [Parameter] public bool Busy { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private Task Cancel() => Busy ? Task.CompletedTask : OnCancel.InvokeAsync();
+    private Task Confirm() => Busy ? Task.CompletedTask : OnConfirm.InvokeAsync();
+}

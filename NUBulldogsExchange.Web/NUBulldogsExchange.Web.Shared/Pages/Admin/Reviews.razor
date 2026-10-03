@@ -8,6 +8,7 @@
 @inject AdminReviewService ReviewService
 @inject AdminProductService ProductService
 @inject ToastService Toast
+@inject IJSRuntime JS
 @implements IDisposable
 
 <PageTitle>Reviews | Admin | NU Bulldogs Exchange</PageTitle>
@@ -21,67 +22,128 @@
     </header>
 
     <div class="admin-reviews-stats">
-        <article class="admin-staff-stat">
-            <strong>@ReviewService.TotalReviews</strong>
-            <span>Total Reviews</span>
+        <article class="admin-inventory-stat ar-stat">
+            <span class="admin-inventory-stat-icon tone-blue" aria-hidden="true"><Icon Name="star" Size="20" /></span>
+            <div>
+                <span>Total Reviews</span>
+                <strong>@ReviewService.TotalReviews</strong>
+                <small>All time</small>
+            </div>
         </article>
-        <article class="admin-staff-stat">
-            <strong>@(ReviewService.TotalReviews == 0 ? "—" : ReviewService.AverageRating.ToString("0.0"))</strong>
-            <span>Average Rating</span>
+        <article class="admin-inventory-stat ar-stat">
+            <span class="admin-inventory-stat-icon tone-gold" aria-hidden="true"><Icon Name="star" Size="20" /></span>
+            <div>
+                <span>Average Rating</span>
+                <strong>
+                    @(ReviewService.VisibleCount == 0 ? "—" : ReviewService.AverageRating.ToString("0.0", CultureInfo.InvariantCulture))
+                    @if (ReviewService.VisibleCount > 0)
+                    {
+                        <span class="ar-stat-stars" aria-hidden="true">
+                            @for (var i = 1; i <= 5; i++)
+                            {
+                                <span class="@(i <= Math.Round(ReviewService.AverageRating) ? "filled" : "")">★</span>
+                            }
+                        </span>
+                    }
+                </strong>
+                <small>Across visible reviews</small>
+            </div>
         </article>
-        <article class="admin-staff-stat">
-            <strong>@ReviewService.ProductsReviewed</strong>
-            <span>Products Reviewed</span>
+        <article class="admin-inventory-stat ar-stat">
+            <span class="admin-inventory-stat-icon tone-green" aria-hidden="true"><Icon Name="package" Size="20" /></span>
+            <div>
+                <span>Products Reviewed</span>
+                <strong>@ReviewService.ProductsReviewed</strong>
+                <small>Unique products</small>
+            </div>
         </article>
-        <article class="admin-staff-stat">
-            <strong>@ReviewService.HiddenCount</strong>
-            <span>Hidden</span>
+        <article class="admin-inventory-stat ar-stat">
+            <span class="admin-inventory-stat-icon tone-red" aria-hidden="true"><Icon Name="eye-off" Size="20" /></span>
+            <div>
+                <span>Hidden Reviews</span>
+                <strong>@ReviewService.HiddenCount</strong>
+                <small>Not visible to customers</small>
+            </div>
         </article>
     </div>
 
-    <section class="admin-products-toolbar">
-        <div class="admin-products-search">
+    <section class="ar-toolbar">
+        <div class="admin-products-search ar-toolbar-search">
             <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
             <input type="search"
-                   placeholder="Search reviews..."
+                   placeholder="Search reviews by product, customer, or keyword..."
+                   aria-label="Search reviews"
                    value="@_search"
                    @oninput="OnSearchInput" />
         </div>
-        <select class="admin-products-select" value="@_rating" @onchange="OnRatingChange">
-            <option value="0">All Ratings</option>
-            <option value="5">5 Stars</option>
-            <option value="4">4 Stars</option>
-            <option value="3">3 Stars</option>
-            <option value="2">2 Stars</option>
-            <option value="1">1 Star</option>
-        </select>
-        <select class="admin-products-select" value="@_productId" @onchange="OnProductChange">
-            <option value="0">All Products</option>
-            @foreach (var product in ProductService.All.OrderBy(p => p.Name))
+        <div class="ar-toolbar-filters">
+            <select class="admin-products-select" aria-label="Filter by rating" value="@_rating" @onchange="OnRatingChange">
+                <option value="0">All Ratings</option>
+                @for (var star = 5; star >= 1; star--)
+                {
+                    <option value="@star">@star @(star == 1 ? "Star" : "Stars")</option>
+                }
+            </select>
+            <select class="admin-products-select" aria-label="Filter by product" value="@_productId" @onchange="OnProductChange">
+                <option value="0">All Products</option>
+                @foreach (var product in ReviewService.ReviewedProducts)
+                {
+                    <option value="@product.Id">@product.Name</option>
+                }
+            </select>
+            <select class="admin-products-select" aria-label="Filter by status" value="@_status" @onchange="OnStatusChange">
+                <option value="All">All Status</option>
+                <option value="Visible">Visible</option>
+                <option value="Hidden">Hidden</option>
+            </select>
+            <select class="admin-products-select" aria-label="Sort reviews" value="@_sort" @onchange="OnSortChange">
+                @foreach (var option in AdminReviewService.SortOptions)
+                {
+                    <option value="@option.Key">@option.Label</option>
+                }
+            </select>
+            @if (HasActiveFilters)
             {
-                <option value="@product.Id">@product.Name</option>
+                <button type="button" class="ar-clear-btn" @onclick="ResetFilters">
+                    <Icon Name="x" Size="14" /> Clear Filters
+                </button>
             }
-        </select>
-        <select class="admin-products-select" value="@_status" @onchange="OnStatusChange">
-            <option value="All">All Status</option>
-            <option value="Visible">Visible</option>
-            <option value="Hidden">Hidden</option>
-        </select>
-        <button type="button" class="btn btn-outline-navy" @onclick="ResetFilters">Reset</button>
+        </div>
     </section>
 
     <section class="admin-products-table-card">
         @{
             var filtered = Filtered.ToList();
+            var totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)_pageSize));
+            if (_currentPage > totalPages) _currentPage = totalPages;
+            var paged = filtered.Skip((_currentPage - 1) * _pageSize).Take(_pageSize).ToList();
+            var start = filtered.Count == 0 ? 0 : ((_currentPage - 1) * _pageSize) + 1;
+            var end = Math.Min(filtered.Count, _currentPage * _pageSize);
         }
-        @if (filtered.Count == 0)
+        @if (!ReviewService.IsLoaded)
+        {
+            <div class="admin-products-empty">
+                <p>Loading reviews...</p>
+            </div>
+        }
+        else if (ReviewService.TotalReviews == 0)
         {
             <div class="admin-products-empty">
                 <div class="admin-products-empty-icon" aria-hidden="true">
                     <Icon Name="star" Size="36" />
                 </div>
+                <h2>No customer reviews yet.</h2>
+                <p>Reviews will appear here after customers review completed purchases.</p>
+            </div>
+        }
+        else if (filtered.Count == 0)
+        {
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="search" Size="36" />
+                </div>
                 <h2>No reviews found.</h2>
-                <p>Try changing your search or filters.</p>
+                <p>Try adjusting your search or filters.</p>
                 <button type="button" class="btn btn-navy" @onclick="ResetFilters">Clear Filters</button>
             </div>
         }
@@ -101,7 +163,7 @@
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var review in Paged)
+                        @foreach (var review in paged)
                         {
                             <tr>
                                 <td>
@@ -109,29 +171,61 @@
                                         <img src="@(review.ProductImageUrl ?? CatalogHelpers.PlaceholderImage)"
                                              alt="@(review.ProductName ?? "Product")"
                                              onerror="this.onerror=null;this.src='@CatalogHelpers.PlaceholderImage';" />
-                                        <strong title="@review.ProductName">@(review.ProductName ?? "—")</strong>
+                                        <div class="ar-table-product-copy">
+                                            <strong title="@review.ProductName">@(review.ProductName ?? "—")</strong>
+                                            <small>@review.ShortVariantLabel</small>
+                                        </div>
                                     </div>
                                 </td>
-                                <td>@review.PublicAuthor</td>
                                 <td>
-                                    <span class="ar-table-rating">
-                                        @for (var i = 1; i <= 5; i++)
+                                    <div class="ar-table-customer">
+                                        <strong>@review.PublicAuthor</strong>
+                                        @if (review.IsVerifiedPurchase)
                                         {
-                                            <span class="@(i <= review.Rating ? "filled" : "")">★</span>
+                                            <span class="ar-verified-inline">✓ Verified Purchase</span>
                                         }
-                                    </span>
+                                    </div>
                                 </td>
-                                <td class="ar-table-review" title="@review.Comment">@review.ReviewPreview</td>
-                                <td>@review.Date.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</td>
+                                <td>
+                                    <div class="ar-table-rating-cell">
+                                        <span class="ar-table-rating" aria-label="@($"{review.Rating} out of 5 stars")">
+                                            @for (var i = 1; i <= 5; i++)
+                                            {
+                                                <span class="@(i <= review.Rating ? "filled" : "")">★</span>
+                                            }
+                                        </span>
+                                        <small>@review.Rating.ToString("0.0", CultureInfo.InvariantCulture)</small>
+                                    </div>
+                                </td>
+                                <td class="ar-table-review">
+                                    @if (!string.IsNullOrWhiteSpace(review.Title))
+                                    {
+                                        <strong title="@review.Title">@review.Title</strong>
+                                    }
+                                    <p title="@review.Comment">@review.Comment</p>
+                                </td>
+                                <td class="ar-table-date">
+                                    <span>@review.Date.ToString("MMM d, yyyy", CultureInfo.InvariantCulture)</span>
+                                    <small>@review.Date.ToString("h:mm tt", CultureInfo.InvariantCulture)</small>
+                                </td>
                                 <td>
                                     <span class="ar-status @review.StatusCssClass">@review.StatusLabel</span>
                                 </td>
                                 <td class="col-actions">
-                                    <button type="button"
-                                            class="btn btn-outline-navy ar-view-btn"
-                                            @onclick="() => OpenDetails(review)">
-                                        View
-                                    </button>
+                                    <div class="ar-row-actions">
+                                        <button type="button"
+                                                class="btn btn-outline-navy ar-view-btn"
+                                                @onclick="() => OpenDetails(review)">
+                                            <Icon Name="eye" Size="14" /> View
+                                        </button>
+                                        <button type="button"
+                                                class="ar-more-btn"
+                                                aria-label="More actions"
+                                                data-review-menu="@review.Id"
+                                                @onclick="() => ToggleMenuAsync(review)">
+                                            <Icon Name="more-horizontal" Size="16" />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         }
@@ -139,43 +233,109 @@
                 </table>
             </div>
 
-            <div class="admin-products-footer">
-                <span>Showing @StartIndex to @EndIndex of @filtered.Count reviews</span>
+            <div class="admin-customers-pager ar-pager">
+                <span>Showing @start–@end of @filtered.Count @(filtered.Count == 1 ? "review" : "reviews")</span>
                 <div class="admin-pagination">
                     <button type="button"
                             class="admin-page-btn"
+                            aria-label="Previous page"
                             disabled="@(_currentPage <= 1)"
-                            @onclick="() => GoToPage(_currentPage - 1)">&lt;</button>
-                    @for (var page = 1; page <= TotalPages; page++)
+                            @onclick="() => GoToPage(_currentPage - 1, totalPages)">&lt;</button>
+                    @foreach (var page in PageWindow(totalPages))
                     {
-                        var pageNumber = page;
-                        <button type="button"
-                                class="admin-page-btn @(_currentPage == pageNumber ? "active" : "")"
-                                @onclick="() => GoToPage(pageNumber)">
-                            @pageNumber
-                        </button>
+                        if (page == 0)
+                        {
+                            <span class="ar-page-gap">…</span>
+                        }
+                        else
+                        {
+                            var pageNumber = page;
+                            <button type="button"
+                                    class="admin-page-btn @(_currentPage == pageNumber ? "active" : "")"
+                                    @onclick="() => GoToPage(pageNumber, totalPages)">
+                                @pageNumber
+                            </button>
+                        }
                     }
                     <button type="button"
                             class="admin-page-btn"
-                            disabled="@(_currentPage >= TotalPages)"
-                            @onclick="() => GoToPage(_currentPage + 1)">&gt;</button>
+                            aria-label="Next page"
+                            disabled="@(_currentPage >= totalPages)"
+                            @onclick="() => GoToPage(_currentPage + 1, totalPages)">&gt;</button>
                 </div>
+                <label class="ar-page-size">
+                    <select class="admin-products-select" aria-label="Reviews per page" value="@_pageSize" @onchange="OnPageSizeChange">
+                        @foreach (var size in PageSizes)
+                        {
+                            <option value="@size">@size / page</option>
+                        }
+                    </select>
+                </label>
             </div>
         }
     </section>
 </div>
 
+@if (_menuReview is not null)
+{
+    <div class="admin-staff-menu-backdrop" @onclick="CloseMenu"></div>
+    <div class="admin-staff-menu is-floating"
+         style="@($"top:{_menuTop.ToString(CultureInfo.InvariantCulture)}px;left:{_menuLeft.ToString(CultureInfo.InvariantCulture)}px;")"
+         @onclick:stopPropagation="true">
+        <button type="button" @onclick="() => OpenDetails(_menuReview!)">
+            <Icon Name="eye" Size="15" /> View Details
+        </button>
+        @if (_menuReview.IsVisible)
+        {
+            <button type="button" class="is-danger" @onclick="() => RequestVisibility(_menuReview!, false)">
+                <Icon Name="eye-off" Size="15" /> Hide Review
+            </button>
+        }
+        else
+        {
+            <button type="button" @onclick="() => RequestVisibility(_menuReview!, true)">
+                <Icon Name="eye" Size="15" /> Show Review
+            </button>
+        }
+    </div>
+}
+
 <AdminReviewDetailsModal Review="_selected"
                          OnClose="CloseDetails"
                          OnChanged="OnReviewChanged" />
 
+<AdminReviewVisibilityDialog Open="@(_confirmReview is not null)"
+                             MakeVisible="_confirmMakeVisible"
+                             Busy="_confirmBusy"
+                             OnCancel="CancelVisibility"
+                             OnConfirm="ConfirmVisibilityAsync" />
+
 @code {
+    private static readonly int[] PageSizes = [AdminReviewService.PageSize, 25, 50];
+
+    [SupplyParameterFromQuery(Name = "product")]
+    public int? ProductQuery { get; set; }
+
     private string _search = string.Empty;
     private string _rating = "0";
     private string _productId = "0";
     private string _status = "All";
+    private string _sort = "newest";
+    private int _pageSize = AdminReviewService.PageSize;
     private int _currentPage = 1;
     private ProductReview? _selected;
+
+    private ProductReview? _menuReview;
+    private double _menuTop;
+    private double _menuLeft;
+
+    private ProductReview? _confirmReview;
+    private bool _confirmMakeVisible;
+    private bool _confirmBusy;
+
+    private bool HasActiveFilters =>
+        !string.IsNullOrWhiteSpace(_search) || _rating != "0" || _productId != "0" ||
+        _status != "All" || _sort != "newest";
 
     private IEnumerable<ProductReview> Filtered
     {
@@ -183,38 +343,7 @@
         {
             int? rating = int.TryParse(_rating, out var r) && r > 0 ? r : null;
             int? productId = int.TryParse(_productId, out var p) && p > 0 ? p : null;
-            return ReviewService.Filter(_search, rating, productId, _status);
-        }
-    }
-
-    private int TotalPages
-    {
-        get
-        {
-            var count = Filtered.Count();
-            return Math.Max(1, (int)Math.Ceiling(count / (double)AdminReviewService.PageSize));
-        }
-    }
-
-    private IEnumerable<ProductReview> Paged =>
-        Filtered.Skip((_currentPage - 1) * AdminReviewService.PageSize)
-                .Take(AdminReviewService.PageSize);
-
-    private int StartIndex
-    {
-        get
-        {
-            var count = Filtered.Count();
-            return count == 0 ? 0 : ((_currentPage - 1) * AdminReviewService.PageSize) + 1;
-        }
-    }
-
-    private int EndIndex
-    {
-        get
-        {
-            var count = Filtered.Count();
-            return Math.Min(count, _currentPage * AdminReviewService.PageSize);
+            return ReviewService.Filter(_search, rating, productId, _status, _sort);
         }
     }
 
@@ -222,6 +351,8 @@
     {
         ReviewService.OnChange += Refresh;
         ProductService.OnChange += Refresh;
+        if (ProductQuery is > 0)
+            _productId = ProductQuery.Value.ToString(CultureInfo.InvariantCulture);
         await ReviewService.EnsureLoadedAsync();
     }
 
@@ -251,21 +382,56 @@
         _currentPage = 1;
     }
 
+    private void OnSortChange(ChangeEventArgs e)
+    {
+        _sort = e.Value?.ToString() ?? "newest";
+        _currentPage = 1;
+    }
+
+    private void OnPageSizeChange(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value?.ToString(), out var size) && PageSizes.Contains(size)
+            ? size
+            : AdminReviewService.PageSize;
+        _currentPage = 1;
+    }
+
     private void ResetFilters()
     {
         _search = string.Empty;
         _rating = "0";
         _productId = "0";
         _status = "All";
+        _sort = "newest";
         _currentPage = 1;
     }
 
-    private void GoToPage(int page)
+    private void GoToPage(int page, int totalPages) =>
+        _currentPage = Math.Clamp(page, 1, totalPages);
+
+    /// <summary>Real page numbers only; 0 marks a gap.</summary>
+    private IEnumerable<int> PageWindow(int totalPages)
     {
-        _currentPage = Math.Clamp(page, 1, TotalPages);
+        if (totalPages <= 7)
+        {
+            for (var i = 1; i <= totalPages; i++) yield return i;
+            yield break;
+        }
+
+        var from = Math.Max(2, _currentPage - 1);
+        var to = Math.Min(totalPages - 1, _currentPage + 1);
+        yield return 1;
+        if (from > 2) yield return 0;
+        for (var i = from; i <= to; i++) yield return i;
+        if (to < totalPages - 1) yield return 0;
+        yield return totalPages;
     }
 
-    private void OpenDetails(ProductReview review) => _selected = review;
+    private void OpenDetails(ProductReview review)
+    {
+        CloseMenu();
+        _selected = review;
+    }
 
     private void CloseDetails() => _selected = null;
 
@@ -273,6 +439,95 @@
     {
         if (_selected is not null)
             _selected = ReviewService.GetById(_selected.Id) ?? _selected;
+    }
+
+    private async Task ToggleMenuAsync(ProductReview review)
+    {
+        if (_menuReview?.Id == review.Id)
+        {
+            CloseMenu();
+            return;
+        }
+
+        try
+        {
+            var rect = await JS.InvokeAsync<DomRect?>(
+                "nubeGetRectBySelector",
+                $"[data-review-menu=\"{review.Id}\"]");
+
+            const double menuWidth = 200;
+            const double menuHeight = 100;
+            var top = (rect?.Bottom ?? 0) + 6;
+            var left = (rect?.Right ?? menuWidth) - menuWidth;
+
+            if (rect is not null)
+            {
+                if (top + menuHeight > rect.ViewportHeight - 8)
+                    top = Math.Max(8, rect.Top - menuHeight - 6);
+                if (left < 8)
+                    left = 8;
+                if (left + menuWidth > rect.ViewportWidth - 8)
+                    left = Math.Max(8, rect.ViewportWidth - menuWidth - 8);
+            }
+
+            _menuTop = top;
+            _menuLeft = left;
+        }
+        catch
+        {
+            _menuTop = 120;
+            _menuLeft = 40;
+        }
+
+        _menuReview = review;
+    }
+
+    private void CloseMenu() => _menuReview = null;
+
+    private void RequestVisibility(ProductReview review, bool makeVisible)
+    {
+        CloseMenu();
+        _confirmReview = review;
+        _confirmMakeVisible = makeVisible;
+    }
+
+    private void CancelVisibility()
+    {
+        if (_confirmBusy) return;
+        _confirmReview = null;
+    }
+
+    private async Task ConfirmVisibilityAsync()
+    {
+        if (_confirmReview is null || _confirmBusy) return;
+
+        _confirmBusy = true;
+        try
+        {
+            await ReviewService.SetVisibilityAsync(_confirmReview.Id, _confirmMakeVisible);
+            Toast.Show(_confirmMakeVisible ? "Review is now visible to customers." : "Review hidden from customers.");
+            _confirmReview = null;
+        }
+        catch (Exception ex)
+        {
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message) ? "Unable to update review." : ex.Message);
+        }
+        finally
+        {
+            _confirmBusy = false;
+        }
+    }
+
+    private sealed class DomRect
+    {
+        public double Top { get; set; }
+        public double Left { get; set; }
+        public double Bottom { get; set; }
+        public double Right { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+        public double ViewportHeight { get; set; }
+        public double ViewportWidth { get; set; }
     }
 
     public void Dispose()

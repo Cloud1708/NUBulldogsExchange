@@ -4,6 +4,8 @@
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminPromotionService PromotionService
+@inject AdminProductService ProductService
+@inject AdminCategoryService CategoryService
 @inject ToastService Toast
 @inject IJSRuntime JS
 @implements IDisposable
@@ -23,23 +25,73 @@
     </header>
 
     <div class="admin-promos-stats">
-        <article class="admin-staff-stat">
-            <strong>@PromotionService.TotalPromos</strong>
-            <span>Total Promos</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-purple"><Icon Name="tag" Size="18" /></div>
+            <div>
+                <strong>@PromotionService.TotalPromos</strong>
+                <span>Total Promos</span>
+                <small>All promotion codes</small>
+            </div>
         </article>
-        <article class="admin-staff-stat">
-            <strong>@PromotionService.ActiveCount</strong>
-            <span>Active</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-green"><Icon Name="check-circle" Size="18" /></div>
+            <div>
+                <strong>@PromotionService.ActiveCount</strong>
+                <span>Active</span>
+                <small>
+                    Currently active
+                    @if (PromotionService.ScheduledCount > 0)
+                    {
+                        <em class="admin-promo-scheduled-note">· @PromotionService.ScheduledCount scheduled</em>
+                    }
+                </small>
+            </div>
         </article>
-        <article class="admin-staff-stat">
-            <strong>@PromotionService.TotalUses.ToString("N0")</strong>
-            <span>Total Uses</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-blue"><Icon Name="cart" Size="18" /></div>
+            <div>
+                <strong>@PromotionService.TotalUses.ToString("N0")</strong>
+                <span>Total Uses</span>
+                <small>Across all promotions</small>
+            </div>
         </article>
-        <article class="admin-staff-stat">
-            <strong>@PromotionService.ExpiredCount</strong>
-            <span>Expired</span>
+        <article class="admin-inventory-stat">
+            <div class="admin-inventory-stat-icon tone-red"><Icon Name="clock" Size="18" /></div>
+            <div>
+                <strong>@PromotionService.ExpiredCount</strong>
+                <span>Expired</span>
+                <small>No longer available</small>
+            </div>
         </article>
     </div>
+
+    <section class="admin-promos-toolbar">
+        <div class="admin-products-search admin-promos-search">
+            <Icon Name="search" Size="16" CssClass="admin-products-search-icon" />
+            <input type="search"
+                   placeholder="Search promotions by name or code..."
+                   value="@_search"
+                   @oninput="OnSearchInput" />
+        </div>
+        <select class="admin-products-select" aria-label="Status filter" value="@_statusFilter" @onchange="OnStatusFilterChange">
+            @foreach (var option in AdminPromotionService.StatusFilters)
+            {
+                <option value="@option">@option</option>
+            }
+        </select>
+        <select class="admin-products-select" aria-label="Discount type filter" value="@_typeFilter" @onchange="OnTypeFilterChange">
+            @foreach (var option in AdminPromotionService.DiscountTypeFilters)
+            {
+                <option value="@option.Key">@option.Label</option>
+            }
+        </select>
+        <select class="admin-products-select" aria-label="Sort promotions" value="@_sort" @onchange="OnSortChange">
+            @foreach (var option in AdminPromotionService.SortOptions)
+            {
+                <option value="@option.Key">@option.Label</option>
+            }
+        </select>
+    </section>
 
     @if (!PromotionService.All.Any())
     {
@@ -49,132 +101,409 @@
                     <Icon Name="tag" Size="36" />
                 </div>
                 <h2>No promotions yet.</h2>
-                <p>Create discount codes to boost campus store sales.</p>
+                <p>Create a promotion to offer discounts to customers.</p>
                 <button type="button" class="btn btn-navy" @onclick="OpenCreate">Create Promotion</button>
+            </div>
+        </section>
+    }
+    else if (TotalCount == 0)
+    {
+        <section class="admin-promos-empty admin-card">
+            <div class="admin-products-empty">
+                <div class="admin-products-empty-icon" aria-hidden="true">
+                    <Icon Name="search" Size="36" />
+                </div>
+                <h2>No promotions found.</h2>
+                <p>Try adjusting your filters.</p>
+                <button type="button" class="btn btn-navy" @onclick="ClearFilters">Clear Filters</button>
             </div>
         </section>
     }
     else
     {
         <div class="admin-promos-grid">
-            @foreach (var promo in PromotionService.All)
+            @foreach (var promo in PageItems)
             {
+                var scopeChips = ScopeChips(promo);
                 <article class="admin-promo-card @(promo.IsMuted ? "is-muted" : "")">
                     <div class="admin-promo-card-top">
-                        <h2>@promo.Name</h2>
-                        <div class="admin-staff-actions">
-                            <button type="button"
-                                    class="admin-staff-action-btn"
-                                    title="Edit Promotion"
-                                    aria-label="@($"Edit {promo.Name}")"
-                                    @onclick="() => OpenEdit(promo)">
-                                <Icon Name="pencil" Size="15" />
+                        <div class="admin-promo-title">
+                            <h2>@promo.Name</h2>
+                            <div class="admin-promo-meta">
+                                <button type="button"
+                                        class="admin-promo-code"
+                                        title="Copy promo code"
+                                        aria-label="@($"Copy promo code {promo.Code}")"
+                                        @onclick="() => CopyCode(promo.Code)">
+                                    <span>@promo.Code</span>
+                                    <Icon Name="copy" Size="13" />
+                                </button>
+                                <span class="admin-promo-status status-@promo.StatusKey">@promo.Status</span>
+                                @if (!string.IsNullOrEmpty(promo.StatusNote))
+                                {
+                                    <span class="admin-promo-status-note">@promo.StatusNote</span>
+                                }
+                            </div>
+                        </div>
+                        <div class="admin-promo-card-actions">
+                            <button type="button" class="admin-promo-edit-btn" @onclick="() => OpenEdit(promo)">
+                                <Icon Name="pencil" Size="14" />
+                                Edit
                             </button>
-                            <button type="button"
-                                    class="admin-staff-action-btn is-danger"
-                                    title="Delete Promotion"
-                                    aria-label="@($"Delete {promo.Name}")"
-                                    @onclick="() => OpenDelete(promo)">
-                                <Icon Name="trash" Size="15" />
-                            </button>
+                            <div class="admin-promo-more">
+                                <button type="button"
+                                        class="admin-staff-action-btn"
+                                        title="More actions"
+                                        aria-label="@($"More actions for {promo.Name}")"
+                                        aria-expanded="@(_menuId == promo.Id)"
+                                        @onclick="() => ToggleMenu(promo.Id)">
+                                    <Icon Name="more-horizontal" Size="15" />
+                                </button>
+                                @if (_menuId == promo.Id)
+                                {
+                                    <div class="admin-promo-menu-backdrop" @onclick="CloseMenu"></div>
+                                    <div class="admin-staff-menu admin-promo-menu" role="menu">
+                                        <button type="button" @onclick="() => DuplicatePromo(promo)">
+                                            <Icon Name="copy" Size="14" />
+                                            Duplicate Promotion
+                                        </button>
+                                        @if (promo.Enabled)
+                                        {
+                                            <button type="button" @onclick="() => SetEnabled(promo, false)">
+                                                <Icon Name="x-circle" Size="14" />
+                                                Deactivate Promotion
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button type="button" @onclick="() => SetEnabled(promo, true)">
+                                                <Icon Name="check-circle" Size="14" />
+                                                Activate Promotion
+                                            </button>
+                                        }
+                                        @if (promo.UsedCount == 0)
+                                        {
+                                            <button type="button" class="is-danger" @onclick="() => OpenDelete(promo)">
+                                                <Icon Name="trash" Size="14" />
+                                                Delete Promotion
+                                            </button>
+                                        }
+                                    </div>
+                                }
+                            </div>
                         </div>
                     </div>
 
-                    <div class="admin-promo-meta">
-                        <button type="button"
-                                class="admin-promo-code"
-                                title="Copy promo code"
-                                @onclick="() => CopyCode(promo.Code)">
-                            <Icon Name="tag" Size="13" />
-                            <span>@promo.Code</span>
-                            <Icon Name="copy" Size="13" />
-                        </button>
-                        <span class="admin-promo-status status-@promo.StatusKey">@promo.Status</span>
-                    </div>
-
-                    <div class="admin-promo-metrics">
-                        <div class="admin-promo-metric">
-                            <strong>@promo.DiscountLabel</strong>
-                            <span>Discount</span>
+                    <div class="admin-promo-offer">
+                        <div class="admin-promo-offer-main">
+                            <span class="admin-promo-offer-icon @(promo.IsFixed ? "is-fixed" : "")" aria-hidden="true">
+                                <Icon Name="@(promo.IsFixed ? "wallet" : "tag")" Size="18" />
+                            </span>
+                            <div>
+                                <strong>@promo.DiscountHeadline</strong>
+                                <span>@promo.DiscountTypeLabel</span>
+                            </div>
                         </div>
-                        <div class="admin-promo-metric">
-                            <strong>@promo.UsedLabel</strong>
-                            <span>Used</span>
-                        </div>
-                        <div class="admin-promo-metric">
-                            <strong>@promo.MinimumOrderLabel</strong>
+                        <div class="admin-promo-offer-stat">
                             <span>Min. Order</span>
+                            <strong>@promo.MinimumOrderLabel</strong>
+                        </div>
+                        @if (promo.ShowsMaxDiscount)
+                        {
+                            <div class="admin-promo-offer-stat">
+                                <span>Max Discount</span>
+                                <strong>@promo.MaxDiscountLabel</strong>
+                            </div>
+                        }
+                    </div>
+
+                    <div class="admin-promo-scope">
+                        <span class="admin-promo-scope-icon" aria-hidden="true">
+                            <Icon Name="@ScopeIcon(promo.ScopeType)" Size="15" />
+                        </span>
+                        <div>
+                            <p>Applies to: <strong>@promo.ScopeLabel</strong></p>
+                            @if (scopeChips.Shown.Count > 0)
+                            {
+                                <div class="admin-promo-chips">
+                                    @foreach (var chip in scopeChips.Shown)
+                                    {
+                                        <span class="admin-promo-chip">
+                                            @if (!string.IsNullOrWhiteSpace(chip.ImageUrl))
+                                            {
+                                                <img src="@chip.ImageUrl" alt="" />
+                                            }
+                                            @chip.Label
+                                        </span>
+                                    }
+                                    @if (scopeChips.More > 0)
+                                    {
+                                        <span class="admin-promo-chip is-more">+@scopeChips.More more</span>
+                                    }
+                                </div>
+                            }
                         </div>
                     </div>
 
-                    <div class="admin-promo-progress" aria-hidden="true">
-                        <div class="admin-promo-progress-fill" style="@($"width:{promo.UsagePercent:0.##}%")"></div>
+                    <div class="admin-promo-usage">
+                        <div class="admin-promo-usage-head">
+                            <span>Usage</span>
+                            @if (promo.HasUsageLimit)
+                            {
+                                <strong>@($"{promo.UsagePercent:0}%")</strong>
+                            }
+                            else
+                            {
+                                <strong>Unlimited</strong>
+                            }
+                        </div>
+                        @if (promo.HasUsageLimit)
+                        {
+                            <div class="admin-promo-progress"
+                                 role="progressbar"
+                                 aria-valuemin="0"
+                                 aria-valuemax="100"
+                                 aria-valuenow="@((int)promo.UsagePercent)">
+                                <div class="admin-promo-progress-fill" style="@($"width:{promo.UsagePercent.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)}%")"></div>
+                            </div>
+                        }
+                        <small>@promo.UsageSummaryLabel</small>
                     </div>
 
                     <div class="admin-promo-dates">
                         <Icon Name="calendar" Size="14" />
-                        <span>@promo.DateRangeLabel</span>
+                        <span>@promo.DateRangeDisplay</span>
                     </div>
                 </article>
             }
+        </div>
+
+        <div class="admin-customers-pager admin-promos-pager">
+            <span>@ShowingLabel</span>
+            <div class="admin-customers-pager-controls">
+                <label class="admin-customers-page-size">
+                    <select aria-label="Promotions per page" value="@_pageSize" @onchange="OnPageSizeChange">
+                        <option value="4">4 per page</option>
+                        <option value="8">8 per page</option>
+                        <option value="12">12 per page</option>
+                    </select>
+                </label>
+                <nav class="admin-pagination" aria-label="Promotions pagination">
+                    <button type="button"
+                            class="admin-page-btn"
+                            aria-label="Previous page"
+                            disabled="@(CurrentPage <= 1)"
+                            @onclick="() => GoToPage(CurrentPage - 1)">
+                        <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
+                    </button>
+                    @for (var page = 1; page <= TotalPages; page++)
+                    {
+                        var pageNumber = page;
+                        <button type="button"
+                                class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
+                                @onclick="() => GoToPage(pageNumber)">
+                            @pageNumber
+                        </button>
+                    }
+                    <button type="button"
+                            class="admin-page-btn"
+                            aria-label="Next page"
+                            disabled="@(CurrentPage >= TotalPages)"
+                            @onclick="() => GoToPage(CurrentPage + 1)">
+                        <Icon Name="chevron-right" Size="14" />
+                    </button>
+                </nav>
+            </div>
         </div>
     }
 </div>
 
 @if (_showForm)
 {
-    <div class="admin-modal-backdrop" @onclick="CloseForm">
-        <div class="admin-modal admin-promo-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>@(_editingId is null ? "Create Promotion" : "Edit Promotion")</h2>
-            <form class="admin-category-form" @onsubmit="SaveForm" @onsubmit:preventDefault="true">
+    var draft = BuildDraft();
+    var formError = CurrentFormError(draft);
+    var codeLocked = EditingPromo?.UsedCount > 0;
+    <div class="admin-promo-drawer-backdrop" @onclick="CloseForm"></div>
+    <aside class="admin-promo-drawer" role="dialog" aria-modal="true" aria-labelledby="promo-form-title">
+        <div class="admin-promo-drawer-head">
+            <h2 id="promo-form-title">@(_editingId is null ? "Create Promotion" : "Edit Promotion")</h2>
+            <button type="button" class="admin-staff-modal-close" aria-label="Close" @onclick="CloseForm">
+                <Icon Name="x" Size="18" />
+            </button>
+        </div>
+
+        <form class="admin-promo-drawer-body" @onsubmit="SaveForm" @onsubmit:preventDefault="true">
+            <section class="admin-promo-form-section">
+                <h3>Promotion Details</h3>
                 <label class="admin-field">
-                    <span>Promotion Name</span>
-                    <input @bind="_name" @bind:event="oninput" />
+                    <span>Promotion Name <em class="admin-req">*</em></span>
+                    <input @bind="_name" @bind:event="oninput" maxlength="80" placeholder="e.g. Bulldogs Welcome Discount" />
                 </label>
                 <label class="admin-field">
-                    <span>Promo Code</span>
-                    <input @bind="_code" @bind:event="oninput" />
+                    <span>Promo Code <em class="admin-req">*</em></span>
+                    <div class="admin-promo-code-row">
+                        <input @bind="_code"
+                               @bind:event="oninput"
+                               @bind:after="UppercaseCode"
+                               maxlength="@AdminPromotionService.MaxCodeLength"
+                               placeholder="e.g. BULLDOGS10"
+                               readonly="@codeLocked"
+                               class="@(codeLocked ? "is-readonly" : "")" />
+                        @if (!codeLocked)
+                        {
+                            <button type="button" class="btn btn-outline-navy" @onclick="GenerateCode">Generate</button>
+                        }
+                    </div>
+                    @if (codeLocked)
+                    {
+                        <span class="admin-staff-helper">Code is locked because this promotion has already been used.</span>
+                    }
+                    else if (CodeTaken)
+                    {
+                        <span class="admin-field-error">Promo code already exists.</span>
+                    }
                 </label>
+                <label class="admin-field">
+                    <span>Description (optional)</span>
+                    <textarea rows="3" maxlength="200" @bind="_description" @bind:event="oninput"
+                              placeholder="Get 10% off your order. Valid for a limited time only!"></textarea>
+                    <span class="admin-promo-counter">@(_description?.Length ?? 0)/200</span>
+                </label>
+            </section>
+
+            <section class="admin-promo-form-section">
+                <h3>Discount Configuration</h3>
                 <div class="admin-staff-form-grid">
                     <label class="admin-field">
-                        <span>Discount Type</span>
+                        <span>Discount Type <em class="admin-req">*</em></span>
                         <select @bind="_discountType">
                             <option value="percentage">Percentage</option>
                             <option value="fixed">Fixed Amount</option>
                         </select>
                     </label>
                     <label class="admin-field">
-                        <span>Discount Value</span>
-                        <input type="number" min="0" step="1" @bind="_discountValue" @bind:event="oninput" />
+                        <span>Discount Value <em class="admin-req">*</em></span>
+                        <div class="admin-promo-input-suffix">
+                            <input type="number" min="0" max="@(_discountType == "percentage" ? "100" : null)" step="1"
+                                   @bind="_discountValue" @bind:event="oninput" />
+                            <span>@(_discountType == "percentage" ? "%" : "₱")</span>
+                        </div>
                     </label>
                 </div>
                 <div class="admin-staff-form-grid">
+                    @if (_discountType == "percentage")
+                    {
+                        <label class="admin-field">
+                            <span>Maximum Discount (optional)</span>
+                            <div class="admin-promo-input-suffix">
+                                <input type="number" min="0" step="1" @bind="_maximumDiscount" @bind:event="oninput" placeholder="No cap" />
+                                <span>₱</span>
+                            </div>
+                        </label>
+                    }
                     <label class="admin-field">
                         <span>Minimum Order Amount</span>
-                        <input type="number" min="0" step="1" @bind="_minimumOrder" @bind:event="oninput" />
-                    </label>
-                    <label class="admin-field">
-                        <span>Maximum Discount (optional)</span>
-                        <input type="number" min="0" step="1" @bind="_maximumDiscount" @bind:event="oninput" />
+                        <div class="admin-promo-input-suffix">
+                            <input type="number" min="0" step="1" @bind="_minimumOrder" @bind:event="oninput" />
+                            <span>₱</span>
+                        </div>
                     </label>
                 </div>
+            </section>
+
+            <section class="admin-promo-form-section">
+                <h3>Applies To</h3>
+                <div class="admin-promo-scope-options">
+                    @foreach (var option in ScopeOptions)
+                    {
+                        var key = option.Key;
+                        <label class="admin-promo-radio @(_scopeType == key ? "is-selected" : "")">
+                            <input type="radio" name="promo-scope" checked="@(_scopeType == key)" @onchange="() => SetScope(key)" />
+                            <span>
+                                <strong>@option.Label</strong>
+                                <small>@option.Hint</small>
+                            </span>
+                        </label>
+                    }
+                </div>
+
+                @if (_scopeType == "categories")
+                {
+                    <div class="admin-promo-picker">
+                        <div class="admin-products-search">
+                            <Icon Name="search" Size="14" CssClass="admin-products-search-icon" />
+                            <input type="search" placeholder="Search categories..." @bind="_scopeSearch" @bind:event="oninput" />
+                        </div>
+                        <div class="admin-promo-picker-list">
+                            @foreach (var category in FilteredCategories)
+                            {
+                                var id = category.Id;
+                                <label class="admin-staff-check">
+                                    <input type="checkbox" checked="@_categoryIds.Contains(id)" @onchange="e => ToggleCategory(id, e)" />
+                                    <span>@category.Name</span>
+                                </label>
+                            }
+                            @if (!FilteredCategories.Any())
+                            {
+                                <p class="admin-staff-helper">No active categories match.</p>
+                            }
+                        </div>
+                        <span class="admin-staff-helper">@_categoryIds.Count selected</span>
+                    </div>
+                }
+                else if (_scopeType == "products")
+                {
+                    <div class="admin-promo-picker">
+                        <div class="admin-products-search">
+                            <Icon Name="search" Size="14" CssClass="admin-products-search-icon" />
+                            <input type="search" placeholder="Search products..." @bind="_scopeSearch" @bind:event="oninput" />
+                        </div>
+                        <div class="admin-promo-picker-list">
+                            @foreach (var product in FilteredProducts)
+                            {
+                                var id = product.Id;
+                                <label class="admin-staff-check">
+                                    <input type="checkbox" checked="@_productIds.Contains(id)" @onchange="e => ToggleProduct(id, e)" />
+                                    <span>@product.Name <small class="admin-promo-picker-meta">@product.Category</small></span>
+                                </label>
+                            }
+                            @if (!FilteredProducts.Any())
+                            {
+                                <p class="admin-staff-helper">No active products match.</p>
+                            }
+                        </div>
+                        <span class="admin-staff-helper">@_productIds.Count selected</span>
+                    </div>
+                }
+            </section>
+
+            <section class="admin-promo-form-section">
+                <h3>Usage Limits</h3>
                 <div class="admin-staff-form-grid">
                     <label class="admin-field">
-                        <span>Usage Limit</span>
+                        <span>Total Usage Limit <em class="admin-req">*</em></span>
                         <input type="number" min="1" step="1" @bind="_usageLimit" @bind:event="oninput" />
                     </label>
                     <label class="admin-field">
-                        <span>Usage Per Customer</span>
+                        <span>Usage Per Customer <em class="admin-req">*</em></span>
                         <input type="number" min="1" step="1" @bind="_usagePerCustomer" @bind:event="oninput" />
                     </label>
                 </div>
+                @if (EditingPromo?.UsedCount > 0)
+                {
+                    <span class="admin-staff-helper">Already used @EditingPromo.UsedCount time(s).</span>
+                }
+            </section>
+
+            <section class="admin-promo-form-section">
+                <h3>Schedule</h3>
                 <div class="admin-staff-form-grid">
                     <label class="admin-field">
-                        <span>Start Date</span>
+                        <span>Start Date <em class="admin-req">*</em></span>
                         <input type="date" @bind="_startDate" />
                     </label>
                     <label class="admin-field">
-                        <span>End Date</span>
+                        <span>End Date <em class="admin-req">*</em></span>
                         <input type="date" @bind="_endDate" />
                     </label>
                 </div>
@@ -186,24 +515,56 @@
                             <option value="@status">@status</option>
                         }
                     </select>
+                    <span class="admin-staff-helper">Scheduled and Expired are set automatically from the dates.</span>
                 </label>
-                <label class="admin-field">
-                    <span>Description (optional)</span>
-                    <textarea rows="2" @bind="_description" @bind:event="oninput"></textarea>
-                </label>
-                @if (!string.IsNullOrEmpty(_formError))
-                {
-                    <p class="admin-staff-error">@_formError</p>
-                }
-                <div class="admin-modal-actions">
-                    <button type="button" class="btn btn-outline-navy" @onclick="CloseForm">Cancel</button>
-                    <button type="submit" class="btn btn-navy">
-                        @(_editingId is null ? "Create Promotion" : "Save Changes")
-                    </button>
+            </section>
+
+            <section class="admin-promo-preview">
+                <h3>Promotion Preview</h3>
+                <div class="admin-promo-preview-card">
+                    <span class="admin-promo-offer-icon @(draft.IsFixed ? "is-fixed" : "")" aria-hidden="true">
+                        <Icon Name="@(draft.IsFixed ? "wallet" : "tag")" Size="18" />
+                    </span>
+                    <div>
+                        <div class="admin-promo-preview-top">
+                            <strong>@(string.IsNullOrWhiteSpace(draft.Code) ? "PROMOCODE" : draft.Code)</strong>
+                            <span class="admin-promo-status status-@draft.StatusKey">@draft.Status</span>
+                        </div>
+                        <p>
+                            @(draft.DiscountValue > 0 ? draft.DiscountHeadline : "— OFF")
+                            · Min. spend @draft.MinimumOrderLabel
+                            @if (draft.ShowsMaxDiscount && draft.MaximumDiscount is > 0)
+                            {
+                                <text> · Max @draft.MaxDiscountLabel</text>
+                            }
+                        </p>
+                        <p>Valid @draft.StartDate.ToString("MMM d, yyyy") – @draft.EndDate.ToString("MMM d, yyyy")</p>
+                        <p>Applies to: @draft.ScopeLabel</p>
+                    </div>
                 </div>
-            </form>
-        </div>
-    </div>
+            </section>
+
+            @if (!string.IsNullOrEmpty(formError) && _attemptedSave)
+            {
+                <p class="admin-staff-error">@formError</p>
+            }
+            else if (!string.IsNullOrEmpty(_saveError))
+            {
+                <p class="admin-staff-error">@_saveError</p>
+            }
+            else if (!string.IsNullOrEmpty(formError))
+            {
+                <p class="admin-staff-helper admin-promo-form-hint">@formError</p>
+            }
+
+            <div class="admin-promo-drawer-actions">
+                <button type="button" class="btn btn-outline-navy" @onclick="CloseForm" disabled="@_saving">Cancel</button>
+                <button type="submit" class="btn btn-navy" disabled="@(_saving || formError is not null)">
+                    @(_saving ? "Saving..." : _editingId is null ? "Create Promotion" : "Save Changes")
+                </button>
+            </div>
+        </form>
+    </aside>
 }
 
 @if (_deletePromo is not null)
@@ -212,7 +573,7 @@
         <div class="admin-modal admin-promo-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
             <h2>Delete Promotion?</h2>
             <p>Are you sure you want to delete <strong>"@_deletePromo.Name"</strong>?</p>
-            <p class="admin-modal-note">Promo Code: @_deletePromo.Code</p>
+            <p class="admin-modal-note">Promo Code: @_deletePromo.Code. This promotion has never been used, so it can be removed permanently.</p>
             <div class="admin-modal-actions">
                 <button type="button" class="btn btn-outline-navy" @onclick="CloseDelete">Cancel</button>
                 <button type="button" class="btn admin-btn-danger" @onclick="ConfirmDelete">Delete Promotion</button>
@@ -222,10 +583,29 @@
 }
 
 @code {
+    private sealed record ScopeChip(string Label, string? ImageUrl);
+
+    private static readonly (string Key, string Label, string Hint)[] ScopeOptions =
+    [
+        ("all", "All Products", "Applies to all products in the store"),
+        ("categories", "Selected Categories", "Choose specific categories"),
+        ("products", "Selected Products", "Choose specific products")
+    ];
+
+    private string _search = string.Empty;
+    private string _statusFilter = "All Status";
+    private string _typeFilter = "all";
+    private string _sort = "newest";
+    private int _page = 1;
+    private int _pageSize = 4;
+    private string? _menuId;
+
     private bool _showForm;
+    private bool _saving;
+    private bool _attemptedSave;
+    private string? _saveError;
     private string? _editingId;
     private AdminPromotion? _deletePromo;
-    private string? _formError;
 
     private string _name = string.Empty;
     private string _code = string.Empty;
@@ -239,18 +619,152 @@
     private DateTime _endDate = DateTime.Today.AddMonths(1);
     private string _manualStatus = "Active";
     private string _description = string.Empty;
+    private string _scopeType = "all";
+    private string _scopeSearch = string.Empty;
+    private HashSet<string> _categoryIds = new(StringComparer.OrdinalIgnoreCase);
+    private HashSet<int> _productIds = [];
+
+    private AdminPromotion? EditingPromo => _editingId is null ? null : PromotionService.GetById(_editingId);
+
+    private bool CodeTaken => PromotionService.IsCodeTaken(_code, _editingId);
+
+    private List<AdminPromotion> FilteredList =>
+        PromotionService.FilterSort(_search, _statusFilter, _typeFilter, _sort).ToList();
+
+    private int TotalCount => FilteredList.Count;
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(TotalCount / (double)_pageSize));
+
+    private int CurrentPage => Math.Clamp(_page, 1, TotalPages);
+
+    private IEnumerable<AdminPromotion> PageItems =>
+        FilteredList.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize);
+
+    private string ShowingLabel
+    {
+        get
+        {
+            if (TotalCount == 0) return "Showing 0 of 0 promotions";
+            var start = ((CurrentPage - 1) * _pageSize) + 1;
+            var end = Math.Min(CurrentPage * _pageSize, TotalCount);
+            return $"Showing {start}–{end} of {TotalCount} promotions";
+        }
+    }
+
+    private IEnumerable<AdminCategory> ActiveCategories =>
+        CategoryService.All.Where(c => c.Status.Equals("Active", StringComparison.OrdinalIgnoreCase));
+
+    private IEnumerable<AdminCategory> FilteredCategories =>
+        ActiveCategories
+            .Where(c => string.IsNullOrWhiteSpace(_scopeSearch) ||
+                        c.Name.Contains(_scopeSearch.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderBy(c => c.Name);
+
+    private IEnumerable<AdminProduct> FilteredProducts =>
+        ProductService.All
+            .Where(p => p.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+            .Where(p => string.IsNullOrWhiteSpace(_scopeSearch) ||
+                        p.Name.Contains(_scopeSearch.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                        p.Category.Contains(_scopeSearch.Trim(), StringComparison.OrdinalIgnoreCase))
+            .OrderBy(p => p.Name);
 
     protected override async Task OnInitializedAsync()
     {
         PromotionService.OnChange += Refresh;
         await PromotionService.ReloadAsync();
+        await ProductService.EnsureLoadedAsync();
+        await CategoryService.EnsureLoadedAsync();
+    }
+
+    private void OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? string.Empty;
+        _page = 1;
+    }
+
+    private void OnStatusFilterChange(ChangeEventArgs e)
+    {
+        _statusFilter = e.Value?.ToString() ?? "All Status";
+        _page = 1;
+    }
+
+    private void OnTypeFilterChange(ChangeEventArgs e)
+    {
+        _typeFilter = e.Value?.ToString() ?? "all";
+        _page = 1;
+    }
+
+    private void OnSortChange(ChangeEventArgs e)
+    {
+        _sort = e.Value?.ToString() ?? "newest";
+        _page = 1;
+    }
+
+    private void OnPageSizeChange(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var size) && size > 0)
+            _pageSize = size;
+        _page = 1;
+    }
+
+    private void GoToPage(int page) => _page = Math.Clamp(page, 1, TotalPages);
+
+    private void ClearFilters()
+    {
+        _search = string.Empty;
+        _statusFilter = "All Status";
+        _typeFilter = "all";
+        _sort = "newest";
+        _page = 1;
+    }
+
+    private void ToggleMenu(string id) => _menuId = _menuId == id ? null : id;
+
+    private void CloseMenu() => _menuId = null;
+
+    private static string ScopeIcon(string scopeType) => scopeType switch
+    {
+        "categories" => "layers",
+        "products" => "package",
+        _ => "cart"
+    };
+
+    private (List<ScopeChip> Shown, int More) ScopeChips(AdminPromotion promo)
+    {
+        const int maxShown = 3;
+        List<ScopeChip> chips;
+
+        if (promo.ScopeType == "products")
+        {
+            chips = promo.ProductIds
+                .Select(id => ProductService.All.FirstOrDefault(p => p.Id == id))
+                .Where(p => p is not null)
+                .Select(p => new ScopeChip(p!.Name, p.ImageUrl))
+                .ToList();
+            var missing = promo.ProductIds.Count - chips.Count;
+            return (chips.Take(maxShown).ToList(), Math.Max(0, chips.Count - maxShown) + missing);
+        }
+
+        if (promo.ScopeType == "categories")
+        {
+            chips = promo.CategoryIds
+                .Select(id => CategoryService.All.FirstOrDefault(c => c.Id.Equals(id, StringComparison.OrdinalIgnoreCase)))
+                .Where(c => c is not null)
+                .Select(c => new ScopeChip(c!.Name, null))
+                .ToList();
+            var missing = promo.CategoryIds.Count - chips.Count;
+            return (chips.Take(maxShown).ToList(), Math.Max(0, chips.Count - maxShown) + missing);
+        }
+
+        return ([], 0);
     }
 
     private void OpenCreate()
     {
+        CloseMenu();
         _showForm = true;
         _editingId = null;
-        _formError = null;
+        ResetFormState();
         _name = string.Empty;
         _code = string.Empty;
         _discountType = "percentage";
@@ -263,16 +777,20 @@
         _endDate = DateTime.Today.AddMonths(1);
         _manualStatus = "Active";
         _description = string.Empty;
+        _scopeType = "all";
+        _categoryIds.Clear();
+        _productIds.Clear();
     }
 
     private void OpenEdit(AdminPromotion promo)
     {
+        CloseMenu();
         _showForm = true;
         _editingId = promo.Id;
-        _formError = null;
+        ResetFormState();
         _name = promo.Name;
         _code = promo.Code;
-        _discountType = promo.DiscountType;
+        _discountType = promo.IsFixed ? "fixed" : "percentage";
         _discountValue = promo.DiscountValue;
         _minimumOrder = promo.MinimumOrder;
         _maximumDiscount = promo.MaximumDiscount;
@@ -282,49 +800,143 @@
         _endDate = promo.EndDate;
         _manualStatus = promo.Enabled ? "Active" : "Inactive";
         _description = promo.Description;
+        _scopeType = promo.ScopeType;
+        _categoryIds = new HashSet<string>(promo.CategoryIds, StringComparer.OrdinalIgnoreCase);
+        _productIds = [.. promo.ProductIds];
+    }
+
+    private void ResetFormState()
+    {
+        _saving = false;
+        _attemptedSave = false;
+        _saveError = null;
+        _scopeSearch = string.Empty;
     }
 
     private void CloseForm()
     {
+        if (_saving) return;
         _showForm = false;
         _editingId = null;
-        _formError = null;
+        _saveError = null;
+    }
+
+    private void UppercaseCode() => _code = (_code ?? string.Empty).ToUpperInvariant().Replace(" ", "");
+
+    private void GenerateCode()
+    {
+        _code = PromotionService.GenerateCode(_name, _discountValue);
+        _saveError = null;
+    }
+
+    private void SetScope(string key)
+    {
+        _scopeType = key;
+        _scopeSearch = string.Empty;
+    }
+
+    private void ToggleCategory(string id, ChangeEventArgs e)
+    {
+        if (e.Value is true) _categoryIds.Add(id);
+        else _categoryIds.Remove(id);
+    }
+
+    private void ToggleProduct(int id, ChangeEventArgs e)
+    {
+        if (e.Value is true) _productIds.Add(id);
+        else _productIds.Remove(id);
+    }
+
+    private AdminPromotion BuildDraft()
+    {
+        var existing = EditingPromo;
+        return new AdminPromotion
+        {
+            Id = _editingId ?? string.Empty,
+            Name = _name?.Trim() ?? string.Empty,
+            Code = (_code ?? string.Empty).Trim().ToUpperInvariant(),
+            DiscountType = _discountType,
+            DiscountValue = _discountValue,
+            MinimumOrder = _minimumOrder,
+            MaximumDiscount = _discountType == "percentage" && _maximumDiscount is > 0 ? _maximumDiscount : null,
+            UsedCount = existing?.UsedCount ?? 0,
+            UsageLimit = _usageLimit,
+            UsagePerCustomer = _usagePerCustomer,
+            StartDate = _startDate.Date,
+            EndDate = _endDate.Date,
+            Enabled = _manualStatus.Equals("Active", StringComparison.OrdinalIgnoreCase),
+            Description = _description ?? string.Empty,
+            CategoryIds = _scopeType == "categories" ? [.. _categoryIds] : [],
+            ProductIds = _scopeType == "products" ? [.. _productIds] : []
+        };
+    }
+
+    private string? CurrentFormError(AdminPromotion draft)
+    {
+        var error = PromotionService.Validate(draft, _editingId);
+        if (error is not null) return error;
+        if (_scopeType == "categories" && draft.CategoryIds.Count == 0)
+            return "Select at least one category.";
+        if (_scopeType == "products" && draft.ProductIds.Count == 0)
+            return "Select at least one product.";
+        return null;
     }
 
     private async Task SaveForm()
     {
-        _formError = null;
-        var model = new AdminPromotion
-        {
-            Name = _name,
-            Code = _code,
-            DiscountType = _discountType,
-            DiscountValue = _discountValue,
-            MinimumOrder = _minimumOrder,
-            MaximumDiscount = _maximumDiscount is > 0 ? _maximumDiscount : null,
-            UsageLimit = _usageLimit,
-            UsagePerCustomer = _usagePerCustomer <= 0 ? 1 : _usagePerCustomer,
-            StartDate = _startDate,
-            EndDate = _endDate,
-            Enabled = _manualStatus.Equals("Active", StringComparison.OrdinalIgnoreCase),
-            Description = _description
-        };
+        if (_saving) return;
+        _attemptedSave = true;
+        _saveError = null;
 
-        var (success, message) = _editingId is null
-            ? await PromotionService.CreateAsync(model)
-            : await PromotionService.UpdateAsync(_editingId, model);
-
-        if (!success)
-        {
-            _formError = message;
+        var draft = BuildDraft();
+        if (CurrentFormError(draft) is not null)
             return;
-        }
 
-        Toast.Show(message);
-        CloseForm();
+        _saving = true;
+        try
+        {
+            var creating = _editingId is null;
+            var (success, message) = creating
+                ? await PromotionService.CreateAsync(draft)
+                : await PromotionService.UpdateAsync(_editingId!, draft);
+
+            if (!success)
+            {
+                _saveError = message;
+                return;
+            }
+
+            Toast.Show(message);
+            _saving = false;
+            CloseForm();
+            if (creating) _page = 1;
+        }
+        finally
+        {
+            _saving = false;
+        }
     }
 
-    private void OpenDelete(AdminPromotion promo) => _deletePromo = promo;
+    private async Task DuplicatePromo(AdminPromotion promo)
+    {
+        CloseMenu();
+        var (_, message) = await PromotionService.DuplicateAsync(promo.Id);
+        Toast.Show(message);
+    }
+
+    private async Task SetEnabled(AdminPromotion promo, bool enabled)
+    {
+        CloseMenu();
+        var (_, message) = await PromotionService.SetEnabledAsync(promo.Id, enabled);
+        Toast.Show(message);
+    }
+
+    private void OpenDelete(AdminPromotion promo)
+    {
+        CloseMenu();
+        _deletePromo = promo;
+    }
+
     private void CloseDelete() => _deletePromo = null;
 
     private async Task ConfirmDelete()
