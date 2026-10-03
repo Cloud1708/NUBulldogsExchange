@@ -1324,8 +1324,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (string.IsNullOrWhiteSpace(request.PhoneNumber))
             return Fail("Phone number is required.");
 
-        if (!AuthValidation.IsValidPhone(request.PhoneNumber))
-            return Fail("Enter a valid phone number.");
+        if (!AuthValidation.IsValidMobilePhone(request.PhoneNumber))
+            return Fail($"Phone number must be exactly {AuthValidation.MobilePhoneLength} digits.");
 
         if (string.IsNullOrWhiteSpace(request.Password) ||
             request.Password.Length < AuthValidation.MinPasswordLength)
@@ -1333,6 +1333,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
         if (!string.Equals(request.Password, request.ConfirmPassword, StringComparison.Ordinal))
             return Fail("Passwords do not match.");
+
+        var phone = AuthValidation.DigitsOnly(request.PhoneNumber);
 
         var body = new
         {
@@ -1342,7 +1344,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             {
                 first_name = request.FirstName.Trim(),
                 last_name = request.LastName.Trim(),
-                phone_number = request.PhoneNumber.Trim()
+                phone_number = phone
             }
         };
 
@@ -1375,7 +1377,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
             var user = await BuildMockUserAsync(auth.User.Id, auth.AccessToken);
             if (user is null)
-                user = BuildFallbackUser(auth.User, request.FirstName, request.LastName, request.PhoneNumber);
+                user = BuildFallbackUser(auth.User, request.FirstName, request.LastName, phone);
 
             user.SessionToken = auth.AccessToken;
 

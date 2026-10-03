@@ -30,8 +30,9 @@ public sealed partial class DatabaseService
             return Fail("Please enter a valid email address.");
         if (string.IsNullOrWhiteSpace(phone))
             return Fail("Phone number is required.");
-        if (!AuthValidation.IsValidPhone(phone))
-            return Fail("Please enter a valid phone number.");
+        if (!AuthValidation.IsValidMobilePhone(phone))
+            return Fail($"Phone number must be exactly {AuthValidation.MobilePhoneLength} digits.");
+        phone = AuthValidation.DigitsOnly(phone);
         if (string.IsNullOrWhiteSpace(password))
             return Fail("Password is required.");
         if (password.Length < AuthValidation.MinPasswordLength)

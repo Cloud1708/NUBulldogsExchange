@@ -109,11 +109,13 @@
                             <Icon Name="phone" Size="18" CssClass="auth-input-icon" />
                             <input id="reg-phone"
                                    type="tel"
+                                   inputmode="numeric"
                                    autocomplete="tel"
                                    placeholder="09XXXXXXXXX"
+                                   maxlength="@AuthValidation.MobilePhoneLength"
                                    value="@_phone"
                                    disabled="@_isLoading"
-                                   @oninput="e => OnInput(e, v => _phone = v, () => _phoneError = null)" />
+                                   @oninput="OnPhoneInput" />
                         </div>
                         @if (_phoneError is not null)
                         {
@@ -233,6 +235,15 @@
         clearError();
     }
 
+    private void OnPhoneInput(ChangeEventArgs e)
+    {
+        var digits = AuthValidation.DigitsOnly(e.Value?.ToString());
+        if (digits.Length > AuthValidation.MobilePhoneLength)
+            digits = digits[..AuthValidation.MobilePhoneLength];
+        _phone = digits;
+        _phoneError = null;
+    }
+
     private void OnConsentChanged(ChangeEventArgs e)
     {
         _agreePrivacy = e.Value is bool b && b;
@@ -275,9 +286,9 @@
             _phoneError = "Phone number is required.";
             hasError = true;
         }
-        else if (!AuthValidation.IsValidPhone(_phone))
+        else if (!AuthValidation.IsValidMobilePhone(_phone))
         {
-            _phoneError = "Please enter a valid phone number.";
+            _phoneError = $"Phone number must be exactly {AuthValidation.MobilePhoneLength} digits.";
             hasError = true;
         }
 
@@ -319,7 +330,7 @@
                 FirstName = _firstName.Trim(),
                 LastName = _lastName.Trim(),
                 Email = email,
-                PhoneNumber = _phone.Trim(),
+                PhoneNumber = AuthValidation.DigitsOnly(_phone),
                 Password = _password,
                 ConfirmPassword = _confirm
             });
