@@ -1,3 +1,6 @@
+using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
+
 namespace NUBulldogsExchange.Web.Shared.Data;
 
 public class AdminStoreSettings
@@ -6,56 +9,79 @@ public class AdminStoreSettings
     public string Email { get; set; } = "store@nu.edu.ph";
     public string Contact { get; set; } = "+63 2 8123 4567";
     public string Address { get; set; } = "551 M.F. Jhocson St., Sampaloc, Manila";
+
+    /// <summary>Splits the name for the two-line storefront brand ("NU Bulldogs" / "Exchange").</summary>
+    [JsonIgnore]
+    public (string Title, string Subtitle) BrandLines
+    {
+        get
+        {
+            var name = string.IsNullOrWhiteSpace(Name) ? "NU Bulldogs Exchange" : Name.Trim();
+            var lastSpace = name.LastIndexOf(' ');
+            return lastSpace <= 0 ? (name, string.Empty) : (name[..lastSpace], name[(lastSpace + 1)..]);
+        }
+    }
 }
 
 public class AdminBrandingSettings
 {
-    public string PrimaryColor { get; set; } = "#123A63";
-    public string AccentColor { get; set; } = "#F9C424";
+    public const int TaglineMaxLength = 120;
+    public const string DefaultPrimary = "#123A63";
+    public const string DefaultAccent = "#F9C424";
+
+    public string PrimaryColor { get; set; } = DefaultPrimary;
+    public string AccentColor { get; set; } = DefaultAccent;
     public string Tagline { get; set; } = "Official merchandise for the NU Bulldogs community.";
-    public string LogoLabel { get; set; } = "NU Logo";
+    /// <summary>Uploaded logo URL; empty means the default "NU" badge.</summary>
+    public string LogoUrl { get; set; } = string.Empty;
+
+    [JsonIgnore]
+    public bool HasLogo => !string.IsNullOrWhiteSpace(LogoUrl);
 }
 
 public class AdminOrderSettings
 {
+    public const int MaxCancellationHours = 720;
+
     public bool CampusPickup { get; set; } = true;
     public bool Delivery { get; set; } = true;
-    public string DefaultFulfillment { get; set; } = "Campus Pickup";
+    public string DefaultFulfillment { get; set; } = OrderFlow.CampusPickup;
     public bool AllowCancellation { get; set; } = true;
     public int CancellationHours { get; set; } = 24;
     public decimal MinimumOrder { get; set; }
-    /// <summary>Delivery fee shown at checkout when Delivery is selected.</summary>
+    /// <summary>
+    /// Read by checkout and by save_checkout_shipping_snapshot (docs/sql/022) as orders.deliveryFee;
+    /// that function treats 0 as "use ₱150", so the fee must stay positive.
+    /// </summary>
     public decimal DeliveryFee { get; set; } = 150;
     public string ProcessingTime { get; set; } = "1–3 business days";
+
+    [JsonIgnore]
+    public IReadOnlyList<string> EnabledFulfillments
+    {
+        get
+        {
+            var list = new List<string>(2);
+            if (CampusPickup) list.Add(OrderFlow.CampusPickup);
+            if (Delivery) list.Add(OrderFlow.Delivery);
+            return list;
+        }
+    }
+
+    public bool IsFulfillmentEnabled(string? method) =>
+        EnabledFulfillments.Contains(method ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Default method for new checkouts, falling back to whichever method is enabled.</summary>
+    [JsonIgnore]
+    public string ResolvedDefaultFulfillment =>
+        IsFulfillmentEnabled(DefaultFulfillment)
+            ? EnabledFulfillments.First(m => string.Equals(m, DefaultFulfillment, StringComparison.OrdinalIgnoreCase))
+            : EnabledFulfillments.FirstOrDefault() ?? OrderFlow.CampusPickup;
 }
 
 public class AdminInventorySettings
 {
     public int LowStockThreshold { get; set; } = 20;
-    public bool AllowBackorders { get; set; }
-    public bool LowStockAlerts { get; set; } = true;
-    public bool OutOfStockAlerts { get; set; } = true;
-    public bool ReservePendingStock { get; set; } = true;
-}
-
-public class AdminNotificationSettings
-{
-    public bool NewOrders { get; set; } = true;
-    public bool CancelledOrders { get; set; } = true;
-    public bool ReadyForPickup { get; set; } = true;
-    public bool LowStock { get; set; } = true;
-    public bool OutOfStock { get; set; } = true;
-    public bool NewCustomers { get; set; } = true;
-    public bool PromotionExpiry { get; set; } = true;
-    public bool StaffActivity { get; set; }
-}
-
-public class AdminSecuritySettings
-{
-    public bool TwoFactor { get; set; }
-    public bool LoginAlerts { get; set; } = true;
-    public int SessionTimeout { get; set; } = 30;
-    public bool StrongPasswords { get; set; } = true;
 }
 
 public class AdminPortalSettings
@@ -64,8 +90,6 @@ public class AdminPortalSettings
     public AdminBrandingSettings Branding { get; set; } = new();
     public AdminOrderSettings Orders { get; set; } = new();
     public AdminInventorySettings Inventory { get; set; } = new();
-    public AdminNotificationSettings Notifications { get; set; } = new();
-    public AdminSecuritySettings Security { get; set; } = new();
 
     public AdminPortalSettings Clone() => new()
     {
@@ -81,7 +105,7 @@ public class AdminPortalSettings
             PrimaryColor = Branding.PrimaryColor,
             AccentColor = Branding.AccentColor,
             Tagline = Branding.Tagline,
-            LogoLabel = Branding.LogoLabel
+            LogoUrl = Branding.LogoUrl
         },
         Orders = new AdminOrderSettings
         {
@@ -96,29 +120,19 @@ public class AdminPortalSettings
         },
         Inventory = new AdminInventorySettings
         {
-            LowStockThreshold = Inventory.LowStockThreshold,
-            AllowBackorders = Inventory.AllowBackorders,
-            LowStockAlerts = Inventory.LowStockAlerts,
-            OutOfStockAlerts = Inventory.OutOfStockAlerts,
-            ReservePendingStock = Inventory.ReservePendingStock
-        },
-        Notifications = new AdminNotificationSettings
-        {
-            NewOrders = Notifications.NewOrders,
-            CancelledOrders = Notifications.CancelledOrders,
-            ReadyForPickup = Notifications.ReadyForPickup,
-            LowStock = Notifications.LowStock,
-            OutOfStock = Notifications.OutOfStock,
-            NewCustomers = Notifications.NewCustomers,
-            PromotionExpiry = Notifications.PromotionExpiry,
-            StaffActivity = Notifications.StaffActivity
-        },
-        Security = new AdminSecuritySettings
-        {
-            TwoFactor = Security.TwoFactor,
-            LoginAlerts = Security.LoginAlerts,
-            SessionTimeout = Security.SessionTimeout,
-            StrongPasswords = Security.StrongPasswords
+            LowStockThreshold = Inventory.LowStockThreshold
         }
     };
+}
+
+public static partial class AdminSettingsValidation
+{
+    [GeneratedRegex("^#[0-9A-Fa-f]{6}$")]
+    private static partial Regex HexColorRegex();
+
+    public static bool IsHexColor(string? value) =>
+        !string.IsNullOrWhiteSpace(value) && HexColorRegex().IsMatch(value.Trim());
+
+    public static string SafeColor(string? value, string fallback) =>
+        IsHexColor(value) ? value!.Trim().ToUpperInvariant() : fallback;
 }

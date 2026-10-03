@@ -90,5 +90,22 @@ public static class AuthValidation
         return trimmed.All(ch => char.IsDigit(ch) || ch is '+' or '-' or ' ' or '(' or ')');
     }
 
+    /// <summary>Customer registration phone: exactly 11 digits (e.g. 09XXXXXXXXX).</summary>
+    public const int MobilePhoneLength = 11;
+
+    public static bool IsValidMobilePhone(string? phone)
+    {
+        if (string.IsNullOrWhiteSpace(phone))
+            return false;
+
+        var digits = DigitsOnly(phone);
+        return digits.Length == MobilePhoneLength;
+    }
+
+    public static string DigitsOnly(string? value) =>
+        string.IsNullOrEmpty(value)
+            ? string.Empty
+            : new string(value.Where(char.IsDigit).ToArray());
+
     public static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 }

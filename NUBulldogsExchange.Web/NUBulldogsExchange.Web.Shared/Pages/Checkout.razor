@@ -479,23 +479,33 @@ else
                         </header>
 
                         <div class="checkout-fulfillment-grid">
-                            <button type="button"
-                                    class="checkout-option-card @(_fulfillment == CampusPickup ? "is-selected" : null)"
-                                    @onclick='() => SetFulfillment(CampusPickup)'>
-                                <span class="checkout-option-check" aria-hidden="true"><Icon Name="check" Size="12" /></span>
-                                <span class="checkout-option-icon"><Icon Name="map-pin" Size="22" /></span>
-                                <strong>Campus Pickup</strong>
-                                <small>Free • Ready in 1–3 days</small>
-                            </button>
-                            <button type="button"
-                                    class="checkout-option-card @(_fulfillment == DeliveryMethod ? "is-selected" : null)"
-                                    @onclick='() => SetFulfillment(DeliveryMethod)'>
-                                <span class="checkout-option-check" aria-hidden="true"><Icon Name="check" Size="12" /></span>
-                                <span class="checkout-option-icon"><Icon Name="truck" Size="22" /></span>
-                                <strong>Delivery</strong>
-                                <small>₱@DeliveryFee.ToString("N0") • 3–7 business days</small>
-                            </button>
+                            @if (OrderRules.CampusPickup)
+                            {
+                                <button type="button"
+                                        class="checkout-option-card @(_fulfillment == CampusPickup ? "is-selected" : null)"
+                                        @onclick='() => SetFulfillment(CampusPickup)'>
+                                    <span class="checkout-option-check" aria-hidden="true"><Icon Name="check" Size="12" /></span>
+                                    <span class="checkout-option-icon"><Icon Name="map-pin" Size="22" /></span>
+                                    <strong>Campus Pickup</strong>
+                                    <small>Free • Ready in @PickupReadyWindow</small>
+                                </button>
+                            }
+                            @if (OrderRules.Delivery)
+                            {
+                                <button type="button"
+                                        class="checkout-option-card @(_fulfillment == DeliveryMethod ? "is-selected" : null)"
+                                        @onclick='() => SetFulfillment(DeliveryMethod)'>
+                                    <span class="checkout-option-check" aria-hidden="true"><Icon Name="check" Size="12" /></span>
+                                    <span class="checkout-option-icon"><Icon Name="truck" Size="22" /></span>
+                                    <strong>Delivery</strong>
+                                    <small>₱@DeliveryFee.ToString("N0") • 3–7 business days</small>
+                                </button>
+                            }
                         </div>
+                        @if (_errors.ContainsKey("fulfillment"))
+                        {
+                            <em class="checkout-inline-error">@_errors["fulfillment"]</em>
+                        }
 
                         @if (_fulfillment == CampusPickup)
                         {
@@ -815,9 +825,16 @@ else
                                 <em class="checkout-inline-error">@_errors["terms"]</em>
                             }
 
+                            @if (BelowMinimumOrder)
+                            {
+                                <p class="checkout-inline-error checkout-minimum-note">
+                                    Minimum order amount is ₱@OrderRules.MinimumOrder.ToString("N0"). Add ₱@((OrderRules.MinimumOrder - Cart.SelectedSubtotal).ToString("N0")) more to place your order.
+                                </p>
+                            }
+
                             <button type="button"
                                     class="btn btn-navy btn-block cart-checkout-btn"
-                                    disabled="@(_submitting || _loadingCustomer)"
+                                    disabled="@(_submitting || _loadingCustomer || BelowMinimumOrder)"
                                     @onclick="OnCheckoutActionAsync">
                                 @(_submitting ? "Placing order…" : CheckoutActionButtonText)
                             </button>
@@ -905,6 +922,12 @@ else
         Settings.Saved.Orders.DeliveryFee > 0
             ? Settings.Saved.Orders.DeliveryFee
             : DefaultDeliveryFee;
+
+    private AdminOrderSettings OrderRules => Settings.Saved.Orders;
+
+    /// <summary>Minimum Order Amount applies to the item subtotal, before discounts and delivery fee.</summary>
+    private bool BelowMinimumOrder =>
+        OrderRules.MinimumOrder > 0 && Cart.SelectedItems.Any() && Cart.SelectedSubtotal < OrderRules.MinimumOrder;
 
     private decimal FulfillmentFee => _fulfillment == DeliveryMethod ? DeliveryFee : 0;
     private decimal GrandTotal => Math.Max(0, Cart.SelectedEstimatedTotal + FulfillmentFee);
@@ -1095,6 +1118,8 @@ else
         }
 
         try { await Settings.EnsureLoadedAsync(); } catch { /* use defaults */ }
+        _fulfillment = OrderRules.ResolvedDefaultFulfillment;
+        _paymentMethod = DefaultCashMethod;
         await LoadAuthenticatedCustomerAsync();
     }
 
@@ -1140,6 +1165,9 @@ else
 
     private void SetFulfillment(string method)
     {
+        if (!OrderRules.IsFulfillmentEnabled(method))
+            return;
+
         _fulfillment = method;
         _errors.Clear();
         _checkoutPhase = CheckoutPhaseInformation;
@@ -1390,6 +1418,12 @@ else
 
         if (!_agreeTerms)
             _errors["terms"] = "Please agree to the Terms of Service.";
+
+        if (!OrderRules.IsFulfillmentEnabled(_fulfillment))
+            _errors["fulfillment"] = "This fulfillment method is no longer available. Please choose another option.";
+
+        if (BelowMinimumOrder)
+            _errors["minimum"] = $"Minimum order amount is ₱{OrderRules.MinimumOrder:N0}.";
 
         if (_fulfillment == DeliveryMethod)
         {

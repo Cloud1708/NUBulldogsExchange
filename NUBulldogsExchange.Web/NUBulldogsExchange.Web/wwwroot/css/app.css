@@ -51,20 +51,6 @@ input {
     z-index: 1000;
 }
 
-.announcement-bar {
-    background: var(--navy);
-    color: white;
-    padding: 8px 20px;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 600;
-}
-
-    .announcement-bar span {
-        margin: 0 10px;
-        opacity: .6;
-    }
-
 .top-header {
     min-height: 78px;
     display: flex;
@@ -878,10 +864,6 @@ input {
 
 
 @media (max-width: 850px) {
-
-    .announcement-bar {
-        display: none;
-    }
 
     .top-header {
         flex-wrap: wrap;

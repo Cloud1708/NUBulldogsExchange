@@ -128,6 +128,12 @@ public interface IAppDatabase
     Task<string?> GetSettingAsync(string key);
     Task SetSettingAsync(string key, string value);
 
+    /// <summary>
+    /// Uploads a store image (e.g. the logo) to the same storage used for product images and
+    /// returns its URL, or null when storage is unavailable.
+    /// </summary>
+    Task<string?> UploadStoreImageAsync(string dataUrl) => Task.FromResult<string?>(null);
+
     // Stats
     Task<DashboardStats> GetDashboardStatsAsync();
     Task<StorefrontStats> GetStorefrontStatsAsync();

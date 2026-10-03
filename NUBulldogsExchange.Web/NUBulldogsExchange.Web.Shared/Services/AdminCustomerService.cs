@@ -4,10 +4,25 @@ namespace NUBulldogsExchange.Web.Shared.Services;
 
 public class AdminCustomerService
 {
+    public const int PageSize = 10;
+
+    public static readonly string[] StatusFilters = ["All Status", "Active", "Inactive"];
+    public static readonly string[] TypeFilters =
+        ["All Customer Types", "New", "Returning", "Frequent Buyer"];
+    public static readonly string[] SortOptions =
+    [
+        "newest",
+        "oldest",
+        "name-asc",
+        "name-desc",
+        "orders-desc",
+        "spent-desc",
+        "spent-asc"
+    ];
+
     private readonly IAppDatabase _db;
     private readonly AdminOrderService _orders;
     private readonly List<AdminCustomer> _customers = [];
-    private decimal _completedRevenue;
 
     private bool _loading;
 
@@ -17,7 +32,11 @@ public class AdminCustomerService
     {
         _db = db;
         _orders = orders;
-        _orders.OnChange += () => OnChange?.Invoke();
+        _orders.OnChange += () =>
+        {
+            EnrichFromOrders();
+            OnChange?.Invoke();
+        };
     }
 
     public async Task EnsureLoadedAsync()
@@ -29,17 +48,7 @@ public class AdminCustomerService
             await _orders.EnsureLoadedAsync();
             _customers.Clear();
             _customers.AddRange(await _db.GetCustomersAsync());
-            try
-            {
-                _completedRevenue = await _db.GetCompletedOrderRevenueAsync();
-            }
-            catch
-            {
-                _completedRevenue = _orders.All
-                    .Where(o => o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase))
-                    .Sum(o => o.Total);
-            }
-
+            EnrichFromOrders();
             OnChange?.Invoke();
         }
         finally
@@ -52,26 +61,86 @@ public class AdminCustomerService
 
     public int TotalCustomers => _customers.Count;
     public int ActiveCustomers => _customers.Count(c => c.IsActive);
-    public decimal TotalRevenue => _completedRevenue;
-    public string TotalRevenueLabel => $"₱{TotalRevenue:N0}";
+
+    public int NewThisMonth
+    {
+        get
+        {
+            var now = DateTime.Now;
+            return _customers.Count(c =>
+                c.DateJoined.Year == now.Year && c.DateJoined.Month == now.Month);
+        }
+    }
+
+    public string NewThisMonthCaption
+    {
+        get
+        {
+            var now = DateTime.Now;
+            return $"Joined in {now:MMMM yyyy}";
+        }
+    }
+
+    public int ReturningCustomers =>
+        _customers.Count(c => c.QualifyingOrderCount >= 2);
 
     public AdminCustomer? GetById(string id) =>
         _customers.FirstOrDefault(c => c.Id.Equals(id, StringComparison.OrdinalIgnoreCase));
 
-    public IEnumerable<AdminCustomer> Search(string? query)
+    public IEnumerable<AdminCustomer> Filter(
+        string? query,
+        string status = "All Status",
+        string customerType = "All Customer Types",
+        string sort = "newest")
     {
-        IEnumerable<AdminCustomer> result = _customers.OrderBy(c => c.Id);
+        IEnumerable<AdminCustomer> result = _customers;
 
-        if (string.IsNullOrWhiteSpace(query))
-            return result;
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            var term = query.Trim();
+            var digits = DigitsOnly(term);
+            result = result.Where(c =>
+                c.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                c.FirstName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                c.LastName.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                c.Email.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                c.Contact.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                (!string.IsNullOrEmpty(digits) && DigitsOnly(c.Contact).Contains(digits, StringComparison.Ordinal)) ||
+                c.Id.Contains(term, StringComparison.OrdinalIgnoreCase) ||
+                c.ShortId.Contains(term, StringComparison.OrdinalIgnoreCase));
+        }
 
-        var term = query.Trim();
-        return result.Where(c =>
-            c.Id.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-            c.Name.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-            c.Email.Contains(term, StringComparison.OrdinalIgnoreCase) ||
-            c.Contact.Contains(term, StringComparison.OrdinalIgnoreCase));
+        if (!string.IsNullOrWhiteSpace(status)
+            && !status.Equals("All Status", StringComparison.OrdinalIgnoreCase))
+        {
+            if (status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+                result = result.Where(c => c.IsActive);
+            else if (status.Equals("Inactive", StringComparison.OrdinalIgnoreCase))
+                result = result.Where(c => !c.IsActive);
+        }
+
+        if (!string.IsNullOrWhiteSpace(customerType)
+            && !customerType.Equals("All Customer Types", StringComparison.OrdinalIgnoreCase))
+        {
+            result = result.Where(c =>
+                c.CustomerType.Equals(customerType, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return sort switch
+        {
+            "oldest" => result.OrderBy(c => c.DateJoined).ThenBy(c => c.Id),
+            "name-asc" => result.OrderBy(c => c.Name, StringComparer.OrdinalIgnoreCase).ThenBy(c => c.Id),
+            "name-desc" => result.OrderByDescending(c => c.Name, StringComparer.OrdinalIgnoreCase).ThenBy(c => c.Id),
+            "orders-desc" => result.OrderByDescending(c => c.TotalOrders).ThenByDescending(c => c.DateJoined),
+            "spent-desc" => result.OrderByDescending(c => c.TotalSpent).ThenByDescending(c => c.DateJoined),
+            "spent-asc" => result.OrderBy(c => c.TotalSpent).ThenByDescending(c => c.DateJoined),
+            _ => result.OrderByDescending(c => c.DateJoined).ThenByDescending(c => c.Id)
+        };
     }
+
+    /// <summary>Backward-compatible search used by older call sites. </summary>
+    public IEnumerable<AdminCustomer> Search(string? query) =>
+        Filter(query);
 
     public IReadOnlyList<AdminOrder> OrdersForCustomer(string customerId)
     {
@@ -79,24 +148,29 @@ public class AdminCustomerService
         if (customer is null)
             return [];
 
-        return _orders.All
-            .Where(o =>
-                (!string.IsNullOrWhiteSpace(o.CustomerId) &&
-                 o.CustomerId.Equals(customer.Id, StringComparison.OrdinalIgnoreCase)) ||
-                o.CustomerEmail.Equals(customer.Email, StringComparison.OrdinalIgnoreCase))
+        return MatchOrders(customer)
             .OrderByDescending(o => o.Date)
             .ThenByDescending(o => o.Id)
             .ToList();
     }
 
     public int ActiveOrderCount(string customerId) =>
-        OrdersForCustomer(customerId).Count(o =>
-            !o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase) &&
-            !o.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase));
+        OrdersForCustomer(customerId).Count(IsActiveOrder);
 
     public int CompletedOrderCount(string customerId) =>
         OrdersForCustomer(customerId).Count(o =>
-            o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase));
+            OrderFlow.IsFulfilled(o.Fulfillment, o.Status)
+            || o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+            || o.Status.Equals("Delivered", StringComparison.OrdinalIgnoreCase));
+
+    public int CancelledOrderCount(string customerId) =>
+        OrdersForCustomer(customerId).Count(o =>
+            o.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase));
+
+    public decimal FulfilledSpend(string customerId) =>
+        OrdersForCustomer(customerId)
+            .Where(o => OrderFlow.IsFulfilled(o.Fulfillment, o.Status))
+            .Sum(o => o.Total);
 
     public async Task<bool> SetStatusAsync(string id, string status, int? actorUserId = null)
     {
@@ -141,6 +215,7 @@ public class AdminCustomerService
             DateJoined = DateTime.UtcNow,
             Status = "Active",
             TotalOrders = 0,
+            QualifyingOrderCount = 0,
             TotalSpent = 0
         };
     }
@@ -151,8 +226,66 @@ public class AdminCustomerService
             c.Email.Equals(email, StringComparison.OrdinalIgnoreCase));
         if (customer is null) return;
         customer.TotalOrders += 1;
+        customer.QualifyingOrderCount += 1;
         customer.TotalSpent += amount;
+        customer.LastOrderAt = DateTime.UtcNow;
         await _db.UpsertCustomerAsync(customer);
         OnChange?.Invoke();
     }
+
+    private void EnrichFromOrders()
+    {
+        if (_customers.Count == 0) return;
+
+        foreach (var customer in _customers)
+        {
+            var orders = MatchOrders(customer).ToList();
+            customer.TotalOrders = orders.Count;
+            customer.QualifyingOrderCount = orders.Count(o =>
+                !o.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase));
+            customer.TotalSpent = orders
+                .Where(o => OrderFlow.IsFulfilled(o.Fulfillment, o.Status))
+                .Sum(o => o.Total);
+
+            var last = orders
+                .Where(o => !o.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(o => o.Date)
+                .ThenByDescending(o => o.Id)
+                .FirstOrDefault()
+                ?? orders.OrderByDescending(o => o.Date).ThenByDescending(o => o.Id).FirstOrDefault();
+
+            customer.LastOrderAt = last?.Date;
+        }
+    }
+
+    private IEnumerable<AdminOrder> MatchOrders(AdminCustomer customer) =>
+        _orders.All.Where(o =>
+            (!string.IsNullOrWhiteSpace(o.CustomerId) &&
+             o.CustomerId.Equals(customer.Id, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrWhiteSpace(o.AuthUserId) &&
+             o.AuthUserId.Equals(customer.Id, StringComparison.OrdinalIgnoreCase)) ||
+            (!string.IsNullOrWhiteSpace(customer.Email) &&
+             o.CustomerEmail.Equals(customer.Email, StringComparison.OrdinalIgnoreCase)));
+
+    public static bool IsActiveOrder(AdminOrder o)
+    {
+        if (o.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (OrderFlow.IsFulfilled(o.Fulfillment, o.Status))
+            return false;
+        if (o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+            || o.Status.Equals("Delivered", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        return o.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase)
+            || o.Status.Equals("Confirmed", StringComparison.OrdinalIgnoreCase)
+            || o.Status.Equals("Processing", StringComparison.OrdinalIgnoreCase)
+            || o.Status.Equals("Preparing", StringComparison.OrdinalIgnoreCase)
+            || o.Status.Equals(OrderFlow.ReadyForPickup, StringComparison.OrdinalIgnoreCase)
+            || o.Status.Equals("Out for Delivery", StringComparison.OrdinalIgnoreCase)
+            || o.Status.Equals("Shipped", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string DigitsOnly(string value) =>
+        string.Concat((value ?? string.Empty).Where(char.IsDigit));
 }

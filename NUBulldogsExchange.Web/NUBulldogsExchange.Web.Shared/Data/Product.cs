@@ -72,8 +72,33 @@ public class ProductReview
     public string? ProductImageUrl { get; set; }
     /// <summary>Enriched product category for admin lists.</summary>
     public string? ProductCategory { get; set; }
+    /// <summary>Enriched from the linked order for admin search only — never shown to customers.</summary>
+    public string? CustomerEmail { get; set; }
+    /// <summary>
+    /// Enriched by admin: false when the linked order item was found but belongs to another
+    /// product or customer; null when order data was not available to cross-check.
+    /// </summary>
+    public bool? PurchaseConfirmed { get; set; }
 
-    public bool IsVerifiedPurchase => OrderItemId > 0 && !string.IsNullOrWhiteSpace(OrderId);
+    /// <summary>
+    /// submit_product_review only accepts the reviewer's own Delivered/Completed order item,
+    /// so a stored order link is the purchase proof.
+    /// </summary>
+    public bool IsVerifiedPurchase =>
+        OrderItemId > 0 && !string.IsNullOrWhiteSpace(OrderId) && PurchaseConfirmed != false;
+
+    public string ShortVariantLabel
+    {
+        get
+        {
+            var parts = new List<string>(2);
+            if (OrderFlow.HasDisplayColor(PurchasedColor))
+                parts.Add(PurchasedColor!.Trim());
+            if (OrderFlow.HasDisplaySize(PurchasedSize))
+                parts.Add(PurchasedSize!.Trim());
+            return parts.Count == 0 ? "No Variant" : string.Join(" / ", parts);
+        }
+    }
     public string StatusLabel => IsVisible ? "Visible" : "Hidden";
     public string StatusCssClass => IsVisible ? "is-visible" : "is-hidden";
 

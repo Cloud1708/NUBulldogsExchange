@@ -38,6 +38,7 @@ public class AdminInventoryService
     {
         if (_loaded) return;
         await _products.EnsureLoadedAsync();
+        await _settings.EnsureLoadedAsync();
         _history.Clear();
         foreach (var entry in await _db.GetInventoryHistoryAsync())
         {

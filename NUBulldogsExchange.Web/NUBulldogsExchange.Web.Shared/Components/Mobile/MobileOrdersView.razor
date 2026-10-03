@@ -346,9 +346,11 @@
 
     private void CancelOrder(string orderId)
     {
-        OrderService.Cancel(orderId);
+        var cancelled = OrderService.Cancel(orderId);
         CloseDetails();
-        Toast.Show($"Order #{orderId} has been cancelled.");
+        Toast.Show(cancelled
+            ? $"Order #{orderId} has been cancelled."
+            : "This order can no longer be cancelled.");
     }
 
     public void Dispose()

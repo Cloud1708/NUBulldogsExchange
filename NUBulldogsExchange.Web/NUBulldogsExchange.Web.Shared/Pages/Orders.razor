@@ -130,7 +130,7 @@ else
                                                 Order Received
                                             </button>
                                         }
-                                        @if (order.CanCancel)
+                                        @if (OrderService.CanCancel(order))
                                         {
                                             <button type="button" class="btn btn-cancel-order" @onclick="() => Cancel(order.Id)">
                                                 Cancel Order
@@ -309,10 +309,10 @@ else
 
     private void Cancel(string orderId)
     {
-        OrderService.Cancel(orderId);
+        var cancelled = OrderService.Cancel(orderId);
         if (_selectedOrder?.Id == orderId)
             _selectedOrder = OrderService.Orders.FirstOrDefault(o => o.Id == orderId);
-        Toast.Show($"Order {orderId} cancelled.");
+        Toast.Show(cancelled ? $"Order {orderId} cancelled." : "This order can no longer be cancelled.");
     }
 
     public void Dispose()

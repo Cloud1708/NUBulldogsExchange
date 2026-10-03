@@ -1,9 +1,13 @@
 @page "/admin/settings"
 @layout AdminLayout
+@using System.Globalization
+@using NUBulldogsExchange.Web.Shared.Components
 @using NUBulldogsExchange.Web.Shared.Data
 @using NUBulldogsExchange.Web.Shared.Layout
 @using NUBulldogsExchange.Web.Shared.Services
 @inject AdminSettingsService SettingsService
+@inject AuthService Auth
+@inject IAppDatabase Db
 @inject ToastService Toast
 @inject IJSRuntime JS
 @implements IDisposable
@@ -18,459 +22,733 @@
         </div>
     </header>
 
-    <div class="admin-settings-layout">
-        <aside class="admin-settings-nav" aria-label="Settings sections">
+    <div class="admin-settings-layout @(HasPreview ? "has-preview" : null)">
+        <nav class="admin-settings-nav" aria-label="Settings sections">
             @foreach (var tab in AdminSettingsService.Tabs)
             {
                 <button type="button"
-                        class="admin-settings-nav-item @(_tab == tab.Key ? "active" : "")"
+                        class="admin-settings-nav-item @(_tab == tab.Key ? "active" : null)"
+                        aria-current="@(_tab == tab.Key ? "page" : null)"
                         @onclick="() => SwitchTab(tab.Key)">
-                    <Icon Name="@tab.Icon" Size="16" />
+                    <Icon Name="@tab.Icon" Size="17" />
                     <span>@tab.Label</span>
+                    @if (SettingsService.IsSectionDirty(tab.Key))
+                    {
+                        <span class="as-nav-dot" title="Unsaved changes" aria-label="Unsaved changes"></span>
+                    }
                 </button>
             }
-        </aside>
+        </nav>
 
         <div class="admin-settings-main">
-            @if (_tab == "store")
+            @if (!SettingsService.IsLoaded)
             {
-                <section class="admin-card admin-settings-card">
-                    <div class="admin-card-head">
-                        <div>
-                            <h2>Store Information</h2>
-                            <p>Basic details about your store</p>
-                        </div>
+                <section class="as-card"><p class="as-muted">Loading settings...</p></section>
+            }
+            else if (_tab == "store")
+            {
+                <section class="as-card">
+                    <header class="as-card-head">
+                        <h2>Store Information</h2>
+                        <p>Basic details about your store.</p>
+                    </header>
+
+                    <div class="as-group">
+                        <h3>General Information</h3>
+                        <label class="as-field">
+                            <span>Store Name <em>*</em></span>
+                            <input class="@ErrClass("name")" value="@Draft.Store.Name" maxlength="80"
+                                   @oninput="e => Edit(() => Draft.Store.Name = Val(e))" />
+                            @FieldError("name")
+                        </label>
+                        <label class="as-field">
+                            <span>Store Email <em>*</em></span>
+                            <input type="email" class="@ErrClass("email")" value="@Draft.Store.Email"
+                                   @oninput="e => Edit(() => Draft.Store.Email = Val(e))" />
+                            @FieldError("email")
+                        </label>
                     </div>
 
-                    <div class="admin-settings-form">
-                        <label class="admin-settings-row">
-                            <span>Store Name</span>
-                            <input value="@Draft.Store.Name" @oninput="e => OnStore(s => s.Name = Val(e))" />
-                        </label>
-                        <label class="admin-settings-row">
-                            <span>Store Email</span>
-                            <input type="email" value="@Draft.Store.Email" @oninput="e => OnStore(s => s.Email = Val(e))" />
-                        </label>
-                        <label class="admin-settings-row">
-                            <span>Contact Number</span>
-                            <input value="@Draft.Store.Contact" @oninput="e => OnStore(s => s.Contact = Val(e))" />
-                        </label>
-                        <label class="admin-settings-row">
-                            <span>Store Address</span>
-                            <input value="@Draft.Store.Address" @oninput="e => OnStore(s => s.Address = Val(e))" />
-                        </label>
+                    <div class="as-group">
+                        <h3>Contact Information</h3>
+                        <div class="as-grid-2">
+                            <label class="as-field">
+                                <span>Contact Number <em>*</em></span>
+                                <div class="as-input-icon">
+                                    <Icon Name="phone" Size="16" />
+                                    <input type="tel" class="@ErrClass("contact")" value="@Draft.Store.Contact"
+                                           @oninput="e => Edit(() => Draft.Store.Contact = Val(e))" />
+                                </div>
+                                @FieldError("contact")
+                            </label>
+                            <label class="as-field">
+                                <span>Store Address <em>*</em></span>
+                                <div class="as-input-icon is-multiline">
+                                    <Icon Name="map-pin" Size="16" />
+                                    <textarea rows="2" class="@ErrClass("address")" value="@Draft.Store.Address"
+                                              @oninput="e => Edit(() => Draft.Store.Address = Val(e))"></textarea>
+                                </div>
+                                @FieldError("address")
+                            </label>
+                        </div>
                     </div>
+                    <p class="as-muted as-footnote">Shown in the storefront header and footer.</p>
                 </section>
             }
             else if (_tab == "branding")
             {
-                <section class="admin-card admin-settings-card">
-                    <div class="admin-card-head">
-                        <div>
-                            <h2>Branding</h2>
-                            <p>Customize the appearance of your store</p>
+                <section class="as-card">
+                    <header class="as-card-head">
+                        <h2>Branding</h2>
+                        <p>Customize the appearance of your store.</p>
+                    </header>
+
+                    <div class="as-group">
+                        <h3>Store Logo</h3>
+                        <div class="as-logo-row">
+                            <StoreBrandMark LogoUrl="@Draft.Branding.LogoUrl" StoreName="@Draft.Store.Name" CssClass="as-logo-preview"
+                                            Style="@($"background:{PreviewPrimary};color:{PreviewAccent}")" />
+                            <div class="as-logo-actions">
+                                <label class="btn btn-outline-navy as-file-btn @(_uploadingLogo ? "is-disabled" : null)">
+                                    <Icon Name="upload" Size="15" />
+                                    @(_uploadingLogo ? "Uploading..." : "Change Logo")
+                                    <InputFile OnChange="OnLogoSelected" accept=".png,.jpg,.jpeg,.webp" disabled="@_uploadingLogo" />
+                                </label>
+                                @if (Draft.Branding.HasLogo)
+                                {
+                                    <button type="button" class="as-link-btn" disabled="@_uploadingLogo"
+                                            @onclick="() => Edit(() => Draft.Branding.LogoUrl = string.Empty)">
+                                        Use default NU badge
+                                    </button>
+                                }
+                                <small class="as-muted">PNG, JPG or WEBP, up to 2MB. Square images work best.</small>
+                                @if (!string.IsNullOrEmpty(_logoError))
+                                {
+                                    <span class="as-error">@_logoError</span>
+                                }
+                            </div>
                         </div>
                     </div>
-                    <div class="admin-settings-form">
-                        <div class="admin-settings-row">
-                            <span>Store Logo</span>
-                            <div class="admin-settings-logo">
-                                <div class="admin-settings-logo-preview" style="@($"background:{Draft.Branding.PrimaryColor}")">NU</div>
-                                <button type="button" class="btn btn-outline-navy" @onclick="NotifyLogoDemo">
-                                    Change Logo
-                                </button>
-                            </div>
+
+                    <div class="as-group">
+                        <h3>Colors</h3>
+                        <div class="as-grid-2">
+                            <label class="as-field">
+                                <span>Primary Color <em>*</em></span>
+                                <div class="as-color @ErrClass("primary", live: true)">
+                                    <input type="color" aria-label="Pick primary color" value="@PreviewPrimary.ToLowerInvariant()"
+                                           @oninput="e => Edit(() => Draft.Branding.PrimaryColor = Val(e).ToUpperInvariant())" />
+                                    <input value="@Draft.Branding.PrimaryColor" maxlength="7" spellcheck="false"
+                                           @oninput="e => Edit(() => Draft.Branding.PrimaryColor = Val(e))" />
+                                </div>
+                                @FieldError("primary", live: true)
+                            </label>
+                            <label class="as-field">
+                                <span>Accent Color <em>*</em></span>
+                                <div class="as-color @ErrClass("accent", live: true)">
+                                    <input type="color" aria-label="Pick accent color" value="@PreviewAccent.ToLowerInvariant()"
+                                           @oninput="e => Edit(() => Draft.Branding.AccentColor = Val(e).ToUpperInvariant())" />
+                                    <input value="@Draft.Branding.AccentColor" maxlength="7" spellcheck="false"
+                                           @oninput="e => Edit(() => Draft.Branding.AccentColor = Val(e))" />
+                                </div>
+                                @FieldError("accent", live: true)
+                            </label>
                         </div>
-                        <label class="admin-settings-row">
-                            <span>Primary Color</span>
-                            <div class="admin-settings-color">
-                                <input type="color" value="@Draft.Branding.PrimaryColor" @oninput="e => OnBrand(b => b.PrimaryColor = Val(e))" />
-                                <input value="@Draft.Branding.PrimaryColor" @oninput="e => OnBrand(b => b.PrimaryColor = Val(e))" />
-                            </div>
+                        <small class="as-muted">Applied to the storefront header, buttons and highlights after you save.</small>
+                    </div>
+
+                    <div class="as-group">
+                        <h3>Store Tagline</h3>
+                        <label class="as-field">
+                            <span>Tagline <em>*</em></span>
+                            <textarea rows="2" class="@ErrClass("tagline")" maxlength="@AdminBrandingSettings.TaglineMaxLength"
+                                      value="@Draft.Branding.Tagline"
+                                      @oninput="e => Edit(() => Draft.Branding.Tagline = Val(e))"></textarea>
+                            <small class="as-counter">@((Draft.Branding.Tagline ?? string.Empty).Length) / @AdminBrandingSettings.TaglineMaxLength</small>
+                            @FieldError("tagline")
                         </label>
-                        <label class="admin-settings-row">
-                            <span>Accent Color</span>
-                            <div class="admin-settings-color">
-                                <input type="color" value="@Draft.Branding.AccentColor" @oninput="e => OnBrand(b => b.AccentColor = Val(e))" />
-                                <input value="@Draft.Branding.AccentColor" @oninput="e => OnBrand(b => b.AccentColor = Val(e))" />
-                            </div>
-                        </label>
-                        <label class="admin-settings-row">
-                            <span>Store Tagline</span>
-                            <input value="@Draft.Branding.Tagline" @oninput="e => OnBrand(b => b.Tagline = Val(e))" />
-                        </label>
-                        <div class="admin-settings-preview" style="@($"--preview-navy:{Draft.Branding.PrimaryColor};--preview-gold:{Draft.Branding.AccentColor}")">
-                            <strong>Preview</strong>
-                            <p>@Draft.Branding.Tagline</p>
-                        </div>
                     </div>
                 </section>
             }
             else if (_tab == "orders")
             {
-                <section class="admin-card admin-settings-card">
-                    <div class="admin-card-head">
-                        <div>
-                            <h2>Order Settings</h2>
-                            <p>Configure how customer orders are processed</p>
+                <section class="as-card">
+                    <header class="as-card-head">
+                        <h2>Order Settings</h2>
+                        <p>Configure how customer orders are processed.</p>
+                    </header>
+
+                    <div class="as-group">
+                        <h3>Fulfillment Methods</h3>
+                        @ToggleRow("Campus Pickup", "Customers can collect orders on campus.", Draft.Orders.CampusPickup, v => SetFulfillmentEnabled(OrderFlow.CampusPickup, v))
+                        @ToggleRow("Delivery", "Allow customer orders to be delivered.", Draft.Orders.Delivery, v => SetFulfillmentEnabled(OrderFlow.Delivery, v))
+                        @FieldError("fulfillment", live: true)
+
+                        <div class="as-grid-2 as-group-gap">
+                            <label class="as-field">
+                                <span>Default Fulfillment Method</span>
+                                <select class="@ErrClass("default", live: true)" value="@Draft.Orders.ResolvedDefaultFulfillment"
+                                        disabled="@(Draft.Orders.EnabledFulfillments.Count == 0)"
+                                        @onchange="e => Edit(() => Draft.Orders.DefaultFulfillment = Val(e))">
+                                    @foreach (var method in Draft.Orders.EnabledFulfillments)
+                                    {
+                                        <option value="@method">@method</option>
+                                    }
+                                </select>
+                                <small class="as-muted">Pre-selected at checkout. Existing orders are not changed.</small>
+                            </label>
+                            @if (Draft.Orders.Delivery)
+                            {
+                                <label class="as-field">
+                                    <span>Delivery Fee <em>*</em></span>
+                                    <div class="as-input-prefix">
+                                        <span>₱</span>
+                                        <input type="number" min="1" step="1" class="@ErrClass("deliveryFee")"
+                                               value="@Draft.Orders.DeliveryFee.ToString("0.##", CultureInfo.InvariantCulture)"
+                                               @onchange="e => Edit(() => Draft.Orders.DeliveryFee = Dec(e, Draft.Orders.DeliveryFee))" />
+                                    </div>
+                                    <small class="as-muted">Added to Delivery orders at checkout.</small>
+                                    @FieldError("deliveryFee")
+                                </label>
+                            }
                         </div>
                     </div>
-                    <div class="admin-settings-form">
-                        <div class="admin-settings-row">
-                            <span>Allow Campus Pickup</span>
-                            <label class="admin-toggle">
-                                <input type="checkbox" checked="@Draft.Orders.CampusPickup" @onchange="e => OnOrders(o => o.CampusPickup = Bool(e))" />
-                                <span></span>
+
+                    <div class="as-group">
+                        <h3>Order Rules</h3>
+                        <div class="as-grid-2">
+                            <label class="as-field">
+                                <span>Minimum Order Amount</span>
+                                <div class="as-input-prefix">
+                                    <span>₱</span>
+                                    <input type="number" min="0" step="1" class="@ErrClass("minimum")"
+                                           value="@Draft.Orders.MinimumOrder.ToString("0.##", CultureInfo.InvariantCulture)"
+                                           @onchange="e => Edit(() => Draft.Orders.MinimumOrder = Dec(e, 0))" />
+                                </div>
+                                <small class="as-muted">Item subtotal required to check out. Use 0 for no minimum.</small>
+                                @FieldError("minimum")
+                            </label>
+                            <label class="as-field">
+                                <span>Estimated Processing Time <em>*</em></span>
+                                <input class="@ErrClass("processing")" value="@Draft.Orders.ProcessingTime" maxlength="40"
+                                       @oninput="e => Edit(() => Draft.Orders.ProcessingTime = Val(e))" />
+                                <small class="as-muted">Shown at checkout and on the order confirmation for pickup orders.</small>
+                                @FieldError("processing")
                             </label>
                         </div>
-                        <div class="admin-settings-row">
-                            <span>Allow Delivery</span>
-                            <label class="admin-toggle">
-                                <input type="checkbox" checked="@Draft.Orders.Delivery" @onchange="e => OnOrders(o => o.Delivery = Bool(e))" />
-                                <span></span>
+                    </div>
+
+                    <div class="as-group">
+                        <h3>Customer Cancellation</h3>
+                        @ToggleRow("Allow Order Cancellation", "Let customers cancel their own orders from My Orders.", Draft.Orders.AllowCancellation, v => Edit(() => Draft.Orders.AllowCancellation = v))
+                        @if (Draft.Orders.AllowCancellation)
+                        {
+                            <label class="as-field as-narrow">
+                                <span>Cancellation Time Limit</span>
+                                <div class="as-input-suffix">
+                                    <input type="number" min="1" max="@AdminOrderSettings.MaxCancellationHours" step="1" class="@ErrClass("cancelHours")"
+                                           value="@Draft.Orders.CancellationHours"
+                                           @onchange="e => Edit(() => Draft.Orders.CancellationHours = Int(e, Draft.Orders.CancellationHours))" />
+                                    <span>hours</span>
+                                </div>
+                                @FieldError("cancelHours")
                             </label>
-                        </div>
-                        <label class="admin-settings-row">
-                            <span>Default Fulfillment Method</span>
-                            <select value="@Draft.Orders.DefaultFulfillment" @onchange="e => OnOrders(o => o.DefaultFulfillment = Val(e))">
-                                <option>Campus Pickup</option>
-                                <option>Delivery</option>
-                            </select>
-                        </label>
-                        <div class="admin-settings-row">
-                            <span>Order Cancellation</span>
-                            <label class="admin-toggle">
-                                <input type="checkbox" checked="@Draft.Orders.AllowCancellation" @onchange="e => OnOrders(o => o.AllowCancellation = Bool(e))" />
-                                <span></span>
-                            </label>
-                        </div>
-                        <label class="admin-settings-row">
-                            <span>Cancellation Time Limit (hours)</span>
-                            <input type="number" min="1" value="@Draft.Orders.CancellationHours" @oninput="e => OnOrders(o => o.CancellationHours = Int(e, 24))" />
-                        </label>
-                        <label class="admin-settings-row">
-                            <span>Minimum Order Amount</span>
-                            <input type="number" min="0" value="@Draft.Orders.MinimumOrder" @oninput="e => OnOrders(o => o.MinimumOrder = Dec(e))" />
-                        </label>
-                        <label class="admin-settings-row">
-                            <span>Order Processing Time</span>
-                            <input value="@Draft.Orders.ProcessingTime" @oninput="e => OnOrders(o => o.ProcessingTime = Val(e))" />
-                        </label>
+                            <p class="as-helper">
+                                Customers may cancel within @Draft.Orders.CancellationHours @(Draft.Orders.CancellationHours == 1 ? "hour" : "hours")
+                                after placing an order, while it is still Pending, Confirmed or Processing.
+                            </p>
+                        }
+                        else
+                        {
+                            <p class="as-helper">Customers cannot cancel orders themselves. Admins can still cancel from Orders.</p>
+                        }
                     </div>
                 </section>
             }
             else if (_tab == "inventory")
             {
-                <section class="admin-card admin-settings-card">
-                    <div class="admin-card-head">
-                        <div>
-                            <h2>Inventory Settings</h2>
-                            <p>Configure stock monitoring preferences</p>
-                        </div>
-                    </div>
-                    <div class="admin-settings-form">
-                        <label class="admin-settings-row">
+                <section class="as-card">
+                    <header class="as-card-head">
+                        <h2>Inventory Settings</h2>
+                        <p>Configure stock monitoring preferences.</p>
+                    </header>
+
+                    <div class="as-group">
+                        <h3>Stock Monitoring</h3>
+                        <label class="as-field as-narrow">
                             <span>Default Low Stock Threshold</span>
-                            <input type="number" min="1" value="@Draft.Inventory.LowStockThreshold" @oninput="e => OnInventory(i => i.LowStockThreshold = Int(e, 20))" />
+                            <div class="as-input-suffix">
+                                <input type="number" min="0" step="1" class="@ErrClass("threshold")"
+                                       value="@Draft.Inventory.LowStockThreshold"
+                                       @onchange="e => Edit(() => Draft.Inventory.LowStockThreshold = Int(e, Draft.Inventory.LowStockThreshold))" />
+                                <span>units</span>
+                            </div>
+                            @FieldError("threshold")
                         </label>
-                        <div class="admin-settings-row">
-                            <span>Allow Backorders</span>
-                            <label class="admin-toggle">
-                                <input type="checkbox" checked="@Draft.Inventory.AllowBackorders" @onchange="e => OnInventory(i => i.AllowBackorders = Bool(e))" />
-                                <span></span>
-                            </label>
-                        </div>
-                        <div class="admin-settings-row">
-                            <span>Notify When Low Stock</span>
-                            <label class="admin-toggle">
-                                <input type="checkbox" checked="@Draft.Inventory.LowStockAlerts" @onchange="e => OnInventory(i => i.LowStockAlerts = Bool(e))" />
-                                <span></span>
-                            </label>
-                        </div>
-                        <div class="admin-settings-row">
-                            <span>Notify When Out of Stock</span>
-                            <label class="admin-toggle">
-                                <input type="checkbox" checked="@Draft.Inventory.OutOfStockAlerts" @onchange="e => OnInventory(i => i.OutOfStockAlerts = Bool(e))" />
-                                <span></span>
-                            </label>
-                        </div>
-                        <div class="admin-settings-row">
-                            <span>Reserve Stock for Pending Orders</span>
-                            <label class="admin-toggle">
-                                <input type="checkbox" checked="@Draft.Inventory.ReservePendingStock" @onchange="e => OnInventory(i => i.ReservePendingStock = Bool(e))" />
-                                <span></span>
-                            </label>
-                        </div>
+                        <p class="as-helper">
+                            Used on the Inventory page when a product does not have its own low-stock level.
+                            A product or variant is Low Stock when its quantity is at or below the threshold.
+                        </p>
                     </div>
                 </section>
             }
             else if (_tab == "notifications")
             {
-                <section class="admin-card admin-settings-card">
-                    <div class="admin-card-head">
+                <section class="as-card">
+                    <header class="as-card-head">
+                        <h2>Notification Settings</h2>
+                        <p>Choose which store activities generate notifications.</p>
+                    </header>
+
+                    <div class="as-notice">
+                        <Icon Name="bell" Size="20" />
                         <div>
-                            <h2>Notification Settings</h2>
-                            <p>Choose which store activities generate notifications</p>
+                            <strong>No configurable notifications yet</strong>
+                            <p>
+                                Store activity such as new orders, cancellations, low stock or new customers does not create
+                                Admin notifications yet, so there is nothing to switch on or off here. Toggles will appear once
+                                a notification is actually generated by the system.
+                            </p>
+                            <p>Customers still receive their own order-status notifications automatically.</p>
                         </div>
-                    </div>
-                    <div class="admin-settings-form">
-                        @RenderToggle("New Orders", Draft.Notifications.NewOrders, v => OnNotifs(n => n.NewOrders = v))
-                        @RenderToggle("Order Cancellations", Draft.Notifications.CancelledOrders, v => OnNotifs(n => n.CancelledOrders = v))
-                        @RenderToggle("Order Ready for Pickup", Draft.Notifications.ReadyForPickup, v => OnNotifs(n => n.ReadyForPickup = v))
-                        @RenderToggle("Low Stock", Draft.Notifications.LowStock, v => OnNotifs(n => n.LowStock = v))
-                        @RenderToggle("Out of Stock", Draft.Notifications.OutOfStock, v => OnNotifs(n => n.OutOfStock = v))
-                        @RenderToggle("New Customer Registrations", Draft.Notifications.NewCustomers, v => OnNotifs(n => n.NewCustomers = v))
-                        @RenderToggle("Promotion Expiry", Draft.Notifications.PromotionExpiry, v => OnNotifs(n => n.PromotionExpiry = v))
-                        @RenderToggle("Staff Activity", Draft.Notifications.StaffActivity, v => OnNotifs(n => n.StaffActivity = v))
                     </div>
                 </section>
             }
             else if (_tab == "security")
             {
-                <section class="admin-card admin-settings-card">
-                    <div class="admin-card-head">
-                        <div>
-                            <h2>Security</h2>
-                            <p>Manage Admin Portal security preferences</p>
-                        </div>
-                    </div>
-                    <div class="admin-settings-form">
-                        @RenderToggle("Two-Factor Authentication", Draft.Security.TwoFactor, v => OnSecurity(s => s.TwoFactor = v))
-                        @RenderToggle("Login Notifications", Draft.Security.LoginAlerts, v => OnSecurity(s => s.LoginAlerts = v))
-                        <label class="admin-settings-row">
-                            <span>Session Timeout (minutes)</span>
-                            <input type="number" min="5" value="@Draft.Security.SessionTimeout" @oninput="e => OnSecurity(s => s.SessionTimeout = Int(e, 30))" />
-                        </label>
-                        @RenderToggle("Require Strong Passwords", Draft.Security.StrongPasswords, v => OnSecurity(s => s.StrongPasswords = v))
+                <section class="as-card">
+                    <header class="as-card-head">
+                        <h2>Security</h2>
+                        <p>Manage Admin Portal security preferences.</p>
+                    </header>
+
+                    <div class="as-group">
+                        <h3>Account Security</h3>
+                        <ul class="as-facts">
+                            <li><Icon Name="lock" Size="15" /> Passwords must be at least @AuthValidation.MinPasswordLength characters for every account.</li>
+                            <li><Icon Name="shield" Size="15" /> Only Admin accounts can open Settings and Staff Management.</li>
+                            <li><Icon Name="refresh" Size="15" /> New staff accounts can be required to change their temporary password on first login.</li>
+                        </ul>
                     </div>
                 </section>
 
-                <section class="admin-card admin-settings-card">
-                    <div class="admin-card-head">
-                        <div>
-                            <h2>Change Password</h2>
-                            <p>Frontend demo only — passwords are not stored.</p>
-                        </div>
-                    </div>
-                    <div class="admin-settings-form">
-                        <label class="admin-settings-row">
-                            <span>Current Password</span>
-                            <input type="password" @bind="_currentPassword" @bind:event="oninput" autocomplete="current-password" />
-                        </label>
-                        <label class="admin-settings-row">
-                            <span>New Password</span>
-                            <input type="password" @bind="_newPassword" @bind:event="oninput" autocomplete="new-password" />
-                        </label>
-                        <label class="admin-settings-row">
-                            <span>Confirm New Password</span>
-                            <input type="password" @bind="_confirmPassword" @bind:event="oninput" autocomplete="new-password" />
-                        </label>
+                <section class="as-card">
+                    <header class="as-card-head">
+                        <h2>Change Password</h2>
+                        <p>Update the password for @(Auth.Email ?? "your account").</p>
+                    </header>
+
+                    <form class="as-password-form" @onsubmit="UpdatePasswordAsync" @onsubmit:preventDefault="true" novalidate>
+                        @PasswordField("Current Password", _currentPassword, v => _currentPassword = v, _showCurrent, () => _showCurrent = !_showCurrent, "current-password")
+                        @PasswordField("New Password", _newPassword, v => _newPassword = v, _showNew, () => _showNew = !_showNew, "new-password")
+
+                        @if (_newPassword.Length > 0)
+                        {
+                            var score = PasswordScore(_newPassword);
+                            var level = score >= 5 ? "strong" : score >= 3 ? "medium" : "weak";
+                            <div class="as-strength is-@level">
+                                <div class="as-strength-bar"><span style="@($"width:{score * 20}%")"></span></div>
+                                <small>Strength: @(level == "strong" ? "Strong" : level == "medium" ? "Medium" : "Weak")</small>
+                            </div>
+                        }
+
+                        <ul class="as-checklist">
+                            @CheckItem(_newPassword.Length >= AuthValidation.MinPasswordLength, $"At least {AuthValidation.MinPasswordLength} characters (required)")
+                            @CheckItem(_newPassword.Any(char.IsUpper), "Uppercase letter (recommended)")
+                            @CheckItem(_newPassword.Any(char.IsLower), "Lowercase letter (recommended)")
+                            @CheckItem(_newPassword.Any(char.IsDigit), "Number (recommended)")
+                            @CheckItem(_newPassword.Any(ch => !char.IsLetterOrDigit(ch)), "Special character (recommended)")
+                        </ul>
+
+                        @PasswordField("Confirm New Password", _confirmPassword, v => _confirmPassword = v, _showConfirm, () => _showConfirm = !_showConfirm, "new-password")
+
                         @if (!string.IsNullOrEmpty(_passwordError))
                         {
-                            <p class="admin-staff-error">@_passwordError</p>
+                            <p class="as-error as-form-error">@_passwordError</p>
                         }
-                        <div class="admin-settings-password-actions">
-                            <button type="button" class="btn btn-navy" @onclick="UpdatePassword">Update Password</button>
+
+                        <div class="as-password-actions">
+                            <button type="submit" class="btn btn-navy" disabled="@_changingPassword">
+                                <Icon Name="lock" Size="15" />
+                                @(_changingPassword ? "Updating..." : "Update Password")
+                            </button>
                         </div>
-                    </div>
+                    </form>
                 </section>
             }
 
-            <div class="admin-settings-footer">
-                <button type="button"
-                        class="btn btn-outline-navy"
-                        disabled="@(!SettingsService.HasUnsavedChanges)"
-                        @onclick="Discard">
-                    Discard Changes
-                </button>
-                <button type="button"
-                        class="btn btn-navy admin-settings-save"
-                        disabled="@(!SettingsService.HasUnsavedChanges)"
-                        @onclick="Save">
-                    <Icon Name="save" Size="15" />
-                    Save Settings
-                </button>
-            </div>
+            @if (IsEditable && SettingsService.IsLoaded)
+            {
+                <div class="as-savebar">
+                    @if (SectionDirty)
+                    {
+                        <span class="as-unsaved"><span class="as-unsaved-dot"></span>Unsaved changes</span>
+                    }
+                    <button type="button" class="btn btn-outline-navy" disabled="@(!SectionDirty || _saving)" @onclick="DiscardSection">
+                        Discard Changes
+                    </button>
+                    <button type="button" class="btn btn-navy as-save-btn" disabled="@(!SectionDirty || _saving || _uploadingLogo)" @onclick="SaveSectionAsync">
+                        <Icon Name="save" Size="15" />
+                        @(_saving ? "Saving..." : "Save Settings")
+                    </button>
+                </div>
+            }
         </div>
+
+        @if (HasPreview && SettingsService.IsLoaded)
+        {
+            <aside class="as-preview-card">
+                <header class="as-card-head">
+                    <h2>@(_tab == "branding" ? "Live Brand Preview" : "Store Preview")</h2>
+                    <p>This is how your store information appears to customers.</p>
+                </header>
+                <div class="as-store-preview" style="@($"--pv-primary:{PreviewPrimary};--pv-accent:{PreviewAccent}")">
+                    <div class="as-pv-top">
+                        <StoreBrandMark LogoUrl="@Draft.Branding.LogoUrl" StoreName="@Draft.Store.Name" CssClass="as-pv-logo" />
+                        <div>
+                            <strong>@(string.IsNullOrWhiteSpace(Draft.Store.Name) ? "Store name" : Draft.Store.Name)</strong>
+                            <span>@Draft.Branding.Tagline</span>
+                        </div>
+                    </div>
+                    <div class="as-pv-bar">
+                        <div class="as-pv-search"><Icon Name="search" Size="13" /> Search products...</div>
+                        <Icon Name="user" Size="16" />
+                        <Icon Name="cart" Size="16" />
+                    </div>
+                    <div class="as-pv-nav"><span>Home</span><span>Shop</span><span>New Arrivals</span><span>Best Sellers</span></div>
+                    <div class="as-pv-hero">
+                        <p>@(string.IsNullOrWhiteSpace(Draft.Branding.Tagline) ? "Your tagline appears here." : Draft.Branding.Tagline)</p>
+                        <span class="as-pv-cta">Shop Now</span>
+                    </div>
+                    <div class="as-pv-footer">
+                        <span><Icon Name="mail" Size="12" /> @Draft.Store.Email</span>
+                        <span><Icon Name="phone" Size="12" /> @Draft.Store.Contact</span>
+                        <span><Icon Name="map-pin" Size="12" /> @Draft.Store.Address</span>
+                    </div>
+                </div>
+                <div class="as-swatches">
+                    <span><i style="@($"background:{PreviewPrimary}")"></i>Primary @PreviewPrimary</span>
+                    <span><i style="@($"background:{PreviewAccent}")"></i>Accent @PreviewAccent</span>
+                </div>
+            </aside>
+        }
     </div>
 </div>
 
-@if (_showUnsavedPrompt)
+@if (_pendingTab is not null)
 {
     <div class="admin-modal-backdrop" @onclick="KeepEditing">
-        <div class="admin-modal admin-promo-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
-            <h2>You have unsaved changes.</h2>
-            <p class="admin-modal-note">Save before switching tabs, or discard your edits.</p>
+        <div class="admin-modal as-confirm" role="dialog" aria-modal="true" aria-labelledby="as-unsaved-title" @onclick:stopPropagation="true">
+            <h2 id="as-unsaved-title">You have unsaved changes.</h2>
+            <p class="admin-modal-note">Save this section before switching, or discard your edits.</p>
             <div class="admin-modal-actions">
                 <button type="button" class="btn btn-outline-navy" @onclick="DiscardAndSwitch">Discard</button>
                 <button type="button" class="btn btn-outline-navy" @onclick="KeepEditing">Keep Editing</button>
-                <button type="button" class="btn btn-navy" @onclick="SaveAndSwitch">Save</button>
+                <button type="button" class="btn btn-navy" disabled="@_saving" @onclick="SaveAndSwitchAsync">Save</button>
             </div>
         </div>
     </div>
 }
 
 @code {
+    private const long MaxLogoBytes = 2 * 1024 * 1024;
+
     private string _tab = "store";
     private string? _pendingTab;
-    private bool _showUnsavedPrompt;
-    private bool _storageLoaded;
+    private bool _saving;
+    private readonly HashSet<string> _submitted = [];
+
+    private bool _uploadingLogo;
+    private string? _logoError;
 
     private string _currentPassword = string.Empty;
     private string _newPassword = string.Empty;
     private string _confirmPassword = string.Empty;
+    private bool _showCurrent;
+    private bool _showNew;
+    private bool _showConfirm;
+    private bool _changingPassword;
     private string? _passwordError;
 
     private AdminPortalSettings Draft => SettingsService.Draft;
+    private bool HasPreview => _tab is "store" or "branding";
+    private bool IsEditable => AdminSettingsService.EditableSections.Contains(_tab);
+    private bool SectionDirty => IsEditable && SettingsService.IsSectionDirty(_tab);
+    private Dictionary<string, string> Errors => IsEditable ? SettingsService.ValidateSection(_tab) : [];
 
-    protected override void OnInitialized() => SettingsService.OnChange += Refresh;
+    private string PreviewPrimary =>
+        AdminSettingsValidation.SafeColor(Draft.Branding.PrimaryColor,
+            AdminSettingsValidation.SafeColor(SettingsService.Saved.Branding.PrimaryColor, AdminBrandingSettings.DefaultPrimary));
 
-    protected override async Task OnAfterRenderAsync(bool firstRender)
+    private string PreviewAccent =>
+        AdminSettingsValidation.SafeColor(Draft.Branding.AccentColor,
+            AdminSettingsValidation.SafeColor(SettingsService.Saved.Branding.AccentColor, AdminBrandingSettings.DefaultAccent));
+
+    protected override async Task OnInitializedAsync()
     {
-        if (!firstRender || _storageLoaded) return;
-        _storageLoaded = true;
-        try
-        {
-            var loadedFromDb = await SettingsService.EnsureLoadedAsync();
-            if (!loadedFromDb)
-            {
-                var json = await JS.InvokeAsync<string?>("localStorage.getItem", AdminSettingsService.StorageKey);
-                SettingsService.LoadFromStorageJson(json);
-            }
-        }
-        catch
-        {
-            // localStorage may be unavailable.
-        }
-
-        await InvokeAsync(StateHasChanged);
+        SettingsService.OnChange += Refresh;
+        await SettingsService.EnsureLoadedAsync();
     }
 
-    private RenderFragment RenderToggle(string label, bool value, Action<bool> set) => __builder =>
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    private void Edit(Action mutate)
     {
-        <div class="admin-settings-row">
-            <span>@label</span>
+        mutate();
+        SettingsService.NotifyDraftChanged();
+    }
+
+    private void SetFulfillmentEnabled(string method, bool enabled)
+    {
+        Edit(() =>
+        {
+            if (method == OrderFlow.CampusPickup) Draft.Orders.CampusPickup = enabled;
+            else Draft.Orders.Delivery = enabled;
+
+            if (!Draft.Orders.IsFulfillmentEnabled(Draft.Orders.DefaultFulfillment) && Draft.Orders.EnabledFulfillments.Count > 0)
+                Draft.Orders.DefaultFulfillment = Draft.Orders.EnabledFulfillments[0];
+        });
+    }
+
+    private bool ShowErrorFor(bool live) => live || _submitted.Contains(_tab);
+
+    private string? ErrClass(string key, bool live = false) =>
+        ShowErrorFor(live) && Errors.ContainsKey(key) ? "is-invalid" : null;
+
+    private RenderFragment FieldError(string key, bool live = false) => __builder =>
+    {
+        if (ShowErrorFor(live) && Errors.TryGetValue(key, out var message))
+        {
+            <span class="as-error" role="alert">@message</span>
+        }
+    };
+
+    private RenderFragment ToggleRow(string title, string description, bool value, Action<bool> set) => __builder =>
+    {
+        <div class="as-toggle-row">
+            <div>
+                <strong>@title</strong>
+                <p>@description</p>
+            </div>
             <label class="admin-toggle">
-                <input type="checkbox" checked="@value" @onchange="e => { set(Bool(e)); NotifyDraft(); }" />
+                <input type="checkbox" checked="@value" aria-label="@title" @onchange="e => set(Bool(e))" />
                 <span></span>
             </label>
         </div>
     };
 
+    private RenderFragment PasswordField(string label, string value, Action<string> set, bool visible, Action toggle, string autocomplete) => __builder =>
+    {
+        <label class="as-field">
+            <span>@label <em>*</em></span>
+            <div class="admin-password-wrap">
+                <input type="@(visible ? "text" : "password")" value="@value" autocomplete="@autocomplete"
+                       disabled="@_changingPassword"
+                       @oninput="e => { set(Val(e)); _passwordError = null; }" />
+                <button type="button" class="admin-password-toggle"
+                        aria-label="@(visible ? $"Hide {label.ToLowerInvariant()}" : $"Show {label.ToLowerInvariant()}")"
+                        @onclick="toggle">
+                    <Icon Name="@(visible ? "eye-off" : "eye")" Size="16" />
+                </button>
+            </div>
+        </label>
+    };
+
+    private RenderFragment CheckItem(bool met, string text) => __builder =>
+    {
+        <li class="@(met ? "is-met" : null)">
+            <Icon Name="@(met ? "check-circle" : "x-circle")" Size="14" /> @text
+        </li>
+    };
+
+    private static int PasswordScore(string password) =>
+        (password.Length >= AuthValidation.MinPasswordLength ? 1 : 0) +
+        (password.Any(char.IsUpper) ? 1 : 0) +
+        (password.Any(char.IsLower) ? 1 : 0) +
+        (password.Any(char.IsDigit) ? 1 : 0) +
+        (password.Any(ch => !char.IsLetterOrDigit(ch)) ? 1 : 0);
+
     private void SwitchTab(string key)
     {
         if (key == _tab) return;
-        if (SettingsService.HasUnsavedChanges)
+        if (SectionDirty)
         {
             _pendingTab = key;
-            _showUnsavedPrompt = true;
             return;
         }
 
         _tab = key;
     }
 
-    private void KeepEditing()
+    private void KeepEditing() => _pendingTab = null;
+
+    private void DiscardAndSwitch()
     {
-        _showUnsavedPrompt = false;
+        DiscardSection();
+        _tab = _pendingTab ?? _tab;
         _pendingTab = null;
     }
 
-    private async Task DiscardAndSwitch()
+    private async Task SaveAndSwitchAsync()
     {
-        Discard();
-        if (!string.IsNullOrWhiteSpace(_pendingTab))
-            _tab = _pendingTab;
-        KeepEditing();
-        await Task.CompletedTask;
+        var saved = await SaveSectionAsync();
+        if (saved)
+            _tab = _pendingTab ?? _tab;
+        _pendingTab = null;
     }
 
-    private async Task SaveAndSwitch()
+    private void DiscardSection()
     {
-        await Save();
-        if (!SettingsService.HasUnsavedChanges && !string.IsNullOrWhiteSpace(_pendingTab))
-            _tab = _pendingTab;
-        KeepEditing();
+        if (!IsEditable) return;
+        SettingsService.DiscardSection(_tab);
+        _submitted.Remove(_tab);
+        _logoError = null;
     }
 
-    private void NotifyLogoDemo() => Toast.Show("Logo upload is frontend-only for now.");
-
-    private void Discard()
+    private async Task<bool> SaveSectionAsync()
     {
-        SettingsService.Discard();
-        Toast.Show("Changes discarded.");
-    }
-
-    private async Task Save()
-    {
-        var (success, message) = await SettingsService.SaveAsync();
-        if (!success)
+        if (_saving || !SectionDirty) return false;
+        if (!Auth.IsAdmin)
         {
+            Toast.Show("Only Admin accounts can change settings.");
+            return false;
+        }
+
+        _submitted.Add(_tab);
+        if (Errors.Count > 0)
+        {
+            Toast.Show(_tab == "orders" && Errors.TryGetValue("fulfillment", out var rule) ? rule : "Please fix the highlighted fields.");
+            return false;
+        }
+
+        _saving = true;
+        try
+        {
+            var (success, message) = await SettingsService.SaveSectionAsync(_tab);
             Toast.Show(message);
+            if (success)
+                _submitted.Remove(_tab);
+            return success;
+        }
+        finally
+        {
+            _saving = false;
+        }
+    }
+
+    private async Task OnLogoSelected(InputFileChangeEventArgs e)
+    {
+        _logoError = null;
+        var file = e.File;
+        if (file is null) return;
+
+        var type = file.ContentType?.ToLowerInvariant() ?? string.Empty;
+        var name = file.Name?.ToLowerInvariant() ?? string.Empty;
+        var mime = type is "image/png" || name.EndsWith(".png") ? "image/png"
+            : type is "image/webp" || name.EndsWith(".webp") ? "image/webp"
+            : type is "image/jpeg" or "image/jpg" || name.EndsWith(".jpg") || name.EndsWith(".jpeg") ? "image/jpeg"
+            : null;
+
+        if (mime is null)
+        {
+            _logoError = "Use a PNG, JPG, or WEBP image.";
             return;
         }
 
+        if (file.Size > MaxLogoBytes)
+        {
+            _logoError = "Logo must be 2MB or smaller.";
+            return;
+        }
+
+        _uploadingLogo = true;
         try
         {
-            await JS.InvokeVoidAsync("localStorage.setItem", AdminSettingsService.StorageKey, SettingsService.ToStorageJson());
+            await using var stream = file.OpenReadStream(MaxLogoBytes);
+            using var ms = new MemoryStream();
+            await stream.CopyToAsync(ms);
+            var url = await Db.UploadStoreImageAsync($"data:{mime};base64,{Convert.ToBase64String(ms.ToArray())}");
+            if (string.IsNullOrWhiteSpace(url))
+            {
+                _logoError = "Logo upload is unavailable right now. Your current logo was kept.";
+                return;
+            }
+
+            Edit(() => Draft.Branding.LogoUrl = url);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore storage failures in demo.
+            Console.Error.WriteLine(ex);
+            _logoError = "Unable to upload that logo. Please try again.";
+        }
+        finally
+        {
+            _uploadingLogo = false;
+        }
+    }
+
+    private async Task UpdatePasswordAsync()
+    {
+        if (_changingPassword) return;
+        _passwordError = null;
+
+        if (string.IsNullOrWhiteSpace(_currentPassword) ||
+            string.IsNullOrWhiteSpace(_newPassword) ||
+            string.IsNullOrWhiteSpace(_confirmPassword))
+        {
+            _passwordError = "All password fields are required.";
+            return;
         }
 
-        Toast.Show(message);
+        if (_newPassword.Length < AuthValidation.MinPasswordLength)
+        {
+            _passwordError = $"New password must be at least {AuthValidation.MinPasswordLength} characters.";
+            return;
+        }
+
+        if (!string.Equals(_newPassword, _confirmPassword, StringComparison.Ordinal))
+        {
+            _passwordError = "New password and confirmation do not match.";
+            return;
+        }
+
+        if (string.Equals(_newPassword, _currentPassword, StringComparison.Ordinal))
+        {
+            _passwordError = "New password must be different from your current password.";
+            return;
+        }
+
+        _changingPassword = true;
+        try
+        {
+            var result = await Auth.ChangePasswordAsync(new ChangePasswordRequest
+            {
+                CurrentPassword = _currentPassword,
+                NewPassword = _newPassword,
+                ConfirmNewPassword = _confirmPassword
+            });
+
+            if (!result.Success)
+            {
+                _passwordError = result.Error ?? "Unable to change your password.";
+                return;
+            }
+
+            await Auth.PersistAsync(JS);
+            _currentPassword = _newPassword = _confirmPassword = string.Empty;
+            _showCurrent = _showNew = _showConfirm = false;
+            Toast.Show("Password updated successfully.");
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine(ex);
+            _passwordError = "Unable to change your password right now.";
+        }
+        finally
+        {
+            _changingPassword = false;
+        }
     }
-
-    private void UpdatePassword()
-    {
-        var (success, message) = SettingsService.ValidatePasswordChange(_currentPassword, _newPassword, _confirmPassword);
-        _passwordError = success ? null : message;
-        if (!success) return;
-
-        _currentPassword = string.Empty;
-        _newPassword = string.Empty;
-        _confirmPassword = string.Empty;
-        Toast.Show(message);
-    }
-
-    private void OnStore(Action<AdminStoreSettings> mutate)
-    {
-        mutate(Draft.Store);
-        NotifyDraft();
-    }
-
-    private void OnBrand(Action<AdminBrandingSettings> mutate)
-    {
-        mutate(Draft.Branding);
-        NotifyDraft();
-    }
-
-    private void OnOrders(Action<AdminOrderSettings> mutate)
-    {
-        mutate(Draft.Orders);
-        NotifyDraft();
-    }
-
-    private void OnInventory(Action<AdminInventorySettings> mutate)
-    {
-        mutate(Draft.Inventory);
-        NotifyDraft();
-    }
-
-    private void OnNotifs(Action<AdminNotificationSettings> mutate)
-    {
-        mutate(Draft.Notifications);
-        NotifyDraft();
-    }
-
-    private void OnSecurity(Action<AdminSecuritySettings> mutate)
-    {
-        mutate(Draft.Security);
-        NotifyDraft();
-    }
-
-    private void NotifyDraft() => SettingsService.ReplaceDraft(Draft);
 
     private static string Val(ChangeEventArgs e) => e.Value?.ToString() ?? string.Empty;
 
@@ -480,11 +758,10 @@
             : string.Equals(e.Value?.ToString(), "true", StringComparison.OrdinalIgnoreCase);
 
     private static int Int(ChangeEventArgs e, int fallback) =>
-        int.TryParse(e.Value?.ToString(), out var n) ? n : fallback;
+        int.TryParse(e.Value?.ToString(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : fallback;
 
-    private static decimal Dec(ChangeEventArgs e) =>
-        decimal.TryParse(e.Value?.ToString(), out var n) ? n : 0;
+    private static decimal Dec(ChangeEventArgs e, decimal fallback) =>
+        decimal.TryParse(e.Value?.ToString(), NumberStyles.Number, CultureInfo.InvariantCulture, out var n) ? n : fallback;
 
-    private void Refresh() => InvokeAsync(StateHasChanged);
     public void Dispose() => SettingsService.OnChange -= Refresh;
 }

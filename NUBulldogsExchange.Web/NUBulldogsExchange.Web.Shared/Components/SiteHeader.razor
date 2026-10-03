@@ -5,6 +5,7 @@
 @inject WishlistService Wishlist
 @inject AuthService Auth
 @inject NotificationService Notifications
+@inject AdminSettingsService StoreSettings
 @inject IJSRuntime JS
 @implements IDisposable
 
@@ -14,10 +15,10 @@
     </button>
 
     <a href="/" class="brand" @onclick="CloseMenus">
-        <div class="brand-icon">NU</div>
+        <StoreBrandMark LogoUrl="@StoreSettings.Saved.Branding.LogoUrl" StoreName="@StoreSettings.Saved.Store.Name" />
         <div>
-            <div class="brand-title">NU Bulldogs</div>
-            <div class="brand-subtitle">Exchange</div>
+            <div class="brand-title">@StoreSettings.Saved.Store.BrandLines.Title</div>
+            <div class="brand-subtitle">@StoreSettings.Saved.Store.BrandLines.Subtitle</div>
         </div>
     </a>
 
@@ -185,6 +186,7 @@
         Wishlist.OnChange += Refresh;
         Auth.OnChange += Refresh;
         Notifications.OnChange += Refresh;
+        StoreSettings.OnChange += Refresh;
         Navigation.LocationChanged += OnLocationChanged;
         SyncQueryFromUrl();
     }
@@ -294,6 +296,7 @@
         Wishlist.OnChange -= Refresh;
         Auth.OnChange -= Refresh;
         Notifications.OnChange -= Refresh;
+        StoreSettings.OnChange -= Refresh;
         Navigation.LocationChanged -= OnLocationChanged;
     }
 }

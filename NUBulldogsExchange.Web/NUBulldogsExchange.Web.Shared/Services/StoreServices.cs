@@ -453,6 +453,7 @@ public class OrderService
     private readonly ProductCatalogService _catalog;
     private readonly AdminProductService _products;
     private readonly AdminInventoryService _inventory;
+    private readonly AdminSettingsService _settings;
     private readonly List<MockOrder> _orders = [];
     private bool _loaded;
     private bool _loading;
@@ -463,12 +464,14 @@ public class OrderService
         IAppDatabase db,
         ProductCatalogService catalog,
         AdminProductService products,
-        AdminInventoryService inventory)
+        AdminInventoryService inventory,
+        AdminSettingsService settings)
     {
         _db = db;
         _catalog = catalog;
         _products = products;
         _inventory = inventory;
+        _settings = settings;
     }
 
     public IReadOnlyList<MockOrder> Orders => _orders;
@@ -486,6 +489,7 @@ public class OrderService
         _loading = true;
         try
         {
+            await _settings.EnsureLoadedAsync();
             var adminOrders = await _db.GetCustomerOrdersAsync(email);
             _orders.Clear();
             _orders.AddRange(adminOrders.Select(MockOrder.FromAdmin));
@@ -521,11 +525,25 @@ public class OrderService
             o.CustomerCategory.Equals(status, StringComparison.OrdinalIgnoreCase));
     }
 
-    public void Cancel(string orderId)
+    /// <summary>Status rule plus the Admin Order Settings cancellation toggle and time window.</summary>
+    public bool CanCancel(MockOrder order)
+    {
+        if (!OrderFlow.CanCustomerCancel(order))
+            return false;
+
+        var rules = _settings.Saved.Orders;
+        if (!rules.AllowCancellation)
+            return false;
+
+        var placedUtc = order.Date.Kind == DateTimeKind.Utc ? order.Date : order.Date.ToUniversalTime();
+        return DateTime.UtcNow - placedUtc <= TimeSpan.FromHours(Math.Max(1, rules.CancellationHours));
+    }
+
+    public bool Cancel(string orderId)
     {
         var order = _orders.FirstOrDefault(o => o.Id == orderId);
-        if (order is null || !OrderFlow.CanCustomerCancel(order))
-            return;
+        if (order is null || !CanCancel(order))
+            return false;
 
         order.Status = "Cancelled";
         var admin = _db.GetOrderByIdAsync(orderId).GetAwaiter().GetResult();
@@ -542,6 +560,7 @@ public class OrderService
         }
 
         OnChange?.Invoke();
+        return true;
     }
 
     public async Task ReloadAsync(string? email = null)

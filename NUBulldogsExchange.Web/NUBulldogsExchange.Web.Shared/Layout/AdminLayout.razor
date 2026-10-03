@@ -36,6 +36,26 @@
             <ToastHost />
         </div>
     }
+    else if (_accessDenied)
+    {
+        <div class="admin-shell">
+            <AdminSidebar @ref="_sidebar" Active="@ActiveKey" />
+            <div class="admin-main">
+                <AdminHeader OnMenuClick="OpenSidebar" />
+                <div class="admin-content">
+                    <div class="admin-access-denied">
+                        <div class="admin-access-denied-icon" aria-hidden="true">
+                            <Icon Name="shield" Size="36" />
+                        </div>
+                        <h1>Access Denied</h1>
+                        <p>You do not have permission to access this module.</p>
+                        <a class="btn btn-navy" href="/admin/dashboard">Return to Dashboard</a>
+                    </div>
+                </div>
+            </div>
+            <ToastHost />
+        </div>
+    }
     else
     {
         <div class="admin-shell">
@@ -60,6 +80,7 @@ else if (_ready)
 @code {
     private AdminSidebar? _sidebar;
     private bool _ready;
+    private bool _accessDenied;
     private string ActiveKey { get; set; } = "dashboard";
 
     private bool IsChangePasswordPage =>
@@ -82,12 +103,12 @@ else if (_ready)
         {
             if (Auth.CanAccessAdmin && !Auth.MustChangePassword)
             {
+                // Load staff for Admins (management) and Staff (permission checks).
+                await Staff.EnsureLoadedAsync();
                 await Products.EnsureLoadedAsync();
                 await Categories.EnsureLoadedAsync();
                 await Orders.EnsureLoadedAsync();
                 await Customers.EnsureLoadedAsync();
-                if (Auth.IsAdmin)
-                    await Staff.EnsureLoadedAsync();
                 await Promotions.EnsureLoadedAsync();
                 await Inventory.EnsureLoadedAsync();
                 await AdminNotifications.EnsureLoadedAsync();
@@ -122,6 +143,7 @@ else if (_ready)
 
     private void EnforceAccess()
     {
+        _accessDenied = false;
         if (!_ready) return;
 
         if (!Auth.IsLoggedIn)
@@ -142,10 +164,27 @@ else if (_ready)
             return;
         }
 
-        // Staff Management is Admin-only.
         var path = new Uri(Navigation.Uri, UriKind.Absolute).AbsolutePath;
-        if (!Auth.IsAdmin && path.Contains("/admin/staff", StringComparison.OrdinalIgnoreCase))
-            Navigation.NavigateTo("/admin/dashboard");
+        var required = AdminStaffService.ResolveRoutePermission(path);
+
+        if (required is null)
+            return;
+
+        if (required == "admin-only")
+        {
+            if (!Auth.IsAdmin)
+                _accessDenied = true;
+            return;
+        }
+
+        if (Auth.IsAdmin)
+            return;
+
+        if (string.IsNullOrWhiteSpace(Auth.Email) ||
+            !Staff.HasPermission(Auth.Email, required))
+        {
+            _accessDenied = true;
+        }
     }
 
     private static string ResolveActive(string uri)

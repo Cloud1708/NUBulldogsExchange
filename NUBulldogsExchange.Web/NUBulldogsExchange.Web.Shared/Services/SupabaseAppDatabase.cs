@@ -156,6 +156,13 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         return uploaded ?? url;
     }
 
+    public async Task<string?> UploadStoreImageAsync(string dataUrl)
+    {
+        RequireAuth();
+        var url = await TryPersistUploadedImageAsync(dataUrl);
+        return url is null || url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? null : url;
+    }
+
     private async Task<string?> TryPersistUploadedImageAsync(string dataUrl)
     {
         var comma = dataUrl.IndexOf(',');
@@ -1317,8 +1324,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (string.IsNullOrWhiteSpace(request.PhoneNumber))
             return Fail("Phone number is required.");
 
-        if (!AuthValidation.IsValidPhone(request.PhoneNumber))
-            return Fail("Enter a valid phone number.");
+        if (!AuthValidation.IsValidMobilePhone(request.PhoneNumber))
+            return Fail($"Phone number must be exactly {AuthValidation.MobilePhoneLength} digits.");
 
         if (string.IsNullOrWhiteSpace(request.Password) ||
             request.Password.Length < AuthValidation.MinPasswordLength)
@@ -1326,6 +1333,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
         if (!string.Equals(request.Password, request.ConfirmPassword, StringComparison.Ordinal))
             return Fail("Passwords do not match.");
+
+        var phone = AuthValidation.DigitsOnly(request.PhoneNumber);
 
         var body = new
         {
@@ -1335,7 +1344,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             {
                 first_name = request.FirstName.Trim(),
                 last_name = request.LastName.Trim(),
-                phone_number = request.PhoneNumber.Trim()
+                phone_number = phone
             }
         };
 
@@ -1368,7 +1377,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
             var user = await BuildMockUserAsync(auth.User.Id, auth.AccessToken);
             if (user is null)
-                user = BuildFallbackUser(auth.User, request.FirstName, request.LastName, request.PhoneNumber);
+                user = BuildFallbackUser(auth.User, request.FirstName, request.LastName, phone);
 
             user.SessionToken = auth.AccessToken;
 
@@ -1685,11 +1694,16 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         var profiles = await GetListAsync<UserWithRoleRow>(
             "rest/v1/users_with_roles?select=*&role=eq.Customer&order=created_at.desc");
 
+        // Lightweight aggregates; AdminCustomerService re-enriches from full AdminOrder rows
+        // so Total Spent / Last Order / customer type stay aligned with Reports fulfillment rules.
         var orderRows = await GetListAsync<OrderAggregateRow>(
             "rest/v1/orders?select=auth_user_id,total,status");
 
         return profiles.Select(p =>
         {
+            var first = (p.FirstName ?? string.Empty).Trim();
+            var last = (p.LastName ?? string.Empty).Trim();
+            var name = $"{first} {last}".Trim();
             var customerOrders = orderRows
                 .Where(o => string.Equals(o.AuthUserId, p.Id, StringComparison.OrdinalIgnoreCase))
                 .ToList();
@@ -1697,15 +1711,25 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             return new AdminCustomer
             {
                 Id = p.Id,
-                Name = $"{p.FirstName} {p.LastName}".Trim(),
+                FirstName = first,
+                LastName = last,
+                Name = string.IsNullOrWhiteSpace(name) ? (p.Email ?? string.Empty) : name,
                 Email = p.Email ?? string.Empty,
                 Contact = p.PhoneNumber ?? string.Empty,
                 DateJoined = p.CreatedAt,
-                LastLoginAt = null,
-                Status = p.Status,
+                LastLoginAt = p.LastLoginAt,
+                Status = string.IsNullOrWhiteSpace(p.Status) ? "Active" : p.Status,
+                ProfileImage = p.ProfileImage ?? string.Empty,
+                StudentId = p.StudentId ?? string.Empty,
+                College = p.College ?? string.Empty,
+                DefaultAddress = p.Address ?? string.Empty,
                 TotalOrders = customerOrders.Count,
+                QualifyingOrderCount = customerOrders.Count(o =>
+                    !o.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase)),
                 TotalSpent = customerOrders
-                    .Where(o => !o.Status.Equals("Cancelled", StringComparison.OrdinalIgnoreCase))
+                    .Where(o =>
+                        o.Status.Equals("Completed", StringComparison.OrdinalIgnoreCase)
+                        || o.Status.Equals("Delivered", StringComparison.OrdinalIgnoreCase))
                     .Sum(o => o.Total)
             };
         }).ToList();
@@ -2527,11 +2551,12 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             return PromoInvalid("Enter a promo code.", subtotal);
 
         var promotions = await GetPromotionsAsync();
+        var today = DateTime.Today;
         var promo = promotions.FirstOrDefault(p =>
             p.Code.Equals(code, StringComparison.OrdinalIgnoreCase) &&
             p.Enabled &&
-            DateTime.Now >= p.StartDate &&
-            DateTime.Now <= p.EndDate);
+            today >= p.StartDate.Date &&
+            today <= p.EndDate.Date);
 
         if (promo is null)
             return PromoInvalid("Promo code is invalid or inactive.", subtotal);
@@ -2582,12 +2607,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (eligible <= 0)
             return PromoInvalid("This promo does not apply to the items in your cart.", subtotal);
 
-        decimal discount = promo.DiscountType.Equals("fixed", StringComparison.OrdinalIgnoreCase)
-            ? Math.Min(promo.DiscountValue, eligible)
-            : Math.Round(eligible * (promo.DiscountValue / 100m), 2);
-
-        if (promo.MaximumDiscount is > 0)
-            discount = Math.Min(discount, promo.MaximumDiscount.Value);
+        var discount = promo.CalculateDiscount(eligible);
 
         return new PromoValidationResult
         {
@@ -2605,9 +2625,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
 
     public async Task<List<ActivePromotionDto>> GetActivePromotionsAsync()
     {
-        var now = DateTime.Now;
         return (await GetPromotionsAsync())
-            .Where(p => p.Enabled && now >= p.StartDate && now <= p.EndDate)
+            .Where(p => p.Status == "Active")
             .Select(p => new ActivePromotionDto
             {
                 Code = p.Code,
@@ -3093,6 +3112,8 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         Role = r.Role,
         Status = r.Status,
         LastLogin = r.LastLoginAt,
+        CreatedAt = r.CreatedAt,
+        ProfileImage = r.ProfileImage ?? string.Empty,
         IsPrimaryAdmin = r.IsPrimaryAdmin,
         MustChangePassword = r.MustChangePassword,
         Permissions = r.Permissions ?? AdminStaffPermissions.DefaultStaff()
