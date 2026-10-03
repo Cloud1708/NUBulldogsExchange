@@ -10,6 +10,7 @@ namespace NUBulldogsExchange.Mobile
         public App(AuthService auth)
         {
             InitializeComponent();
+            UserAppTheme = AppTheme.Light;
             _auth = auth;
         }
 

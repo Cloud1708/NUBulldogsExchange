@@ -85,6 +85,8 @@
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -111,6 +113,8 @@
                                ReturnCommand="{Binding LoginCommand}"
                                BackgroundColor="Transparent"
                                FontSize="14"
+                               TextColor="{StaticResource NuNavy}"
+                               PlaceholderColor="{StaticResource MutedText}"
                                VerticalOptions="Center" />
                         <Border Grid.Column="1"
                                 WidthRequest="36"

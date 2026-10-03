@@ -453,75 +453,284 @@
                                 </Grid>
                             </Border>
 
-                            <!-- Delivery Address Fields -->
-                            <VerticalStackLayout IsVisible="{Binding IsDelivery}" Spacing="10" Margin="0,4,0,0">
-                                <Label Text="Shipping Address" FontSize="13" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
+                            <!-- Delivery Address Section -->
+                            <VerticalStackLayout IsVisible="{Binding IsDelivery}" Spacing="12" Margin="0,8,0,0">
+                                <BoxView HeightRequest="1" Color="#F1F5F9" Margin="0,2,0,2" />
 
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                                    <VerticalStackLayout Spacing="3">
-                                        <Label Text="Recipient Name *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
-                                        <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
-                                            <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
-                                            <Entry Text="{Binding ShipRecipient}" FontSize="12" VerticalOptions="Center" />
-                                        </Border>
-                                    </VerticalStackLayout>
-
-                                    <VerticalStackLayout Grid.Column="1" Spacing="3">
-                                        <Label Text="Phone Number *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
-                                        <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
-                                            <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
-                                            <Entry Text="{Binding ShipPhone}" Keyboard="Telephone" FontSize="12" VerticalOptions="Center" />
-                                        </Border>
-                                    </VerticalStackLayout>
-                                </Grid>
-
-                                <VerticalStackLayout Spacing="3">
-                                    <Label Text="Address Line *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
-                                    <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
-                                        <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
-                                        <Entry Text="{Binding ShipAddressLine}" Placeholder="House no., street, subdivision" FontSize="12" VerticalOptions="Center" />
+                                <!-- Shipping Address Header -->
+                                <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
+                                    <Border BackgroundColor="#EFF6FF"
+                                            WidthRequest="36"
+                                            HeightRequest="36"
+                                            StrokeThickness="0"
+                                            VerticalOptions="Center">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="8" />
+                                        </Border.StrokeShape>
+                                        <Label Text="&#xe0c8;"
+                                               FontFamily="MaterialIcons"
+                                               FontSize="18"
+                                               TextColor="{StaticResource NuNavy}"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
                                     </Border>
-                                </VerticalStackLayout>
-
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                                    <VerticalStackLayout Spacing="3">
-                                        <Label Text="Barangay *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
-                                        <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
-                                            <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
-                                            <Entry Text="{Binding ShipBarangay}" FontSize="12" VerticalOptions="Center" />
-                                        </Border>
+                                    <VerticalStackLayout Spacing="1" VerticalOptions="Center">
+                                        <Label Text="Shipping Address"
+                                               FontSize="15"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}" />
+                                        <Label Text="Where should we deliver your order?"
+                                               FontSize="11"
+                                               TextColor="{StaticResource MutedText}" />
                                     </VerticalStackLayout>
+                                </HorizontalStackLayout>
 
-                                    <VerticalStackLayout Grid.Column="1" Spacing="3">
-                                        <Label Text="City *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
-                                        <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
-                                            <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
-                                            <Entry Text="{Binding ShipCity}" FontSize="12" VerticalOptions="Center" />
+                                <!-- Address Mode Selector (Only if user has saved addresses) -->
+                                <HorizontalStackLayout IsVisible="{Binding HasSavedAddresses}" Spacing="18" Margin="0,2,0,4">
+                                    <!-- Use Saved Address Radio -->
+                                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                                        <HorizontalStackLayout.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding SelectSavedAddressModeCommand}" />
+                                        </HorizontalStackLayout.GestureRecognizers>
+                                        <Border WidthRequest="18"
+                                                HeightRequest="18"
+                                                BackgroundColor="Transparent"
+                                                Stroke="{Binding UseSavedAddressRadioStroke}"
+                                                StrokeThickness="2"
+                                                VerticalOptions="Center"
+                                                InputTransparent="True">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="9" />
+                                            </Border.StrokeShape>
+                                            <Border WidthRequest="8"
+                                                    HeightRequest="8"
+                                                    BackgroundColor="{StaticResource NuNavy}"
+                                                    StrokeThickness="0"
+                                                    HorizontalOptions="Center"
+                                                    VerticalOptions="Center"
+                                                    IsVisible="{Binding IsUseSavedAddress}">
+                                                <Border.StrokeShape>
+                                                    <RoundRectangle CornerRadius="4" />
+                                                </Border.StrokeShape>
+                                            </Border>
                                         </Border>
-                                    </VerticalStackLayout>
-                                </Grid>
+                                        <Label Text="Use saved address"
+                                               FontSize="13"
+                                               TextColor="{StaticResource NuNavy}"
+                                               VerticalOptions="Center"
+                                               InputTransparent="True" />
+                                    </HorizontalStackLayout>
 
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                                    <VerticalStackLayout Spacing="3">
-                                        <Label Text="Province *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
-                                        <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="8,0">
-                                            <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
-                                            <Picker ItemsSource="{Binding Provinces}"
-                                                    SelectedItem="{Binding ShipProvince}"
+                                    <!-- Add New Address Radio -->
+                                    <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
+                                        <HorizontalStackLayout.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding SelectNewAddressModeCommand}" />
+                                        </HorizontalStackLayout.GestureRecognizers>
+                                        <Border WidthRequest="18"
+                                                HeightRequest="18"
+                                                BackgroundColor="Transparent"
+                                                Stroke="{Binding AddNewAddressRadioStroke}"
+                                                StrokeThickness="2"
+                                                VerticalOptions="Center"
+                                                InputTransparent="True">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="9" />
+                                            </Border.StrokeShape>
+                                            <Border WidthRequest="8"
+                                                    HeightRequest="8"
+                                                    BackgroundColor="{StaticResource NuNavy}"
+                                                    StrokeThickness="0"
+                                                    HorizontalOptions="Center"
+                                                    VerticalOptions="Center"
+                                                    IsVisible="{Binding IsAddNewAddress}">
+                                                <Border.StrokeShape>
+                                                    <RoundRectangle CornerRadius="4" />
+                                                </Border.StrokeShape>
+                                            </Border>
+                                        </Border>
+                                        <Label Text="Add new address"
+                                               FontSize="13"
+                                               TextColor="{StaticResource NuNavy}"
+                                               VerticalOptions="Center"
+                                               InputTransparent="True" />
+                                    </HorizontalStackLayout>
+                                </HorizontalStackLayout>
+
+                                <!-- Saved Address Dropdown & Preview -->
+                                <VerticalStackLayout IsVisible="{Binding ShowSavedAddressSection}" Spacing="10">
+                                    <VerticalStackLayout Spacing="4">
+                                        <Label Text="Saved Address" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
+                                        <Border BackgroundColor="White"
+                                                Stroke="#CBD5E1"
+                                                StrokeThickness="1"
+                                                HeightRequest="42"
+                                                Padding="10,0">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="6" />
+                                            </Border.StrokeShape>
+                                            <Picker ItemsSource="{Binding SavedAddresses}"
+                                                    SelectedItem="{Binding SelectedSavedAddress}"
+                                                    ItemDisplayBinding="{Binding DisplayText}"
                                                     FontSize="12"
                                                     TextColor="{StaticResource NuNavy}"
                                                     VerticalOptions="Center" />
                                         </Border>
                                     </VerticalStackLayout>
 
-                                    <VerticalStackLayout Grid.Column="1" Spacing="3">
-                                        <Label Text="Postal Code *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
+                                    <!-- Address Preview Card -->
+                                    <Border IsVisible="{Binding HasSelectedSavedAddress}"
+                                            BackgroundColor="#F8FAFC"
+                                            Stroke="#E2E8F0"
+                                            StrokeThickness="1"
+                                            Padding="14,12">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="8" />
+                                        </Border.StrokeShape>
+                                        <VerticalStackLayout Spacing="3">
+                                            <Label Text="{Binding SelectedSavedAddress.Label}"
+                                                   FontSize="13"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{StaticResource NuNavy}" />
+                                            <Label Text="{Binding SelectedSavedAddress.RecipientName}"
+                                                   FontSize="12"
+                                                   TextColor="#334155" />
+                                            <Label Text="{Binding SelectedSavedAddress.SummaryLine}"
+                                                   FontSize="12"
+                                                   TextColor="#475569" />
+                                            <Label Text="{Binding SelectedSavedAddress.PhoneNumber}"
+                                                   FontSize="12"
+                                                   TextColor="#475569" />
+                                        </VerticalStackLayout>
+                                    </Border>
+                                </VerticalStackLayout>
+
+                                <!-- New Address Manual Fields -->
+                                <VerticalStackLayout IsVisible="{Binding ShowNewAddressSection}" Spacing="10">
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                        <VerticalStackLayout Spacing="3">
+                                            <Label Text="Recipient Name *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
+                                            <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
+                                                <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
+                                                <Entry Text="{Binding ShipRecipient}"
+                                                       FontSize="12"
+                                                       TextColor="{StaticResource NuNavy}"
+                                                       PlaceholderColor="{StaticResource MutedText}"
+                                                       VerticalOptions="Center" />
+                                            </Border>
+                                        </VerticalStackLayout>
+
+                                        <VerticalStackLayout Grid.Column="1" Spacing="3">
+                                            <Label Text="Phone Number *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
+                                            <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
+                                                <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
+                                                <Entry Text="{Binding ShipPhone}"
+                                                       Keyboard="Telephone"
+                                                       FontSize="12"
+                                                       TextColor="{StaticResource NuNavy}"
+                                                       PlaceholderColor="{StaticResource MutedText}"
+                                                       VerticalOptions="Center" />
+                                            </Border>
+                                        </VerticalStackLayout>
+                                    </Grid>
+
+                                    <VerticalStackLayout Spacing="3">
+                                        <Label Text="Address Line *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
                                         <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
                                             <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
-                                            <Entry Text="{Binding ShipPostal}" Keyboard="Numeric" FontSize="12" VerticalOptions="Center" />
+                                            <Entry Text="{Binding ShipAddressLine}"
+                                                   Placeholder="House no., street, subdivision"
+                                                   FontSize="12"
+                                                   TextColor="{StaticResource NuNavy}"
+                                                   PlaceholderColor="{StaticResource MutedText}"
+                                                   VerticalOptions="Center" />
                                         </Border>
                                     </VerticalStackLayout>
-                                </Grid>
+
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                        <VerticalStackLayout Spacing="3">
+                                            <Label Text="Barangay *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
+                                            <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
+                                                <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
+                                                <Entry Text="{Binding ShipBarangay}"
+                                                       FontSize="12"
+                                                       TextColor="{StaticResource NuNavy}"
+                                                       PlaceholderColor="{StaticResource MutedText}"
+                                                       VerticalOptions="Center" />
+                                            </Border>
+                                        </VerticalStackLayout>
+
+                                        <VerticalStackLayout Grid.Column="1" Spacing="3">
+                                            <Label Text="City *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
+                                            <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
+                                                <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
+                                                <Entry Text="{Binding ShipCity}"
+                                                       FontSize="12"
+                                                       TextColor="{StaticResource NuNavy}"
+                                                       PlaceholderColor="{StaticResource MutedText}"
+                                                       VerticalOptions="Center" />
+                                            </Border>
+                                        </VerticalStackLayout>
+                                    </Grid>
+
+                                    <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                                        <VerticalStackLayout Spacing="3">
+                                            <Label Text="Province *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
+                                            <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="8,0">
+                                                <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
+                                                <Picker ItemsSource="{Binding Provinces}"
+                                                        SelectedItem="{Binding ShipProvince}"
+                                                        FontSize="12"
+                                                        TextColor="{StaticResource NuNavy}"
+                                                        TitleColor="{StaticResource MutedText}"
+                                                        VerticalOptions="Center" />
+                                            </Border>
+                                        </VerticalStackLayout>
+
+                                        <VerticalStackLayout Grid.Column="1" Spacing="3">
+                                            <Label Text="Postal Code *" FontSize="11" FontAttributes="Bold" TextColor="#475569" />
+                                            <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="40" Padding="10,0">
+                                                <Border.StrokeShape><RoundRectangle CornerRadius="6" /></Border.StrokeShape>
+                                                <Entry Text="{Binding ShipPostal}"
+                                                       Keyboard="Numeric"
+                                                       FontSize="12"
+                                                       TextColor="{StaticResource NuNavy}"
+                                                       PlaceholderColor="{StaticResource MutedText}"
+                                                       VerticalOptions="Center" />
+                                            </Border>
+                                        </VerticalStackLayout>
+                                    </Grid>
+
+                                    <!-- Save this address for future orders Checkbox -->
+                                    <HorizontalStackLayout Spacing="8" Margin="0,4,0,0" VerticalOptions="Center">
+                                        <HorizontalStackLayout.GestureRecognizers>
+                                            <TapGestureRecognizer Command="{Binding ToggleSaveAddressCommand}" />
+                                        </HorizontalStackLayout.GestureRecognizers>
+                                        <Border WidthRequest="18"
+                                                HeightRequest="18"
+                                                BackgroundColor="{Binding SaveAddressBoxBg}"
+                                                Stroke="{Binding SaveAddressBoxStroke}"
+                                                StrokeThickness="1.5"
+                                                VerticalOptions="Center"
+                                                InputTransparent="True">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="4" />
+                                            </Border.StrokeShape>
+                                            <Label Text="&#xe5ca;"
+                                                   FontFamily="MaterialIcons"
+                                                   FontSize="12"
+                                                   TextColor="White"
+                                                   FontAttributes="Bold"
+                                                   HorizontalOptions="Center"
+                                                   VerticalOptions="Center"
+                                                   IsVisible="{Binding SaveAddress}" />
+                                        </Border>
+                                        <Label Text="Save this address for future orders"
+                                               FontSize="12"
+                                               TextColor="#334155"
+                                               VerticalOptions="Center"
+                                               InputTransparent="True" />
+                                    </HorizontalStackLayout>
+                                </VerticalStackLayout>
                             </VerticalStackLayout>
                         </VerticalStackLayout>
                     </Border>
@@ -760,6 +969,7 @@
                                         HeightRequest="72"
                                         FontSize="12"
                                         TextColor="{StaticResource NuNavy}"
+                                        PlaceholderColor="{StaticResource MutedText}"
                                         AutoSize="Disabled" />
                             </Border>
                         </VerticalStackLayout>
@@ -886,7 +1096,12 @@
                             <Grid ColumnDefinitions="*,Auto" ColumnSpacing="8" Margin="0,4,0,0">
                                 <Border BackgroundColor="White" Stroke="#CBD5E1" StrokeThickness="1" HeightRequest="42" Padding="10,0">
                                     <Border.StrokeShape><RoundRectangle CornerRadius="8" /></Border.StrokeShape>
-                                    <Entry Text="{Binding PromoCodeInput}" Placeholder="Enter promo code" FontSize="12" VerticalOptions="Center" />
+                                    <Entry Text="{Binding PromoCodeInput}"
+                                           Placeholder="Enter promo code"
+                                           FontSize="12"
+                                           TextColor="{StaticResource NuNavy}"
+                                           PlaceholderColor="{StaticResource MutedText}"
+                                           VerticalOptions="Center" />
                                 </Border>
                                 <Border Grid.Column="1"
                                         BackgroundColor="{StaticResource NuNavy}"

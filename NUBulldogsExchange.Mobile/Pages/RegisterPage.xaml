@@ -83,6 +83,8 @@
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -106,6 +108,8 @@
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -131,6 +135,8 @@
                            IsTextPredictionEnabled="False"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -155,6 +161,8 @@
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -180,6 +188,8 @@
                                ReturnType="Next"
                                BackgroundColor="Transparent"
                                FontSize="14"
+                               TextColor="{StaticResource NuNavy}"
+                               PlaceholderColor="{StaticResource MutedText}"
                                VerticalOptions="Center" />
                         <Border Grid.Column="1"
                                 WidthRequest="36"
@@ -223,6 +233,8 @@
                                ReturnCommand="{Binding RegisterCommand}"
                                BackgroundColor="Transparent"
                                FontSize="14"
+                               TextColor="{StaticResource NuNavy}"
+                               PlaceholderColor="{StaticResource MutedText}"
                                VerticalOptions="Center" />
                         <Border Grid.Column="1"
                                 WidthRequest="36"

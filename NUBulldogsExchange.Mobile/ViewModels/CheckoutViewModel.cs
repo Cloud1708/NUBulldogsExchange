@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using NUBulldogsExchange.Mobile.Models;
 using NUBulldogsExchange.Mobile.Services;
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
@@ -38,6 +39,7 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     private readonly NotificationService _notifications;
     private readonly AdminNotificationService _adminNotifications;
     private readonly AdminPromotionService _promotions;
+    private readonly IAppDatabase _db;
     private Page? _host;
 
     private bool _isBusy;
@@ -91,7 +93,8 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
         ProductCatalogService catalog,
         NotificationService notifications,
         AdminNotificationService adminNotifications,
-        AdminPromotionService promotions)
+        AdminPromotionService promotions,
+        IAppDatabase db)
     {
         _cart = cart;
         _auth = auth;
@@ -103,6 +106,7 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
         _notifications = notifications;
         _adminNotifications = adminNotifications;
         _promotions = promotions;
+        _db = db;
 
         PlaceOrderCommand = new Command(async () => await PlaceOrderAsync(), () => CanPlaceOrder);
         BackCommand = new Command(async () => await GoBackAsync());
@@ -117,6 +121,9 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
         SelectPaymentMethodCommand = new Command<string>(SelectPaymentMethod);
         ApplyPromoCommand = new Command(async () => await ApplyPromoAsync());
         ToggleTermsCommand = new Command(() => AgreeToTerms = !AgreeToTerms);
+        SelectSavedAddressModeCommand = new Command(SelectSavedAddressMode);
+        SelectNewAddressModeCommand = new Command(SelectNewAddressMode);
+        ToggleSaveAddressCommand = new Command(() => SaveAddress = !SaveAddress);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -282,8 +289,78 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     public bool SaveAddress
     {
         get => _saveAddress;
-        set => SetField(ref _saveAddress, value);
+        set
+        {
+            if (SetField(ref _saveAddress, value))
+            {
+                OnPropertyChanged(nameof(SaveAddressBoxBg));
+                OnPropertyChanged(nameof(SaveAddressBoxStroke));
+            }
+        }
     }
+
+    // Saved Addresses
+    public ObservableCollection<SavedAddressItemModel> SavedAddresses { get; } = [];
+
+    private SavedAddressItemModel? _selectedSavedAddress;
+    public SavedAddressItemModel? SelectedSavedAddress
+    {
+        get => _selectedSavedAddress;
+        set
+        {
+            if (SetField(ref _selectedSavedAddress, value))
+            {
+                OnPropertyChanged(nameof(HasSelectedSavedAddress));
+                if (value is not null && IsUseSavedAddress)
+                {
+                    ApplySavedAddress(value);
+                }
+            }
+        }
+    }
+
+    public bool HasSelectedSavedAddress => SelectedSavedAddress is not null;
+
+    private bool _hasSavedAddresses;
+    public bool HasSavedAddresses
+    {
+        get => _hasSavedAddresses;
+        private set
+        {
+            if (SetField(ref _hasSavedAddresses, value))
+            {
+                OnPropertyChanged(nameof(ShowSavedAddressSection));
+                OnPropertyChanged(nameof(ShowNewAddressSection));
+            }
+        }
+    }
+
+    private bool _isUseSavedAddress;
+    public bool IsUseSavedAddress
+    {
+        get => _isUseSavedAddress;
+        set
+        {
+            if (SetField(ref _isUseSavedAddress, value))
+            {
+                OnPropertyChanged(nameof(IsAddNewAddress));
+                OnPropertyChanged(nameof(UseSavedAddressRadioStroke));
+                OnPropertyChanged(nameof(AddNewAddressRadioStroke));
+                OnPropertyChanged(nameof(ShowSavedAddressSection));
+                OnPropertyChanged(nameof(ShowNewAddressSection));
+            }
+        }
+    }
+
+    public bool IsAddNewAddress => !IsUseSavedAddress;
+    public bool ShowSavedAddressSection => HasSavedAddresses && IsUseSavedAddress;
+    public bool ShowNewAddressSection => !HasSavedAddresses || IsAddNewAddress;
+
+    public Color UseSavedAddressRadioStroke => IsUseSavedAddress ? Color.FromArgb("#00205B") : Color.FromArgb("#CBD5E1");
+    public Color AddNewAddressRadioStroke => IsAddNewAddress ? Color.FromArgb("#00205B") : Color.FromArgb("#CBD5E1");
+
+    public Color SaveAddressBoxBg => SaveAddress ? Color.FromArgb("#00205B") : Colors.White;
+    public Color SaveAddressBoxStroke => SaveAddress ? Color.FromArgb("#00205B") : Color.FromArgb("#CBD5E1");
 
     // Payment
     public string PaymentMethod
@@ -536,6 +613,9 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     public ICommand SelectPaymentMethodCommand { get; }
     public ICommand ApplyPromoCommand { get; }
     public ICommand ToggleTermsCommand { get; }
+    public ICommand SelectSavedAddressModeCommand { get; }
+    public ICommand SelectNewAddressModeCommand { get; }
+    public ICommand ToggleSaveAddressCommand { get; }
 
     public void Refresh()
     {
@@ -556,6 +636,14 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
                 ShipRecipient = FullName;
             if (string.IsNullOrWhiteSpace(ShipPhone))
                 ShipPhone = ContactPhone;
+
+            _ = LoadSavedAddressesAsync();
+        }
+        else
+        {
+            SavedAddresses.Clear();
+            HasSavedAddresses = false;
+            IsUseSavedAddress = false;
         }
 
         CartItems.Clear();
@@ -594,8 +682,94 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(DeliveryStroke));
         OnPropertyChanged(nameof(DeliveryStrokeThickness));
         OnPropertyChanged(nameof(DeliveryBackgroundColor));
+        OnPropertyChanged(nameof(ShowSavedAddressSection));
+        OnPropertyChanged(nameof(ShowNewAddressSection));
         NotifyPaymentProperties();
         ((Command)PlaceOrderCommand).ChangeCanExecute();
+    }
+
+    public void SelectSavedAddressMode()
+    {
+        IsUseSavedAddress = true;
+        if (SelectedSavedAddress is not null)
+        {
+            ApplySavedAddress(SelectedSavedAddress);
+        }
+        else if (SavedAddresses.Count > 0)
+        {
+            SelectedSavedAddress = SavedAddresses[0];
+            ApplySavedAddress(SelectedSavedAddress);
+        }
+    }
+
+    public void SelectNewAddressMode()
+    {
+        IsUseSavedAddress = false;
+        if (string.IsNullOrWhiteSpace(ShipRecipient))
+            ShipRecipient = FullName;
+        if (string.IsNullOrWhiteSpace(ShipPhone))
+            ShipPhone = ContactPhone;
+    }
+
+    private void ApplySavedAddress(SavedAddressItemModel item)
+    {
+        ShipRecipient = item.RecipientName;
+        ShipPhone = item.PhoneNumber;
+        ShipAddressLine = item.AddressLine;
+        ShipBarangay = item.Barangay;
+        ShipCity = item.City;
+        ShipProvince = string.IsNullOrWhiteSpace(item.Province) ? "Batangas" : item.Province;
+        ShipPostal = item.PostalCode;
+    }
+
+    public async Task LoadSavedAddressesAsync()
+    {
+        if (!_auth.IsLoggedIn || _auth.CurrentUser is null)
+        {
+            SavedAddresses.Clear();
+            HasSavedAddresses = false;
+            IsUseSavedAddress = false;
+            return;
+        }
+
+        var userId = _auth.CurrentUser.Id;
+        if (userId == Guid.Empty)
+        {
+            SavedAddresses.Clear();
+            HasSavedAddresses = false;
+            IsUseSavedAddress = false;
+            return;
+        }
+
+        try
+        {
+            var addresses = await _db.GetUserAddressesAsync(userId);
+            SavedAddresses.Clear();
+            foreach (var addr in addresses)
+            {
+                SavedAddresses.Add(new SavedAddressItemModel(addr));
+            }
+
+            HasSavedAddresses = SavedAddresses.Count > 0;
+            if (HasSavedAddresses)
+            {
+                var preferred = SavedAddresses.FirstOrDefault(a => a.Address.IsDefault) ?? SavedAddresses[0];
+                SelectedSavedAddress = preferred;
+                IsUseSavedAddress = true;
+                ApplySavedAddress(preferred);
+            }
+            else
+            {
+                IsUseSavedAddress = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load saved addresses: {ex.Message}");
+            SavedAddresses.Clear();
+            HasSavedAddresses = false;
+            IsUseSavedAddress = false;
+        }
     }
 
     public void SetFulfillment(string method)
@@ -737,16 +911,29 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
 
         if (IsDelivery)
         {
-            if (string.IsNullOrWhiteSpace(ShipRecipient) ||
-                string.IsNullOrWhiteSpace(ShipPhone) ||
-                string.IsNullOrWhiteSpace(ShipAddressLine) ||
-                string.IsNullOrWhiteSpace(ShipBarangay) ||
-                string.IsNullOrWhiteSpace(ShipCity) ||
-                string.IsNullOrWhiteSpace(ShipPostal))
+            if (ShowSavedAddressSection)
             {
-                StatusMessage = "Please fill in all required shipping address fields.";
-                HasError = true;
-                return;
+                if (SelectedSavedAddress is null)
+                {
+                    StatusMessage = "Please select a saved shipping address.";
+                    HasError = true;
+                    return;
+                }
+                ApplySavedAddress(SelectedSavedAddress);
+            }
+            else
+            {
+                if (string.IsNullOrWhiteSpace(ShipRecipient) ||
+                    string.IsNullOrWhiteSpace(ShipPhone) ||
+                    string.IsNullOrWhiteSpace(ShipAddressLine) ||
+                    string.IsNullOrWhiteSpace(ShipBarangay) ||
+                    string.IsNullOrWhiteSpace(ShipCity) ||
+                    string.IsNullOrWhiteSpace(ShipPostal))
+                {
+                    StatusMessage = "Please fill in all required shipping address fields.";
+                    HasError = true;
+                    return;
+                }
             }
         }
 
@@ -873,6 +1060,30 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine(ex);
+            }
+
+            if (isDelivery && SaveAddress && ShowNewAddressSection && user.Id != Guid.Empty)
+            {
+                try
+                {
+                    await _db.UpsertUserAddressAsync(new UserAddress
+                    {
+                        UserId = user.Id,
+                        Label = "Home",
+                        RecipientName = (string.IsNullOrWhiteSpace(ShipRecipient) ? FullName : ShipRecipient).Trim(),
+                        PhoneNumber = (string.IsNullOrWhiteSpace(ShipPhone) ? ContactPhone : ShipPhone).Trim(),
+                        AddressLine = ShipAddressLine?.Trim() ?? string.Empty,
+                        Barangay = ShipBarangay?.Trim() ?? string.Empty,
+                        City = ShipCity?.Trim() ?? string.Empty,
+                        Province = (string.IsNullOrWhiteSpace(ShipProvince) ? "Batangas" : ShipProvince).Trim(),
+                        PostalCode = ShipPostal?.Trim() ?? string.Empty,
+                        IsDefault = SavedAddresses.Count == 0
+                    });
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to persist user address: {ex}");
+                }
             }
 
             MobileCheckoutIntent.Clear();
