@@ -36,37 +36,21 @@ public sealed class ReviewableItemModel : INotifyPropertyChanged
     {
         get
         {
-            if (SiblingItems.Count > 1)
-            {
-                var sizes = SiblingItems
-                    .Where(s => s.HasDisplaySize)
-                    .Select(s => s.Size)
-                    .Distinct()
-                    .ToList();
-                if (sizes.Count > 1)
-                    return $"Sizes: {string.Join(", ", sizes)}";
-                if (sizes.Count == 1)
-                    return sizes[0];
-            }
-
-            return (Item.HasDisplayColor && Item.HasDisplaySize) ? $"{Item.Color} / {Item.Size}" :
-                Item.HasDisplaySize ? Item.Size :
-                Item.HasDisplayColor ? Item.Color ?? "" : "";
+            var parts = new List<string>();
+            if (Item.HasDisplayColor) parts.Add($"Color: {Item.Color}");
+            if (Item.HasDisplaySize) parts.Add($"Size: {Item.Size}");
+            return string.Join(" • ", parts);
         }
     }
 
     public bool IsReviewed
     {
-        get => _isReviewed || Item.IsReviewed || SiblingItems.Any(s => s.IsReviewed);
+        get => _isReviewed || Item.IsReviewed;
         set
         {
             if (_isReviewed == value) return;
             _isReviewed = value;
             Item.IsReviewed = value;
-            foreach (var sibling in SiblingItems)
-            {
-                sibling.IsReviewed = value;
-            }
             OnPropertyChanged();
             OnPropertyChanged(nameof(CanBeReviewed));
             OnPropertyChanged(nameof(StatusBadgeText));

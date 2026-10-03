@@ -889,12 +889,14 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
                 string.IsNullOrWhiteSpace(WriteTitle) ? null : WriteTitle.Trim(),
                 WriteComment.Trim());
 
-            // Mark ALL items with this ProductId across all user orders as reviewed
-            foreach (var order in _orders.Orders)
+            // Mark only the specific reviewed order item as reviewed
+            _eligibleOrderItem.IsReviewed = true;
+            if (_eligibleOrder != null)
             {
-                foreach (var item in order.Items.Where(i => i.ProductId == _productId))
+                var match = _eligibleOrder.Items.FirstOrDefault(i => i.OrderItemId == _eligibleOrderItem.OrderItemId);
+                if (match != null)
                 {
-                    item.IsReviewed = true;
+                    match.IsReviewed = true;
                 }
             }
 
@@ -960,33 +962,6 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     {
         try
         {
-            // Sync all reviewed products across user orders so duplicate/same items are marked
-            var reviewedProductIds = _orders.Orders
-                .SelectMany(o => o.Items)
-                .Where(i => i.IsReviewed && i.ProductId > 0)
-                .Select(i => i.ProductId)
-                .ToHashSet();
-
-            foreach (var order in _orders.Orders)
-            {
-                foreach (var item in order.Items)
-                {
-                    if (reviewedProductIds.Contains(item.ProductId))
-                    {
-                        item.IsReviewed = true;
-                    }
-                }
-            }
-
-            // If the user already reviewed this product in ANY order or item, they cannot review it again.
-            if (reviewedProductIds.Contains(_productId))
-            {
-                _eligibleOrder = null;
-                _eligibleOrderItem = null;
-                CanUserWriteReview = false;
-                return;
-            }
-
             var eligible = _orders.Orders
                 .Where(o => OrderFlow.CanWriteReview(o))
                 .SelectMany(o => o.Items.Select(item => (Order: o, Item: item)))
