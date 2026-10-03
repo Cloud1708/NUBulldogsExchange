@@ -569,32 +569,8 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
         ApplyFilter();
     }
 
-    private void SyncReviewedSameProducts()
-    {
-        var reviewedProductIds = _orders.Orders
-            .SelectMany(o => o.Items)
-            .Where(i => i.IsReviewed && i.ProductId > 0)
-            .Select(i => i.ProductId)
-            .ToHashSet();
-
-        if (reviewedProductIds.Count == 0) return;
-
-        foreach (var order in _orders.Orders)
-        {
-            foreach (var item in order.Items)
-            {
-                if (reviewedProductIds.Contains(item.ProductId))
-                {
-                    item.IsReviewed = true;
-                }
-            }
-        }
-    }
-
     private void ApplyFilter()
     {
-        SyncReviewedSameProducts();
-
         var filtered = _orders.Filter(_selectedStatus)
             .Select(o => new OrderCardModel { Order = o })
             .ToList();
@@ -641,7 +617,7 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
                 Item = item,
                 OrderId = order.Id,
                 CanWriteReview = order.CanWriteReview,
-                IsReviewed = item.IsReviewed || _orders.Orders.SelectMany(o => o.Items).Any(x => x.ProductId == item.ProductId && x.IsReviewed)
+                IsReviewed = item.IsReviewed
             });
         }
 
@@ -957,46 +933,38 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
         if (detailItem is null || SelectedOrder is null) return;
         var card = _selectedOrderCard ?? FilteredOrders.FirstOrDefault(c => c.Order.Id == SelectedOrder.Id)
             ?? new OrderCardModel { Order = SelectedOrder };
-        OnReview(card, detailItem.ProductId);
+        OnReview(card, detailItem.OrderItemId, detailItem.ProductId);
     }
 
-    private void OnReview(OrderCardModel? card, int preselectedProductId = 0)
+    private void OnReview(OrderCardModel? card, long preselectedOrderItemId = 0, int preselectedProductId = 0)
     {
         if (card is null) return;
         _reviewingCard = card;
         ReviewingOrder = card.Order;
 
-        SyncReviewedSameProducts();
-
         ReviewItems.Clear();
 
-        // Group items in this order by ProductId so the SAME product only has ONE review entry.
-        // It only has 2 or more review entries if there are DIFFERENT items/products in the order.
-        var groups = card.Order.Items
-            .GroupBy(i => i.ProductId)
-            .ToList();
-
-        foreach (var group in groups)
+        foreach (var item in card.Order.Items)
         {
-            var representative = group.First();
-            var siblings = group.ToList();
-            var isAnyReviewed = siblings.Any(i => i.IsReviewed)
-                || _orders.Orders.SelectMany(o => o.Items).Any(i => i.ProductId == representative.ProductId && i.IsReviewed);
-
             ReviewItems.Add(new ReviewableItemModel
             {
-                Item = representative,
-                SiblingItems = siblings,
+                Item = item,
                 OrderId = card.Order.Id,
                 IsSelected = false,
-                IsReviewed = isAnyReviewed
+                IsReviewed = item.IsReviewed
             });
         }
 
         ReviewableItemModel? defaultItem = null;
-        if (preselectedProductId > 0)
+        if (preselectedOrderItemId > 0)
         {
-            defaultItem = ReviewItems.FirstOrDefault(i => i.ProductId == preselectedProductId);
+            defaultItem = ReviewItems.FirstOrDefault(i => i.OrderItemId == preselectedOrderItemId);
+        }
+
+        if (defaultItem == null && preselectedProductId > 0)
+        {
+            defaultItem = ReviewItems.FirstOrDefault(i => i.ProductId == preselectedProductId && !i.IsReviewed)
+                       ?? ReviewItems.FirstOrDefault(i => i.ProductId == preselectedProductId);
         }
 
         defaultItem ??= ReviewItems.FirstOrDefault(i => !i.IsReviewed) ?? ReviewItems.FirstOrDefault();
@@ -1040,33 +1008,24 @@ public sealed class OrdersViewModel : INotifyPropertyChanged
                 string.IsNullOrWhiteSpace(ReviewTitle) ? null : ReviewTitle.Trim(),
                 ReviewComment.Trim());
 
-            // Mark this item and all items of the same product in this order and across all user orders as reviewed
+            // Mark ONLY this specific order item as reviewed
             SelectedReviewItem.IsReviewed = true;
-            foreach (var sibling in SelectedReviewItem.SiblingItems)
-            {
-                sibling.IsReviewed = true;
-            }
+            SelectedReviewItem.Item.IsReviewed = true;
 
             if (ReviewingOrder != null)
             {
-                foreach (var item in ReviewingOrder.Items.Where(i => i.ProductId == SelectedReviewItem.ProductId))
+                var match = ReviewingOrder.Items.FirstOrDefault(i => i.OrderItemId == SelectedReviewItem.OrderItemId);
+                if (match != null)
                 {
-                    item.IsReviewed = true;
-                }
-            }
-
-            foreach (var order in _orders.Orders)
-            {
-                foreach (var item in order.Items.Where(i => i.ProductId == SelectedReviewItem.ProductId))
-                {
-                    item.IsReviewed = true;
+                    match.IsReviewed = true;
                 }
             }
 
             // Update DetailItems if open
-            foreach (var detailItem in DetailItems.Where(d => d.ProductId == SelectedReviewItem.ProductId))
+            var detailMatch = DetailItems.FirstOrDefault(d => d.OrderItemId == SelectedReviewItem.OrderItemId);
+            if (detailMatch != null)
             {
-                detailItem.IsReviewed = true;
+                detailMatch.IsReviewed = true;
             }
 
             _reviewingCard?.RefreshReviewState();
