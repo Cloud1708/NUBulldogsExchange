@@ -68,10 +68,18 @@
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="6" />
                     </Border.StrokeShape>
-                    <Label Text="{Binding FulfillmentBadgeText}"
-                           FontSize="10"
-                           FontAttributes="Bold"
-                           TextColor="{StaticResource NuNavy}" />
+                    <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                        <Label Text="{Binding FulfillmentIcon}"
+                               FontFamily="MaterialIcons"
+                               FontSize="12"
+                               TextColor="{StaticResource NuNavy}"
+                               VerticalOptions="Center" />
+                        <Label Text="{Binding FulfillmentLabel}"
+                               FontSize="10"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
                 </Border>
                 <Label Text="{Binding FulfillmentLocationText}"
                        FontSize="11"
@@ -134,6 +142,59 @@
                        VerticalOptions="Center" />
 
                 <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
+                    <!-- Reviewed Status Badge -->
+                    <Border IsVisible="{Binding ShowReviewedBadge}"
+                            BackgroundColor="#DCFCE7"
+                            StrokeThickness="0"
+                            Padding="10,6"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="6" />
+                        </Border.StrokeShape>
+                        <HorizontalStackLayout Spacing="3" VerticalOptions="Center">
+                            <Label Text="&#xe86c;"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="12"
+                                   TextColor="#16A34A"
+                                   VerticalOptions="Center" />
+                            <Label Text="Reviewed"
+                                   TextColor="#16A34A"
+                                   FontSize="11"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
+                    <!-- Write Review Button -->
+                    <Border IsVisible="{Binding ShowReviewButton}"
+                            BackgroundColor="#FEF3C7"
+                            Stroke="#FDE68A"
+                            StrokeThickness="1"
+                            Padding="10,6"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="6" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding ReviewCommand, Source={x:Reference Root}}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                            <Label Text="&#xe838;"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="12"
+                                   TextColor="#D97706"
+                                   VerticalOptions="Center" />
+                            <Label Text="Review"
+                                   TextColor="#D97706"
+                                   FontSize="11"
+                                   FontAttributes="Bold"
+                                   VerticalOptions="Center"
+                                   HorizontalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+
                     <!-- Cancel Order Button -->
                     <Border IsVisible="{Binding CanCancel}"
                             BackgroundColor="White"
@@ -154,7 +215,31 @@
                                FontSize="11"
                                FontAttributes="Bold"
                                VerticalOptions="Center"
-                               HorizontalOptions="Center" />
+                               HorizontalOptions="Center"
+                               InputTransparent="True" />
+                    </Border>
+
+                    <!-- Order Received Button -->
+                    <Border IsVisible="{Binding CanConfirmReceived}"
+                            BackgroundColor="#16A34A"
+                            StrokeThickness="0"
+                            Padding="12,6"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="6" />
+                        </Border.StrokeShape>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer
+                                Command="{Binding ConfirmReceivedCommand, Source={x:Reference Root}}"
+                                CommandParameter="{Binding .}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="Order Received"
+                               TextColor="White"
+                               FontSize="11"
+                               FontAttributes="Bold"
+                               VerticalOptions="Center"
+                               HorizontalOptions="Center"
+                               InputTransparent="True" />
                     </Border>
 
                     <!-- View Order Button -->
@@ -175,7 +260,8 @@
                                FontSize="11"
                                FontAttributes="Bold"
                                VerticalOptions="Center"
-                               HorizontalOptions="Center" />
+                               HorizontalOptions="Center"
+                               InputTransparent="True" />
                     </Border>
                 </HorizontalStackLayout>
             </Grid>

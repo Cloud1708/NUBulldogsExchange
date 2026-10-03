@@ -43,8 +43,9 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding BackCommand}" />
                     </Border.GestureRecognizers>
-                    <Label Text="←"
-                           FontSize="16"
+                    <Label Text="&#xe5c4;"
+                           FontFamily="MaterialIcons"
+                           FontSize="20"
                            TextColor="#0F172A"
                            HorizontalOptions="Center"
                            VerticalOptions="Center" />
@@ -243,8 +244,9 @@
                                                         Command="{Binding BindingContext.RemoveCommand, Source={x:Reference CartRoot}}"
                                                         CommandParameter="{Binding .}" />
                                                 </HorizontalStackLayout.GestureRecognizers>
-                                                <Label Text="🗑"
-                                                       FontSize="12"
+                                                <Label Text="&#xe872;"
+                                                       FontFamily="MaterialIcons"
+                                                       FontSize="15"
                                                        TextColor="#EF4444"
                                                        VerticalOptions="Center" />
                                                 <Label Text="Remove"
@@ -259,8 +261,9 @@
                                                         Command="{Binding BindingContext.SaveCommand, Source={x:Reference CartRoot}}"
                                                         CommandParameter="{Binding .}" />
                                                 </HorizontalStackLayout.GestureRecognizers>
-                                                <Label Text="♥"
-                                                       FontSize="12"
+                                                <Label Text="&#xe87d;"
+                                                       FontFamily="MaterialIcons"
+                                                       FontSize="15"
                                                        TextColor="#F43F5E"
                                                        VerticalOptions="Center" />
                                                 <Label Text="Save"

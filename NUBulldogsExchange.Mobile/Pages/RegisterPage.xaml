@@ -48,8 +48,9 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding BackCommand}" />
                         </Border.GestureRecognizers>
-                        <Label Text="←"
-                               FontSize="16"
+                        <Label Text="&#xe5c4;"
+                               FontFamily="MaterialIcons"
+                               FontSize="20"
                                TextColor="#0F172A"
                                HorizontalOptions="Center"
                                VerticalOptions="Center" />
@@ -190,7 +191,9 @@
                                 <TapGestureRecognizer Command="{Binding TogglePasswordCommand}" />
                             </Border.GestureRecognizers>
                             <Label Text="{Binding PasswordToggleGlyph}"
-                                   FontSize="16"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="20"
+                                   TextColor="#64748B"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center" />
                         </Border>
@@ -231,7 +234,9 @@
                                 <TapGestureRecognizer Command="{Binding ToggleConfirmPasswordCommand}" />
                             </Border.GestureRecognizers>
                             <Label Text="{Binding ConfirmPasswordToggleGlyph}"
-                                   FontSize="16"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="20"
+                                   TextColor="#64748B"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center" />
                         </Border>

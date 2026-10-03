@@ -15,6 +15,7 @@ public sealed class ShopCategoryItem : INotifyPropertyChanged
     public string Key { get; init; } = "All";
     public string Label { get; init; } = "All";
     public string Icon { get; init; } = string.Empty;
+    public bool HasIcon => !string.IsNullOrWhiteSpace(Icon);
 
     public bool IsSelected
     {
@@ -37,7 +38,49 @@ public sealed class ShopCategoryItem : INotifyPropertyChanged
         ? Colors.White
         : Color.FromArgb("#334155");
 
-    public string DisplayText => string.IsNullOrEmpty(Icon) ? Label : $"{Icon}  {Label}";
+    public string DisplayText => Label;
+
+    public event PropertyChangedEventHandler? PropertyChanged;
+}
+
+public sealed class SortOptionItem : INotifyPropertyChanged
+{
+    private bool _isSelected;
+
+    public string Key { get; init; } = string.Empty;
+    public string Label { get; init; } = string.Empty;
+    public string Description { get; init; } = string.Empty;
+    public string Icon { get; init; } = string.Empty;
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set
+        {
+            if (_isSelected == value) return;
+            _isSelected = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BackgroundColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BorderColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TextColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DescriptionColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IconColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(BadgeBackgroundColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RadioBorderColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(RadioFillColor)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsRadioSelected)));
+        }
+    }
+
+    public Color BackgroundColor => IsSelected ? Color.FromArgb("#F0F4FA") : Colors.White;
+    public Color BorderColor => IsSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#E2E8F0");
+    public Color TextColor => IsSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#1E293B");
+    public Color DescriptionColor => IsSelected ? Color.FromArgb("#334155") : Color.FromArgb("#64748B");
+    public Color IconColor => IsSelected ? Colors.White : Color.FromArgb("#475569");
+    public Color BadgeBackgroundColor => IsSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#F1F5F9");
+    public Color RadioBorderColor => IsSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#CBD5E1");
+    public Color RadioFillColor => IsSelected ? Color.FromArgb("#00205B") : Colors.Transparent;
+    public bool IsRadioSelected => IsSelected;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }
@@ -102,6 +145,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
     private bool _hasProducts = true;
 
     private bool _isFilterSheetVisible;
+    private bool _isSortSheetVisible;
     private double _selectedMaxPrice = 1500;
 
     public ShopViewModel(
@@ -130,7 +174,9 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         ApplyFilterSheetCommand = new Command(ApplyFilterSheet);
         ToggleFilterCategoryCommand = new Command<FilterOptionItem>(OnToggleFilterCategory);
         ToggleFilterSizeCommand = new Command<FilterOptionItem>(OnToggleFilterSize);
-        OpenSortCommand = new Command(async () => await ShowSortAsync());
+        OpenSortCommand = new Command(ShowSortSheet);
+        CloseSortSheetCommand = new Command(CloseSortSheet);
+        SelectSortOptionCommand = new Command<SortOptionItem>(OnSelectSortOption);
         ClearFiltersCommand = new Command(ClearFilters);
         ToggleWishlistCommand = new Command<Product>(async p => await OnToggleWishlistAsync(p));
         AddToCartCommand = new Command<Product>(async p => await OnAddToCartAsync(p));
@@ -142,6 +188,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         _wishlist.OnChange += () => MainThread.BeginInvokeOnMainThread(ApplyFilters);
 
         BuildFilterOptions();
+        BuildSortOptions();
     }
 
     /// <summary>Set by the page so ActionSheets can be shown.</summary>
@@ -266,10 +313,27 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
     public ICommand ToggleFilterCategoryCommand { get; }
     public ICommand ToggleFilterSizeCommand { get; }
     public ICommand OpenSortCommand { get; }
+    public ICommand CloseSortSheetCommand { get; }
+    public ICommand SelectSortOptionCommand { get; }
     public ICommand ClearFiltersCommand { get; }
     public ICommand ToggleWishlistCommand { get; }
     public ICommand AddToCartCommand { get; }
     public ICommand OpenProductCommand { get; }
+
+    public bool IsSortSheetVisible
+    {
+        get => _isSortSheetVisible;
+        set => SetField(ref _isSortSheetVisible, value);
+    }
+
+    public ObservableCollection<SortOptionItem> SortOptions { get; } = [];
+
+    public string CurrentSortLabel => _sortMode;
+    public string CurrentSortButtonText => string.Equals(_sortMode, "Default", StringComparison.OrdinalIgnoreCase) ? "Sort" : _sortMode;
+    public bool IsCustomSortActive => !string.Equals(_sortMode, "Default", StringComparison.OrdinalIgnoreCase);
+    public Color SortButtonBackground => IsCustomSortActive ? Color.FromArgb("#EFF6FF") : Colors.White;
+    public Color SortButtonBorderColor => IsCustomSortActive ? Color.FromArgb("#3B82F6") : Color.FromArgb("#E2E8F0");
+    public Color SortButtonTextColor => IsCustomSortActive ? Color.FromArgb("#1D4ED8") : Color.FromArgb("#00205B");
 
     public async Task LoadAsync()
     {
@@ -546,25 +610,93 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         OnPropertyChanged(nameof(ShowEmpty));
     }
 
-    private async Task ShowSortAsync()
+    private void ShowSortSheet()
     {
-        var page = HostPage ?? Shell.Current;
-        var choice = await page.DisplayActionSheetAsync(
-            "Sort products",
-            "Cancel",
-            null,
-            "Default",
-            "Price: Low to High",
-            "Price: High to Low",
-            "Newest",
-            "Best Selling",
-            "Highest Rated");
+        SyncSortOptions();
+        IsSortSheetVisible = true;
+    }
 
-        if (string.IsNullOrWhiteSpace(choice) || choice == "Cancel")
-            return;
+    private void CloseSortSheet() => IsSortSheetVisible = false;
 
-        _sortMode = choice;
+    private void OnSelectSortOption(SortOptionItem? item)
+    {
+        if (item is null) return;
+        _sortMode = item.Key;
+        SyncSortOptions();
         ApplyFilters();
+        IsSortSheetVisible = false;
+        NotifySortStateChanged();
+    }
+
+    private void SyncSortOptions()
+    {
+        foreach (var opt in SortOptions)
+        {
+            opt.IsSelected = string.Equals(opt.Key, _sortMode, StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private void BuildSortOptions()
+    {
+        SortOptions.Clear();
+        SortOptions.Add(new SortOptionItem
+        {
+            Key = "Default",
+            Label = "Default",
+            Description = "Featured items first",
+            Icon = Helpers.MaterialIconCodes.Star,
+            IsSelected = string.Equals(_sortMode, "Default", StringComparison.OrdinalIgnoreCase)
+        });
+        SortOptions.Add(new SortOptionItem
+        {
+            Key = "Price: Low to High",
+            Label = "Price: Low to High",
+            Description = "Cheapest items first",
+            Icon = Helpers.MaterialIconCodes.ArrowUpward,
+            IsSelected = string.Equals(_sortMode, "Price: Low to High", StringComparison.OrdinalIgnoreCase)
+        });
+        SortOptions.Add(new SortOptionItem
+        {
+            Key = "Price: High to Low",
+            Label = "Price: High to Low",
+            Description = "Highest price items first",
+            Icon = Helpers.MaterialIconCodes.ArrowDownward,
+            IsSelected = string.Equals(_sortMode, "Price: High to Low", StringComparison.OrdinalIgnoreCase)
+        });
+        SortOptions.Add(new SortOptionItem
+        {
+            Key = "Newest",
+            Label = "Newest",
+            Description = "Fresh drops and new arrivals",
+            Icon = Helpers.MaterialIconCodes.Schedule,
+            IsSelected = string.Equals(_sortMode, "Newest", StringComparison.OrdinalIgnoreCase)
+        });
+        SortOptions.Add(new SortOptionItem
+        {
+            Key = "Best Selling",
+            Label = "Best Selling",
+            Description = "Most popular merchandise",
+            Icon = Helpers.MaterialIconCodes.Whatshot,
+            IsSelected = string.Equals(_sortMode, "Best Selling", StringComparison.OrdinalIgnoreCase)
+        });
+        SortOptions.Add(new SortOptionItem
+        {
+            Key = "Highest Rated",
+            Label = "Highest Rated",
+            Description = "Top customer reviews",
+            Icon = Helpers.MaterialIconCodes.Grade,
+            IsSelected = string.Equals(_sortMode, "Highest Rated", StringComparison.OrdinalIgnoreCase)
+        });
+    }
+
+    private void NotifySortStateChanged()
+    {
+        OnPropertyChanged(nameof(CurrentSortLabel));
+        OnPropertyChanged(nameof(CurrentSortButtonText));
+        OnPropertyChanged(nameof(IsCustomSortActive));
+        OnPropertyChanged(nameof(SortButtonBackground));
+        OnPropertyChanged(nameof(SortButtonBorderColor));
+        OnPropertyChanged(nameof(SortButtonTextColor));
     }
 
     private void ClearFilters()
@@ -585,6 +717,8 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         foreach (var cat in Categories)
             cat.IsSelected = cat.Key == "All";
 
+        SyncSortOptions();
+        NotifySortStateChanged();
         ApplyFilters();
     }
 

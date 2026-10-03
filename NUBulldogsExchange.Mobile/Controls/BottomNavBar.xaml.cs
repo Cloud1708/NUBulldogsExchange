@@ -50,7 +50,7 @@ public partial class BottomNavBar : ContentView
     public bool IsWishlistActive => IsActive("wishlist");
     public bool IsOrdersActive => IsActive("orders");
     public bool IsAccountActive => IsActive("account");
-    public string WishlistGlyph => IsWishlistActive ? "♥" : "♡";
+    public string WishlistGlyph => IsWishlistActive ? Helpers.MaterialIconCodes.Favorite : Helpers.MaterialIconCodes.FavoriteBorder;
     public Color WishlistIconColor => IsWishlistActive ? WishlistPink : Inactive;
 
     private bool IsActive(string tab) =>

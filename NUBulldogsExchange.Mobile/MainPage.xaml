@@ -64,8 +64,9 @@
                         <Grid.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding OpenNotificationsCommand}" />
                         </Grid.GestureRecognizers>
-                        <Label Text="🔔"
-                               FontSize="16"
+                        <Label Text="&#xe7f4;"
+                               FontFamily="MaterialIcons"
+                               FontSize="19"
                                HorizontalOptions="Center"
                                VerticalOptions="Center"
                                TextColor="#E0B000" />
@@ -97,10 +98,12 @@
                             <TapGestureRecognizer Command="{Binding OpenCartCommand}"
                                                   NumberOfTapsRequired="1" />
                         </Grid.GestureRecognizers>
-                        <Label Text="🛒"
-                               FontSize="16"
+                        <Label Text="&#xe8cc;"
+                               FontFamily="MaterialIcons"
+                               FontSize="19"
                                HorizontalOptions="Center"
                                VerticalOptions="Center"
+                               TextColor="{StaticResource NuNavy}"
                                InputTransparent="True" />
                         <Border IsVisible="{Binding HasCartItems}"
                                 BackgroundColor="{StaticResource NuNavy}"
@@ -146,13 +149,21 @@
                         <RoundRectangle CornerRadius="12" />
                     </Border.StrokeShape>
                     <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8">
-                        <Label Text="🔍" FontSize="14" VerticalOptions="Center" />
+                        <Label Text="&#xe8b6;"
+                               FontFamily="MaterialIcons"
+                               FontSize="17"
+                               TextColor="#64748B"
+                               VerticalOptions="Center" />
                         <Entry Grid.Column="1"
                                Placeholder="Search NU merchandise..."
+                               PlaceholderColor="#64748B"
+                               TextColor="{StaticResource NuNavy}"
                                Text="{Binding SearchQuery}"
                                BackgroundColor="Transparent"
                                FontSize="13"
                                VerticalOptions="Center"
+                               VerticalTextAlignment="Center"
+                               ClearButtonVisibility="WhileEditing"
                                ReturnCommand="{Binding SearchCommand}" />
                         <Border Grid.Column="2"
                                 WidthRequest="32"
@@ -162,8 +173,9 @@
                             <Border.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding OpenShopCommand}" />
                             </Border.GestureRecognizers>
-                            <Label Text="⚙"
-                                   FontSize="15"
+                            <Label Text="&#xe8b8;"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="17"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center"
                                    TextColor="{StaticResource NuNavy}" />
@@ -289,6 +301,8 @@
                                                        WidthRequest="48"
                                                        HeightRequest="48" />
                                                 <Label Text="{Binding Icon}"
+                                                       FontFamily="MaterialIcons"
+                                                       TextColor="{StaticResource NuNavy}"
                                                        IsVisible="{Binding HasImageUrl, Converter={StaticResource InvertedBoolConverter}}"
                                                        FontSize="20"
                                                        HorizontalOptions="Center"

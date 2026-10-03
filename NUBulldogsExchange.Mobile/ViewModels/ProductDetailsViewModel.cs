@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using NUBulldogsExchange.Mobile.Models;
 using NUBulldogsExchange.Mobile.Services;
 using NUBulldogsExchange.Web.Shared.Data;
 using NUBulldogsExchange.Web.Shared.Services;
@@ -51,7 +52,7 @@ public sealed class ProductSizeItem : INotifyPropertyChanged
     public Color BorderColor => IsSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#CBD5E1");
     public double StrokeThickness => IsSelected ? 2.0 : 1.0;
     public double Opacity => IsAvailable ? 1.0 : 0.45;
-    public string IndicatorGlyph => IsSelected ? "✓" : string.Empty;
+    public string IndicatorGlyph => IsSelected ? Helpers.MaterialIconCodes.Check : string.Empty;
 
     public event PropertyChangedEventHandler? PropertyChanged;
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
@@ -95,6 +96,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     private readonly AuthService _auth;
     private readonly ToastService _toast;
     private readonly IAppDatabase _db;
+    private readonly OrderService _orders;
 
     private int _productId;
     private Product? _product;
@@ -115,13 +117,27 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     private bool _isShippingExpanded;
     private bool _isReturnsExpanded;
 
+    // Review Sheets & Eligibility State
+    private bool _isAllReviewsSheetVisible;
+    private bool _isWriteReviewSheetVisible;
+    private bool _canUserWriteReview;
+    private MockOrder? _eligibleOrder;
+    private MockOrderItem? _eligibleOrderItem;
+
+    private int _writeRating = 5;
+    private string _writeTitle = string.Empty;
+    private string _writeComment = string.Empty;
+    private string _writeReviewError = string.Empty;
+    private bool _isSubmittingWriteReview;
+
     public ProductDetailsViewModel(
         ProductCatalogService catalog,
         CartService cart,
         WishlistService wishlist,
         AuthService auth,
         ToastService toast,
-        IAppDatabase db)
+        IAppDatabase db,
+        OrderService orders)
     {
         _catalog = catalog;
         _cart = cart;
@@ -129,6 +145,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         _auth = auth;
         _toast = toast;
         _db = db;
+        _orders = orders;
 
         IncreaseCommand = new Command(IncreaseQuantity, () => AvailableStock > 0 && Quantity < AvailableStock);
         DecreaseCommand = new Command(DecreaseQuantity, () => Quantity > 1);
@@ -140,7 +157,13 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         ShareCommand = new Command(async () => await OnShareAsync());
         OpenCartCommand = new Command(async () => await GoAsync("cart"));
         OpenSizeGuideCommand = new Command(OpenSizeGuide);
-        ViewAllReviewsCommand = new Command(async () => await ShowReviewsModalAsync());
+        ViewAllReviewsCommand = new Command(OnOpenAllReviews);
+        OpenAllReviewsCommand = new Command(OnOpenAllReviews);
+        CloseAllReviewsCommand = new Command(() => IsAllReviewsSheetVisible = false);
+        OpenWriteReviewCommand = new Command(OnOpenWriteReview);
+        CloseWriteReviewCommand = new Command(() => IsWriteReviewSheetVisible = false);
+        SetWriteRatingCommand = new Command<string>(s => { if (int.TryParse(s, out var r)) WriteRating = r; });
+        SubmitWriteReviewCommand = new Command(async () => await OnSubmitWriteReviewAsync(), () => !IsSubmittingWriteReview);
         BackCommand = new Command(async () => await GoBackAsync());
 
         ToggleDescriptionCommand = new Command(() => IsDescriptionExpanded = !IsDescriptionExpanded);
@@ -163,6 +186,100 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     public ObservableCollection<ProductSizeItem> SizeList { get; } = [];
     public ObservableCollection<ProductColorItem> ColorList { get; } = [];
     public ObservableCollection<string> GalleryImages { get; } = [];
+    public ObservableCollection<ProductReviewItemModel> AllReviews { get; } = [];
+    public ObservableCollection<ProductReviewItemModel> TopReviews { get; } = [];
+
+    public bool HasReviews => AllReviews.Count > 0;
+    public bool NoReviews => !HasReviews;
+    public bool HasMoreReviews => AllReviews.Count > 3;
+    public int TotalReviewsCount => Product?.Reviews ?? AllReviews.Count;
+    public string AllReviewsTitle => $"Customer Reviews ({TotalReviewsCount})";
+    public string ViewAllButtonText => $"View All ({TotalReviewsCount})";
+
+    public bool CanUserWriteReview
+    {
+        get => _canUserWriteReview;
+        private set => SetField(ref _canUserWriteReview, value);
+    }
+
+    public bool IsAllReviewsSheetVisible
+    {
+        get => _isAllReviewsSheetVisible;
+        set => SetField(ref _isAllReviewsSheetVisible, value);
+    }
+
+    public bool IsWriteReviewSheetVisible
+    {
+        get => _isWriteReviewSheetVisible;
+        set => SetField(ref _isWriteReviewSheetVisible, value);
+    }
+
+    public int WriteRating
+    {
+        get => _writeRating;
+        set
+        {
+            if (SetField(ref _writeRating, Math.Clamp(value, 1, 5)))
+            {
+                OnPropertyChanged(nameof(WriteRatingStarsLabel));
+                OnPropertyChanged(nameof(WriteStar1Color));
+                OnPropertyChanged(nameof(WriteStar2Color));
+                OnPropertyChanged(nameof(WriteStar3Color));
+                OnPropertyChanged(nameof(WriteStar4Color));
+                OnPropertyChanged(nameof(WriteStar5Color));
+            }
+        }
+    }
+
+    public string WriteRatingStarsLabel => WriteRating switch
+    {
+        5 => "5 Stars - Excellent!",
+        4 => "4 Stars - Good",
+        3 => "3 Stars - Average",
+        2 => "2 Stars - Poor",
+        1 => "1 Star - Terrible",
+        _ => $"{WriteRating} Stars"
+    };
+
+    public Color WriteStar1Color => WriteRating >= 1 ? Color.FromArgb("#F59E0B") : Color.FromArgb("#CBD5E1");
+    public Color WriteStar2Color => WriteRating >= 2 ? Color.FromArgb("#F59E0B") : Color.FromArgb("#CBD5E1");
+    public Color WriteStar3Color => WriteRating >= 3 ? Color.FromArgb("#F59E0B") : Color.FromArgb("#CBD5E1");
+    public Color WriteStar4Color => WriteRating >= 4 ? Color.FromArgb("#F59E0B") : Color.FromArgb("#CBD5E1");
+    public Color WriteStar5Color => WriteRating >= 5 ? Color.FromArgb("#F59E0B") : Color.FromArgb("#CBD5E1");
+
+    public string WriteTitle
+    {
+        get => _writeTitle;
+        set => SetField(ref _writeTitle, value);
+    }
+
+    public string WriteComment
+    {
+        get => _writeComment;
+        set => SetField(ref _writeComment, value);
+    }
+
+    public string WriteReviewError
+    {
+        get => _writeReviewError;
+        set
+        {
+            if (SetField(ref _writeReviewError, value))
+                OnPropertyChanged(nameof(HasWriteReviewError));
+        }
+    }
+
+    public bool HasWriteReviewError => !string.IsNullOrWhiteSpace(WriteReviewError);
+
+    public bool IsSubmittingWriteReview
+    {
+        get => _isSubmittingWriteReview;
+        private set
+        {
+            if (SetField(ref _isSubmittingWriteReview, value))
+                ((Command)SubmitWriteReviewCommand).ChangeCanExecute();
+        }
+    }
 
     public string ProductId
     {
@@ -278,7 +395,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         }
     }
 
-    public string WishlistGlyph => IsWishlisted ? "♥" : "♡";
+    public string WishlistGlyph => IsWishlisted ? Helpers.MaterialIconCodes.Favorite : Helpers.MaterialIconCodes.FavoriteBorder;
     public Color WishlistColor => IsWishlisted ? Color.FromArgb("#EF4444") : Color.FromArgb("#1E293B");
 
     public int CartCount
@@ -433,12 +550,12 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         }
     }
 
-    public string DescriptionGlyph => IsDescriptionExpanded ? "▲" : "▼";
-    public string DetailsGlyph => IsDetailsExpanded ? "▲" : "▼";
-    public string MaterialsGlyph => IsMaterialsExpanded ? "▲" : "▼";
-    public string SizeGuideGlyph => IsSizeGuideExpanded ? "▲" : "▼";
-    public string ShippingGlyph => IsShippingExpanded ? "▲" : "▼";
-    public string ReturnsGlyph => IsReturnsExpanded ? "▲" : "▼";
+    public string DescriptionGlyph => IsDescriptionExpanded ? Helpers.MaterialIconCodes.ExpandLess : Helpers.MaterialIconCodes.ExpandMore;
+    public string DetailsGlyph => IsDetailsExpanded ? Helpers.MaterialIconCodes.ExpandLess : Helpers.MaterialIconCodes.ExpandMore;
+    public string MaterialsGlyph => IsMaterialsExpanded ? Helpers.MaterialIconCodes.ExpandLess : Helpers.MaterialIconCodes.ExpandMore;
+    public string SizeGuideGlyph => IsSizeGuideExpanded ? Helpers.MaterialIconCodes.ExpandLess : Helpers.MaterialIconCodes.ExpandMore;
+    public string ShippingGlyph => IsShippingExpanded ? Helpers.MaterialIconCodes.ExpandLess : Helpers.MaterialIconCodes.ExpandMore;
+    public string ReturnsGlyph => IsReturnsExpanded ? Helpers.MaterialIconCodes.ExpandLess : Helpers.MaterialIconCodes.ExpandMore;
 
     // Dynamic Accordion Texts
     public string DescriptionText =>
@@ -463,12 +580,19 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     public string ReturnsText =>
         "• 7-day return and exchange policy for defective items or size adjustments.\n• Item must be unwashed, unworn, and with original tags attached.\n• Present order confirmation receipt at the Merchandise Desk.";
 
-    // Rating breakdown percentages
-    public double Star5Percent => 0.75;
-    public double Star4Percent => 0.15;
-    public double Star3Percent => 0.06;
-    public double Star2Percent => 0.02;
-    public double Star1Percent => 0.02;
+    // Rating breakdown percentages (ProgressBar takes 0.0 to 1.0)
+    public double Star5Percent => GetStarPercent(0);
+    public double Star4Percent => GetStarPercent(1);
+    public double Star3Percent => GetStarPercent(2);
+    public double Star2Percent => GetStarPercent(3);
+    public double Star1Percent => GetStarPercent(4);
+
+    private double GetStarPercent(int index)
+    {
+        if (Product?.RatingBreakdown is null || Product.RatingBreakdown.Length <= index)
+            return 0.0;
+        return Math.Clamp(Product.RatingBreakdown[index] / 100.0, 0.0, 1.0);
+    }
 
     // Commands
     public ICommand IncreaseCommand { get; }
@@ -482,6 +606,12 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     public ICommand OpenCartCommand { get; }
     public ICommand OpenSizeGuideCommand { get; }
     public ICommand ViewAllReviewsCommand { get; }
+    public ICommand OpenAllReviewsCommand { get; }
+    public ICommand CloseAllReviewsCommand { get; }
+    public ICommand OpenWriteReviewCommand { get; }
+    public ICommand CloseWriteReviewCommand { get; }
+    public ICommand SetWriteRatingCommand { get; }
+    public ICommand SubmitWriteReviewCommand { get; }
     public ICommand BackCommand { get; }
     public ICommand ToggleDescriptionCommand { get; }
     public ICommand ToggleDetailsCommand { get; }
@@ -508,6 +638,11 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
 
         // Wishlist status
         IsWishlisted = _wishlist.Contains(Product.Id);
+
+        // Load real reviews and check review eligibility
+        await _orders.EnsureLoadedAsync(_auth.Email);
+        CheckReviewEligibility();
+        await LoadReviewsAsync();
 
         // Populate Gallery Images
         GalleryImages.Clear();
@@ -714,10 +849,166 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         _toast.Show("Size Guide opened below.");
     }
 
-    private async Task ShowReviewsModalAsync()
+    private void OnOpenAllReviews()
     {
-        var page = HostPage ?? Shell.Current;
-        await page.DisplayAlertAsync("Ratings & Reviews", $"Overall: {RatingText} ⭐ ({ReviewsText})\n\n100% of reviews are from verified NU students and staff.", "OK");
+        IsAllReviewsSheetVisible = true;
+    }
+
+    private void OnOpenWriteReview()
+    {
+        WriteRating = 5;
+        WriteTitle = string.Empty;
+        WriteComment = string.Empty;
+        WriteReviewError = string.Empty;
+        IsWriteReviewSheetVisible = true;
+    }
+
+    private async Task OnSubmitWriteReviewAsync()
+    {
+        if (_eligibleOrder is null || _eligibleOrderItem is null)
+        {
+            WriteReviewError = "Only verified purchasers with completed orders can submit a review.";
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(WriteComment) || WriteComment.Trim().Length < 5)
+        {
+            WriteReviewError = "Please write a review with at least 5 characters.";
+            return;
+        }
+
+        IsSubmittingWriteReview = true;
+        WriteReviewError = string.Empty;
+
+        try
+        {
+            await _orders.SubmitProductReviewAsync(
+                _eligibleOrder.Id,
+                _eligibleOrderItem.OrderItemId,
+                WriteRating,
+                string.IsNullOrWhiteSpace(WriteTitle) ? null : WriteTitle.Trim(),
+                WriteComment.Trim());
+
+            // Mark ALL items with this ProductId across all user orders as reviewed
+            foreach (var order in _orders.Orders)
+            {
+                foreach (var item in order.Items.Where(i => i.ProductId == _productId))
+                {
+                    item.IsReviewed = true;
+                }
+            }
+
+            _toast.Show("Thank you! Your review has been submitted.");
+            IsWriteReviewSheetVisible = false;
+
+            // Reload reviews and re-check eligibility
+            await LoadReviewsAsync();
+            CheckReviewEligibility();
+        }
+        catch (Exception ex)
+        {
+            WriteReviewError = ex.Message ?? "Failed to submit review. Please try again.";
+        }
+        finally
+        {
+            IsSubmittingWriteReview = false;
+        }
+    }
+
+    private async Task LoadReviewsAsync()
+    {
+        try
+        {
+            var reviews = await _db.GetProductReviewsAsync(_productId);
+            if (Product is not null)
+            {
+                ProductReviewStats.Apply(Product, reviews);
+            }
+
+            AllReviews.Clear();
+            TopReviews.Clear();
+
+            foreach (var r in reviews)
+            {
+                var model = new ProductReviewItemModel { Review = r };
+                AllReviews.Add(model);
+                if (TopReviews.Count < 3)
+                    TopReviews.Add(model);
+            }
+
+            OnPropertyChanged(nameof(RatingText));
+            OnPropertyChanged(nameof(ReviewsText));
+            OnPropertyChanged(nameof(Star5Percent));
+            OnPropertyChanged(nameof(Star4Percent));
+            OnPropertyChanged(nameof(Star3Percent));
+            OnPropertyChanged(nameof(Star2Percent));
+            OnPropertyChanged(nameof(Star1Percent));
+            OnPropertyChanged(nameof(HasReviews));
+            OnPropertyChanged(nameof(NoReviews));
+            OnPropertyChanged(nameof(HasMoreReviews));
+            OnPropertyChanged(nameof(TotalReviewsCount));
+            OnPropertyChanged(nameof(AllReviewsTitle));
+            OnPropertyChanged(nameof(ViewAllButtonText));
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed to load reviews for product {_productId}: {ex.Message}");
+        }
+    }
+
+    private void CheckReviewEligibility()
+    {
+        try
+        {
+            // Sync all reviewed products across user orders so duplicate/same items are marked
+            var reviewedProductIds = _orders.Orders
+                .SelectMany(o => o.Items)
+                .Where(i => i.IsReviewed && i.ProductId > 0)
+                .Select(i => i.ProductId)
+                .ToHashSet();
+
+            foreach (var order in _orders.Orders)
+            {
+                foreach (var item in order.Items)
+                {
+                    if (reviewedProductIds.Contains(item.ProductId))
+                    {
+                        item.IsReviewed = true;
+                    }
+                }
+            }
+
+            // If the user already reviewed this product in ANY order or item, they cannot review it again.
+            if (reviewedProductIds.Contains(_productId))
+            {
+                _eligibleOrder = null;
+                _eligibleOrderItem = null;
+                CanUserWriteReview = false;
+                return;
+            }
+
+            var eligible = _orders.Orders
+                .Where(o => OrderFlow.CanWriteReview(o))
+                .SelectMany(o => o.Items.Select(item => (Order: o, Item: item)))
+                .FirstOrDefault(x => x.Item.ProductId == _productId && !x.Item.IsReviewed);
+
+            if (eligible != default)
+            {
+                _eligibleOrder = eligible.Order;
+                _eligibleOrderItem = eligible.Item;
+                CanUserWriteReview = true;
+            }
+            else
+            {
+                _eligibleOrder = null;
+                _eligibleOrderItem = null;
+                CanUserWriteReview = false;
+            }
+        }
+        catch
+        {
+            CanUserWriteReview = false;
+        }
     }
 
     private async Task AddToCartAsync()

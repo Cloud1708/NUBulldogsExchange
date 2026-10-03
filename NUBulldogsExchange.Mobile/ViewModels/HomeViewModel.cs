@@ -21,7 +21,7 @@ public sealed class HomeViewModel : INotifyPropertyChanged
     private readonly AdminProductService _adminProducts;
     private readonly AdminCategoryService _adminCategories;
 
-    private string _greetingTitle = "Welcome! 👋";
+    private string _greetingTitle = "Welcome!";
     private string _greetingSubtitle = "Browse NU Bulldogs merchandise.";
     private string _searchQuery = string.Empty;
     private bool _isBusy;
@@ -57,7 +57,7 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         SearchCommand = new Command(OnSearch);
         OpenShopCommand = new Command(async () => await GoAsync("//shop"));
         OpenCartCommand = new Command(async () => await GoAsync("cart"));
-        OpenNotificationsCommand = new Command(async () => await GoAsync("//account"));
+        OpenNotificationsCommand = new Command(async () => await GoAsync("notifications"));
         OpenCategoryCommand = new Command<CategoryChip>(async c => await OnCategoryAsync(c));
         OpenProductCommand = new Command<Product>(async p => await OnProductAsync(p));
         ToggleWishlistCommand = new Command<Product>(async p => await OnToggleWishlistAsync(p));
@@ -231,12 +231,12 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         if (_auth.IsLoggedIn && !string.IsNullOrWhiteSpace(_auth.FirstName) &&
             !_auth.FirstName.Equals("Guest", StringComparison.OrdinalIgnoreCase))
         {
-            GreetingTitle = $"Hello, {_auth.FirstName}! 👋";
+            GreetingTitle = $"Hello, {_auth.FirstName}!";
             GreetingSubtitle = "Ready to show your Bulldog pride?";
         }
         else
         {
-            GreetingTitle = "Welcome! 👋";
+            GreetingTitle = "Welcome!";
             GreetingSubtitle = "Browse NU Bulldogs merchandise.";
         }
 
@@ -310,21 +310,21 @@ public sealed class HomeViewModel : INotifyPropertyChanged
 
     public static string DeriveCategoryIcon(string name)
     {
-        if (string.IsNullOrWhiteSpace(name)) return "🏷️";
+        if (string.IsNullOrWhiteSpace(name)) return Helpers.MaterialIconCodes.LocalOffer;
         var n = name.ToLowerInvariant();
-        if (n.Contains("t-shirt") || n.Contains("shirt") || n.Contains("tee")) return "👕";
-        if (n.Contains("polo")) return "👔";
-        if (n.Contains("hood")) return "🧥";
-        if (n.Contains("jacket") || n.Contains("coat") || n.Contains("outer")) return "🧣";
-        if (n.Contains("cap") || n.Contains("hat")) return "🧢";
-        if (n.Contains("bag") || n.Contains("backpack") || n.Contains("tote")) return "🎒";
-        if (n.Contains("tumbler") || n.Contains("bottle") || n.Contains("mug") || n.Contains("cup")) return "🥤";
-        if (n.Contains("suppl") || n.Contains("book") || n.Contains("note") || n.Contains("pen")) return "📚";
-        if (n.Contains("jersey") || n.Contains("sport")) return "🎽";
-        if (n.Contains("shoe") || n.Contains("sock")) return "👟";
-        if (n.Contains("lanyard") || n.Contains("id")) return "🪪";
-        if (n.Contains("sticker") || n.Contains("pin") || n.Contains("badge")) return "✨";
-        return "🏷️";
+        if (n.Contains("t-shirt") || n.Contains("shirt") || n.Contains("tee")) return Helpers.MaterialIconCodes.Checkroom;
+        if (n.Contains("polo")) return Helpers.MaterialIconCodes.DryCleaning;
+        if (n.Contains("hood")) return Helpers.MaterialIconCodes.Checkroom;
+        if (n.Contains("jacket") || n.Contains("coat") || n.Contains("outer")) return Helpers.MaterialIconCodes.Style;
+        if (n.Contains("cap") || n.Contains("hat")) return Helpers.MaterialIconCodes.SportsBaseball;
+        if (n.Contains("bag") || n.Contains("backpack") || n.Contains("tote")) return Helpers.MaterialIconCodes.Backpack;
+        if (n.Contains("tumbler") || n.Contains("bottle") || n.Contains("mug") || n.Contains("cup")) return Helpers.MaterialIconCodes.LocalCafe;
+        if (n.Contains("suppl") || n.Contains("book") || n.Contains("note") || n.Contains("pen")) return Helpers.MaterialIconCodes.MenuBook;
+        if (n.Contains("jersey") || n.Contains("sport")) return Helpers.MaterialIconCodes.Sports;
+        if (n.Contains("shoe") || n.Contains("sock")) return Helpers.MaterialIconCodes.DirectionsRun;
+        if (n.Contains("lanyard") || n.Contains("id")) return Helpers.MaterialIconCodes.Badge;
+        if (n.Contains("sticker") || n.Contains("pin") || n.Contains("badge")) return Helpers.MaterialIconCodes.LocalOffer;
+        return Helpers.MaterialIconCodes.LocalOffer;
     }
 
     public static Color DeriveCategoryBg(string name)

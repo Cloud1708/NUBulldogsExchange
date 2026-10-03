@@ -233,8 +233,8 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     public decimal FulfillmentFee => IsDelivery ? _deliveryFee : 0m;
     public string FulfillmentFeeText => IsDelivery ? $"₱{_deliveryFee:N0}" : "Free";
     public string SavingsBannerText => IsCampusPickup
-        ? "🎉 You're saving on delivery fees! Free campus pickup at NU Lipa Campus."
-        : "🚚 Estimated Delivery: 3–7 business days. We'll notify you on shipment.";
+        ? "You're saving on delivery fees! Free campus pickup at NU Lipa Campus."
+        : "Estimated Delivery: 3–7 business days. We'll notify you on shipment.";
 
     // Shipping Fields
     public string ShipRecipient
@@ -301,47 +301,84 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
     public void NotifyPaymentProperties()
     {
         OnPropertyChanged(nameof(IsCashSelected));
+        OnPropertyChanged(nameof(IsGCashSelected));
+        OnPropertyChanged(nameof(IsMayaSelected));
+        OnPropertyChanged(nameof(IsCreditCardSelected));
         OnPropertyChanged(nameof(IsEWalletSelected));
         OnPropertyChanged(nameof(IsOnlineSelected));
-        OnPropertyChanged(nameof(IsGCashSelected));
         OnPropertyChanged(nameof(CashPaymentTitle));
         OnPropertyChanged(nameof(CashStroke));
         OnPropertyChanged(nameof(CashStrokeThickness));
         OnPropertyChanged(nameof(CashBackgroundColor));
+        OnPropertyChanged(nameof(CashCheckBg));
+        OnPropertyChanged(nameof(GCashStroke));
+        OnPropertyChanged(nameof(GCashStrokeThickness));
+        OnPropertyChanged(nameof(GCashBackgroundColor));
+        OnPropertyChanged(nameof(GCashCheckBg));
+        OnPropertyChanged(nameof(MayaStroke));
+        OnPropertyChanged(nameof(MayaStrokeThickness));
+        OnPropertyChanged(nameof(MayaBackgroundColor));
+        OnPropertyChanged(nameof(MayaCheckBg));
+        OnPropertyChanged(nameof(CreditCardStroke));
+        OnPropertyChanged(nameof(CreditCardStrokeThickness));
+        OnPropertyChanged(nameof(CreditCardBackgroundColor));
+        OnPropertyChanged(nameof(CreditCardCheckBg));
         OnPropertyChanged(nameof(EWalletStroke));
         OnPropertyChanged(nameof(EWalletStrokeThickness));
         OnPropertyChanged(nameof(EWalletBackgroundColor));
         OnPropertyChanged(nameof(OnlineStroke));
         OnPropertyChanged(nameof(OnlineStrokeThickness));
         OnPropertyChanged(nameof(OnlineBackgroundColor));
-        OnPropertyChanged(nameof(GCashStroke));
-        OnPropertyChanged(nameof(GCashStrokeThickness));
-        OnPropertyChanged(nameof(GCashBackgroundColor));
         OnPropertyChanged(nameof(HasOnlineNote));
+        OnPropertyChanged(nameof(OnlineNoteText));
     }
 
     public string CashPaymentTitle => IsDelivery ? "Cash on Delivery" : "Cash on Pickup";
     public bool IsCashSelected => PaymentMethod is "Cash on Pickup" or "Cash on Delivery" or "Cash";
-    public bool IsEWalletSelected => PaymentMethod == "E-Wallet";
-    public bool IsOnlineSelected => PaymentMethod == "Online Payment";
     public bool IsGCashSelected => PaymentMethod == "GCash";
-    public bool HasOnlineNote => PaymentMethod is "E-Wallet" or "Online Payment" or "GCash";
+    public bool IsMayaSelected => PaymentMethod == "Maya";
+    public bool IsCreditCardSelected => PaymentMethod == "Credit Card";
+    public bool IsEWalletSelected => PaymentMethod is "E-Wallet" or "Maya";
+    public bool IsOnlineSelected => PaymentMethod is "Online Payment" or "Credit Card";
+    public bool HasOnlineNote => PaymentMethod is "GCash" or "Maya" or "Credit Card" or "E-Wallet" or "Online Payment";
 
-    public Color CashStroke => IsCashSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#E2E8F0");
-    public double CashStrokeThickness => IsCashSelected ? 2.0 : 1.0;
-    public Color CashBackgroundColor => IsCashSelected ? Color.FromArgb("#F8FAFC") : Colors.White;
+    public string OnlineNoteText => PaymentMethod switch
+    {
+        "Credit Card" => "This payment method is currently running in development/test mode. Card numbers, CVV, and PINs are not collected or stored.",
+        _ => "Verification or payment QR will be confirmed upon placing your order."
+    };
 
-    public Color EWalletStroke => IsEWalletSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#E2E8F0");
-    public double EWalletStrokeThickness => IsEWalletSelected ? 2.0 : 1.0;
-    public Color EWalletBackgroundColor => IsEWalletSelected ? Color.FromArgb("#F8FAFC") : Colors.White;
+    private static readonly Color SelectedStrokeColor = Color.FromArgb("#0A2540");
+    private static readonly Color UnselectedStrokeColor = Color.FromArgb("#E2E8F0");
+    private static readonly Color UnselectedCheckBg = Color.FromArgb("#E2E8F0");
 
-    public Color OnlineStroke => IsOnlineSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#E2E8F0");
-    public double OnlineStrokeThickness => IsOnlineSelected ? 2.0 : 1.0;
-    public Color OnlineBackgroundColor => IsOnlineSelected ? Color.FromArgb("#F8FAFC") : Colors.White;
+    public Color CashStroke => IsCashSelected ? SelectedStrokeColor : UnselectedStrokeColor;
+    public double CashStrokeThickness => IsCashSelected ? 1.5 : 1.0;
+    public Color CashBackgroundColor => Colors.White;
+    public Color CashCheckBg => IsCashSelected ? SelectedStrokeColor : UnselectedCheckBg;
 
-    public Color GCashStroke => IsGCashSelected ? Color.FromArgb("#00205B") : Color.FromArgb("#E2E8F0");
-    public double GCashStrokeThickness => IsGCashSelected ? 2.0 : 1.0;
-    public Color GCashBackgroundColor => IsGCashSelected ? Color.FromArgb("#F8FAFC") : Colors.White;
+    public Color GCashStroke => IsGCashSelected ? SelectedStrokeColor : UnselectedStrokeColor;
+    public double GCashStrokeThickness => IsGCashSelected ? 1.5 : 1.0;
+    public Color GCashBackgroundColor => Colors.White;
+    public Color GCashCheckBg => IsGCashSelected ? SelectedStrokeColor : UnselectedCheckBg;
+
+    public Color MayaStroke => IsMayaSelected ? SelectedStrokeColor : UnselectedStrokeColor;
+    public double MayaStrokeThickness => IsMayaSelected ? 1.5 : 1.0;
+    public Color MayaBackgroundColor => Colors.White;
+    public Color MayaCheckBg => IsMayaSelected ? SelectedStrokeColor : UnselectedCheckBg;
+
+    public Color CreditCardStroke => IsCreditCardSelected ? SelectedStrokeColor : UnselectedStrokeColor;
+    public double CreditCardStrokeThickness => IsCreditCardSelected ? 1.5 : 1.0;
+    public Color CreditCardBackgroundColor => Colors.White;
+    public Color CreditCardCheckBg => IsCreditCardSelected ? SelectedStrokeColor : UnselectedCheckBg;
+
+    public Color EWalletStroke => IsEWalletSelected ? SelectedStrokeColor : UnselectedStrokeColor;
+    public double EWalletStrokeThickness => IsEWalletSelected ? 1.5 : 1.0;
+    public Color EWalletBackgroundColor => Colors.White;
+
+    public Color OnlineStroke => IsOnlineSelected ? SelectedStrokeColor : UnselectedStrokeColor;
+    public double OnlineStrokeThickness => IsOnlineSelected ? 1.5 : 1.0;
+    public Color OnlineBackgroundColor => Colors.White;
 
     // Order Notes
     public string OrderNotes
@@ -572,7 +609,7 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
 
     public void SelectPaymentMethod(string method)
     {
-        if (method == "Cash")
+        if (method is "Cash" or "Cash on Pickup" or "Cash on Delivery")
             PaymentMethod = IsDelivery ? "Cash on Delivery" : "Cash on Pickup";
         else
             PaymentMethod = method;

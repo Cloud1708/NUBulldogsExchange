@@ -1,0 +1,294 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
+             xmlns:models="clr-namespace:NUBulldogsExchange.Mobile.Models"
+             x:Class="NUBulldogsExchange.Mobile.Pages.NotificationsPage"
+             x:Name="NotificationsRoot"
+             x:DataType="vm:NotificationsViewModel"
+             Title="Notifications"
+             BackgroundColor="#F6F7F9"
+             Shell.NavBarIsVisible="False"
+             Shell.TabBarIsVisible="False">
+
+    <Grid RowDefinitions="Auto,Auto,*"
+          HorizontalOptions="Fill"
+          VerticalOptions="Fill">
+
+        <!-- 1. Header Bar -->
+        <Border Grid.Row="0"
+                BackgroundColor="White"
+                StrokeThickness="0"
+                Padding="16,14,16,12">
+            <Grid ColumnDefinitions="40,*,Auto" ColumnSpacing="12" VerticalOptions="Center">
+                <!-- Back Button -->
+                <Border BackgroundColor="#F1F5F9"
+                        WidthRequest="38"
+                        HeightRequest="38"
+                        StrokeThickness="0"
+                        VerticalOptions="Center"
+                        HorizontalOptions="Start">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="19" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding BackCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="&#xe5c4;"
+                           FontFamily="MaterialIcons"
+                           FontSize="20"
+                           TextColor="{StaticResource NuNavy}"
+                           FontAttributes="Bold"
+                           InputTransparent="True"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Title & Unread Badge -->
+                <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
+                    <Label Text="Notifications"
+                           FontSize="19"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}"
+                           VerticalOptions="Center" />
+                    <Border IsVisible="{Binding HasUnread}"
+                            BackgroundColor="#EF4444"
+                            Padding="8,2"
+                            StrokeThickness="0"
+                            VerticalOptions="Center">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="10" />
+                        </Border.StrokeShape>
+                        <Label Text="{Binding UnreadCountText}"
+                               TextColor="White"
+                               FontSize="10"
+                               FontAttributes="Bold"
+                               VerticalOptions="Center" />
+                    </Border>
+                </HorizontalStackLayout>
+
+                <!-- Mark All Read Action -->
+                <Border Grid.Column="2"
+                        IsVisible="{Binding HasUnread}"
+                        BackgroundColor="#EEF2FF"
+                        Padding="12,6"
+                        StrokeThickness="0"
+                        VerticalOptions="Center">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="8" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding MarkAllAsReadCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="Mark All Read"
+                           TextColor="{StaticResource NuNavy}"
+                           FontSize="11"
+                           FontAttributes="Bold"
+                           InputTransparent="True"
+                           VerticalOptions="Center" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- 2. Filter Chips -->
+        <Border Grid.Row="1"
+                BackgroundColor="White"
+                StrokeThickness="0"
+                Padding="0,2,0,12">
+            <ScrollView Orientation="Horizontal"
+                        HorizontalScrollBarVisibility="Never"
+                        VerticalScrollBarVisibility="Never">
+                <HorizontalStackLayout BindableLayout.ItemsSource="{Binding FilterChips}"
+                                       Spacing="8"
+                                       Padding="16,0,16,0"
+                                       VerticalOptions="Center">
+                    <BindableLayout.ItemTemplate>
+                        <DataTemplate x:DataType="vm:NotificationFilterChip">
+                            <Border BackgroundColor="{Binding BackgroundColor}"
+                                    Stroke="{Binding BorderColor}"
+                                    StrokeThickness="1"
+                                    Padding="16,0"
+                                    HeightRequest="32"
+                                    VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="16" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Command="{Binding BindingContext.SelectFilterCommand, Source={x:Reference NotificationsRoot}}"
+                                        CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="{Binding Label}"
+                                       TextColor="{Binding TextColor}"
+                                       FontSize="11"
+                                       FontAttributes="Bold"
+                                       InputTransparent="True"
+                                       VerticalOptions="Center"
+                                       HorizontalOptions="Center" />
+                            </Border>
+                        </DataTemplate>
+                    </BindableLayout.ItemTemplate>
+                </HorizontalStackLayout>
+            </ScrollView>
+        </Border>
+
+        <!-- 3. Notification List or Empty State -->
+        <RefreshView Grid.Row="2"
+                     IsRefreshing="{Binding IsRefreshing}"
+                     Command="{Binding RefreshCommand}">
+            <Grid BackgroundColor="#F6F7F9">
+
+                <!-- Notifications List -->
+                <CollectionView ItemsSource="{Binding FilteredNotifications}"
+                                IsVisible="{Binding HasNotifications}"
+                                SelectionMode="None"
+                                Margin="16,10,16,16">
+                    <CollectionView.ItemTemplate>
+                        <DataTemplate x:DataType="models:NotificationItemModel">
+                            <Border BackgroundColor="{Binding CardBackgroundColor}"
+                                    Stroke="{Binding CardBorderColor}"
+                                    StrokeThickness="1"
+                                    Padding="14,14"
+                                    Margin="0,0,0,10">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="14" />
+                                </Border.StrokeShape>
+                                <Border.Shadow>
+                                    <Shadow Brush="#06000000" Offset="0,1" Radius="3" Opacity="0.06" />
+                                </Border.Shadow>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer
+                                        Command="{Binding BindingContext.NotificationTapCommand, Source={x:Reference NotificationsRoot}}"
+                                        CommandParameter="{Binding .}" />
+                                </Border.GestureRecognizers>
+
+                                <Grid ColumnDefinitions="42,*,Auto" ColumnSpacing="12" VerticalOptions="Center" InputTransparent="True">
+                                    <!-- Tone Icon Badge -->
+                                    <Border WidthRequest="42"
+                                            HeightRequest="42"
+                                            BackgroundColor="{Binding IconBackgroundColor}"
+                                            StrokeThickness="0"
+                                            VerticalOptions="Start">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="21" />
+                                        </Border.StrokeShape>
+                                        <Label Text="{Binding Glyph}"
+                                               FontFamily="MaterialIcons"
+                                               TextColor="{Binding IconTextColor}"
+                                               FontSize="18"
+                                               HorizontalOptions="Center"
+                                               VerticalOptions="Center" />
+                                    </Border>
+
+                                    <!-- Notification Body -->
+                                    <VerticalStackLayout Grid.Column="1" Spacing="4" VerticalOptions="Center">
+                                        <Label Text="{Binding Title}"
+                                               FontSize="13"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}"
+                                               LineBreakMode="TailTruncation" />
+                                        <Label Text="{Binding Message}"
+                                               FontSize="12"
+                                               TextColor="#475569"
+                                               LineHeight="1.3" />
+                                        <Label Text="{Binding TimeAgo}"
+                                               FontSize="10"
+                                               TextColor="#94A3B8"
+                                               Margin="0,2,0,0" />
+                                    </VerticalStackLayout>
+
+                                    <!-- Right Unread Indicator -->
+                                    <VerticalStackLayout Grid.Column="2" VerticalOptions="Center" Spacing="4">
+                                        <Border IsVisible="{Binding IsUnread}"
+                                                BackgroundColor="#2563EB"
+                                                WidthRequest="8"
+                                                HeightRequest="8"
+                                                StrokeThickness="0"
+                                                HorizontalOptions="End">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="4" />
+                                            </Border.StrokeShape>
+                                        </Border>
+                                        <Label Text="&#xe5cc;"
+                                               FontFamily="MaterialIcons"
+                                               FontSize="18"
+                                               TextColor="#CBD5E1"
+                                               HorizontalOptions="End" />
+                                    </VerticalStackLayout>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </CollectionView.ItemTemplate>
+                </CollectionView>
+
+                <!-- Empty State -->
+                <VerticalStackLayout IsVisible="{Binding HasNoNotifications}"
+                                     VerticalOptions="Center"
+                                     HorizontalOptions="Center"
+                                     Spacing="10"
+                                     Padding="32,0">
+                    <Label Text="&#xe7f5;"
+                           FontFamily="MaterialIcons"
+                           FontSize="56"
+                           TextColor="#94A3B8"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="No notifications yet"
+                           FontSize="18"
+                           FontAttributes="Bold"
+                           TextColor="{StaticResource NuNavy}"
+                           HorizontalTextAlignment="Center" />
+                    <Label Text="When you place orders, receive status updates, or get announcements, they'll appear here."
+                           FontSize="12"
+                           TextColor="{StaticResource MutedText}"
+                           HorizontalTextAlignment="Center"
+                           LineHeight="1.3" />
+
+                    <HorizontalStackLayout Spacing="10" HorizontalOptions="Center" Margin="0,12,0,0">
+                        <!-- View Orders Button -->
+                        <Border BackgroundColor="White"
+                                Stroke="{StaticResource NuNavy}"
+                                StrokeThickness="1"
+                                HeightRequest="40"
+                                Padding="16,0"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="20" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding ViewOrdersCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="View Orders"
+                                   TextColor="{StaticResource NuNavy}"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center"
+                                   HorizontalOptions="Center" />
+                        </Border>
+
+                        <!-- Start Shopping Button -->
+                        <Border BackgroundColor="{StaticResource NuNavy}"
+                                HeightRequest="40"
+                                Padding="16,0"
+                                StrokeThickness="0"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="20" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding StartShoppingCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="Start Shopping"
+                                   TextColor="White"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   InputTransparent="True"
+                                   VerticalOptions="Center"
+                                   HorizontalOptions="Center" />
+                        </Border>
+                    </HorizontalStackLayout>
+                </VerticalStackLayout>
+            </Grid>
+        </RefreshView>
+    </Grid>
+</ContentPage>

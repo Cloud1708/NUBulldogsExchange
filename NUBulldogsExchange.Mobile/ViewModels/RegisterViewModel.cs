@@ -106,8 +106,8 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
         }
     }
 
-    public string PasswordToggleGlyph => IsPasswordHidden ? "👁" : "🙈";
-    public string ConfirmPasswordToggleGlyph => IsConfirmPasswordHidden ? "👁" : "🙈";
+    public string PasswordToggleGlyph => IsPasswordHidden ? Helpers.MaterialIconCodes.VisibilityOff : Helpers.MaterialIconCodes.Visibility;
+    public string ConfirmPasswordToggleGlyph => IsConfirmPasswordHidden ? Helpers.MaterialIconCodes.VisibilityOff : Helpers.MaterialIconCodes.Visibility;
 
     public bool IsBusy
     {

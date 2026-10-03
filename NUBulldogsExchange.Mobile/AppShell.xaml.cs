@@ -1,4 +1,4 @@
-﻿namespace NUBulldogsExchange.Mobile
+namespace NUBulldogsExchange.Mobile
 {
     public partial class AppShell : Shell
     {
@@ -10,6 +10,7 @@
             Routing.RegisterRoute("cart", typeof(Pages.CartPage));
             Routing.RegisterRoute("checkout", typeof(Pages.CheckoutPage));
             Routing.RegisterRoute("product", typeof(Pages.ProductDetailsPage));
+            Routing.RegisterRoute("notifications", typeof(Pages.NotificationsPage));
         }
     }
 }

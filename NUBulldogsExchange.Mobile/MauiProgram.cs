@@ -17,6 +17,7 @@ namespace NUBulldogsExchange.Mobile
                 {
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                     fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
+                    fonts.AddFont("MaterialIcons-Regular.ttf", "MaterialIcons");
                 });
 
             builder.Services.AddSingleton<IFormFactor, FormFactor>();
@@ -81,6 +82,7 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddTransient<CartViewModel>();
             builder.Services.AddTransient<CheckoutViewModel>();
             builder.Services.AddTransient<ProductDetailsViewModel>();
+            builder.Services.AddTransient<NotificationsViewModel>();
 
             // Pages
             builder.Services.AddTransient<MainPage>();
@@ -93,12 +95,40 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddTransient<CartPage>();
             builder.Services.AddTransient<CheckoutPage>();
             builder.Services.AddTransient<ProductDetailsPage>();
+            builder.Services.AddTransient<NotificationsPage>();
 
 #if DEBUG
             builder.Logging.AddDebug();
 #endif
 
+            ConfigureBorderlessInputs();
+
             return builder.Build();
+        }
+
+        private static void ConfigureBorderlessInputs()
+        {
+            Microsoft.Maui.Handlers.EntryHandler.Mapper.AppendToMapping("BorderlessEntry", (handler, view) =>
+            {
+#if WINDOWS
+                handler.PlatformView.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
+#elif ANDROID
+                handler.PlatformView.SetBackgroundColor(Android.Graphics.Color.Transparent);
+                handler.PlatformView.Background = null;
+#elif IOS || MACCATALYST
+                handler.PlatformView.BorderStyle = UIKit.UITextBorderStyle.None;
+#endif
+            });
+
+            Microsoft.Maui.Handlers.EditorHandler.Mapper.AppendToMapping("BorderlessEditor", (handler, view) =>
+            {
+#if WINDOWS
+                handler.PlatformView.BorderThickness = new Microsoft.UI.Xaml.Thickness(0);
+#elif ANDROID
+                handler.PlatformView.SetBackgroundColor(Android.Graphics.Color.Transparent);
+                handler.PlatformView.Background = null;
+#endif
+            });
         }
     }
 }
