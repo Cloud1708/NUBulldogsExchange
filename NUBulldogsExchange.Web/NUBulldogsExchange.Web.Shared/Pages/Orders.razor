@@ -46,17 +46,23 @@ else
                                 role="tab"
                                 class="order-filter-tab @(_filter == filter ? "active" : "")"
                                 aria-selected="@(_filter == filter)"
-                                @onclick="() => _filter = filter">
+                                @onclick="() => SetFilter(filter)">
                             @filter
                         </button>
                     }
                 </div>
 
                 @{
-                    var visible = OrderService.Filter(_filter).ToList();
+                    var filtered = OrderService.Filter(_filter).ToList();
+                    var totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)_pageSize));
+                    if (_currentPage > totalPages) _currentPage = totalPages;
+                    if (_currentPage < 1) _currentPage = 1;
+                    var pageItems = filtered.Skip((_currentPage - 1) * _pageSize).Take(_pageSize).ToList();
+                    var rangeStart = filtered.Count == 0 ? 0 : ((_currentPage - 1) * _pageSize) + 1;
+                    var rangeEnd = Math.Min(_currentPage * _pageSize, filtered.Count);
                 }
 
-                @if (!visible.Any())
+                @if (filtered.Count == 0)
                 {
                     <div class="wishlist-empty">
                         <div class="wishlist-empty-icon" aria-hidden="true">
@@ -69,7 +75,7 @@ else
                 else
                 {
                     <div class="order-card-list">
-                        @foreach (var order in visible)
+                        @foreach (var order in pageItems)
                         {
                             <article class="order-card">
                                 <div class="order-card-top">
@@ -161,6 +167,53 @@ else
                             </article>
                         }
                     </div>
+
+                    @if (totalPages > 1)
+                    {
+                        <div class="shop-pager" role="navigation" aria-label="Order pages">
+                            <label class="shop-pager-size">
+                                <span>Page size:</span>
+                                <select value="@_pageSize" @onchange="OnPageSizeChanged" aria-label="Orders per page">
+                                    @foreach (var size in PageSizes)
+                                    {
+                                        <option value="@size">@size</option>
+                                    }
+                                </select>
+                            </label>
+
+                            <span class="shop-pager-range">@rangeStart to @rangeEnd of @filtered.Count</span>
+
+                            <div class="shop-pager-nav">
+                                <button type="button"
+                                        class="shop-pager-btn"
+                                        disabled="@(_currentPage <= 1)"
+                                        title="First page"
+                                        aria-label="First page"
+                                        @onclick="() => GoToPage(1, totalPages)">«</button>
+                                <button type="button"
+                                        class="shop-pager-btn"
+                                        disabled="@(_currentPage <= 1)"
+                                        title="Previous page"
+                                        aria-label="Previous page"
+                                        @onclick="() => GoToPage(_currentPage - 1, totalPages)">‹</button>
+                                <span class="shop-pager-status">
+                                    Page <strong>@_currentPage</strong> of @totalPages
+                                </span>
+                                <button type="button"
+                                        class="shop-pager-btn"
+                                        disabled="@(_currentPage >= totalPages)"
+                                        title="Next page"
+                                        aria-label="Next page"
+                                        @onclick="() => GoToPage(_currentPage + 1, totalPages)">›</button>
+                                <button type="button"
+                                        class="shop-pager-btn"
+                                        disabled="@(_currentPage >= totalPages)"
+                                        title="Last page"
+                                        aria-label="Last page"
+                                        @onclick="() => GoToPage(totalPages, totalPages)">»</button>
+                            </div>
+                        </div>
+                    }
                 }
             </div>
         </AccountShell>
@@ -181,16 +234,38 @@ else
 }
 
 @code {
+    private static readonly int[] PageSizes = [5, 8, 12, 24];
+
     [SupplyParameterFromQuery(Name = "order")]
     public string? RequestedOrderId { get; set; }
 
     private string _filter = "All";
+    private int _pageSize = 5;
+    private int _currentPage = 1;
     private string? _openedRequestedOrderId;
     private MockOrder? _selectedOrder;
     private MockOrder? _pendingReceived;
     private MockOrder? _reviewOrder;
     private MockOrderItem? _reviewItem;
     private bool _savingReceived;
+
+    private void SetFilter(string filter)
+    {
+        if (_filter == filter) return;
+        _filter = filter;
+        _currentPage = 1;
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value?.ToString(), out var size) && PageSizes.Contains(size)
+            ? size
+            : 5;
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page, int totalPages) =>
+        _currentPage = Math.Clamp(page, 1, totalPages);
 
     protected override async Task OnInitializedAsync()
     {
@@ -292,7 +367,10 @@ else
             if (_selectedOrder?.Id.Equals(updated.Id, StringComparison.OrdinalIgnoreCase) == true)
                 _selectedOrder = updated;
             if (_filter == OrderFlow.ToReceive)
+            {
                 _filter = OrderFlow.Completed;
+                _currentPage = 1;
+            }
             Toast.Show("Order marked as received.");
         }
         catch (Exception ex)

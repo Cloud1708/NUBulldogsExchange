@@ -259,7 +259,7 @@ public static class ProductVariantLogic
     }
 
     /// <summary>
-    /// Customer catalog display: shared price as ₱X, variable as "From ₱X".
+    /// Customer catalog display: lowest active variant price as ₱X.
     /// </summary>
     public static string FormatCatalogPrice(decimal productPrice, IEnumerable<ProductVariant>? variants)
     {
@@ -274,8 +274,7 @@ public static class ProductVariantLogic
         if (prices.Count == 0)
             return FormatPeso(productPrice);
 
-        var min = prices.Min();
-        return min == prices.Max() ? FormatPeso(min) : $"From {FormatPeso(min)}";
+        return FormatPeso(prices.Min());
     }
 
     public enum AdminPriceMode { Fixed, Same, Variable, Unresolved }

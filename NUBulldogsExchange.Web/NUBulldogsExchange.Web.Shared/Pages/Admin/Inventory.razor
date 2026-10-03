@@ -253,34 +253,55 @@
             </div>
 
             <div class="admin-inventory-footer">
-                <span>@ShowingLabel</span>
-                @if (TotalPages > 1)
+                @if (Filtered.Count > 0 && TotalPages > 1)
                 {
-                    <nav class="admin-pagination" aria-label="Inventory pagination">
-                        <button type="button"
-                                class="admin-page-btn"
-                                aria-label="Previous page"
-                                disabled="@(CurrentPage <= 1)"
-                                @onclick="() => GoToPage(CurrentPage - 1)">
-                            <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
-                        </button>
-                        @for (var page = 1; page <= TotalPages; page++)
-                        {
-                            var pageNumber = page;
+                    <div class="shop-pager admin-products-pager" role="navigation" aria-label="Inventory pagination">
+                        <label class="shop-pager-size">
+                            <span>Page size:</span>
+                            <select value="@_pageSize" @onchange="OnPageSizeChanged" aria-label="Products per page">
+                                @foreach (var size in PageSizes)
+                                {
+                                    <option value="@size">@size</option>
+                                }
+                            </select>
+                        </label>
+
+                        <span class="shop-pager-range">@RangeLabel</span>
+
+                        <div class="shop-pager-nav">
                             <button type="button"
-                                    class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
-                                    @onclick="() => GoToPage(pageNumber)">
-                                @pageNumber
-                            </button>
-                        }
-                        <button type="button"
-                                class="admin-page-btn"
-                                aria-label="Next page"
-                                disabled="@(CurrentPage >= TotalPages)"
-                                @onclick="() => GoToPage(CurrentPage + 1)">
-                            <Icon Name="chevron-right" Size="14" />
-                        </button>
-                    </nav>
+                                    class="shop-pager-btn"
+                                    disabled="@(CurrentPage <= 1)"
+                                    title="First page"
+                                    aria-label="First page"
+                                    @onclick="() => GoToPage(1)">«</button>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(CurrentPage <= 1)"
+                                    title="Previous page"
+                                    aria-label="Previous page"
+                                    @onclick="() => GoToPage(CurrentPage - 1)">‹</button>
+                            <span class="shop-pager-status">
+                                Page <strong>@CurrentPage</strong> of @TotalPages
+                            </span>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(CurrentPage >= TotalPages)"
+                                    title="Next page"
+                                    aria-label="Next page"
+                                    @onclick="() => GoToPage(CurrentPage + 1)">›</button>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(CurrentPage >= TotalPages)"
+                                    title="Last page"
+                                    aria-label="Last page"
+                                    @onclick="() => GoToPage(TotalPages)">»</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <span>@ShowingLabel</span>
                 }
             </div>
         }
@@ -402,20 +423,23 @@
     private string _reason = "Restock";
     private string _notes = string.Empty;
     private string? _quantityError;
+    private static readonly int[] PageSizes = [5, 8, 10, 12, 24];
+
     private string _search = string.Empty;
     private string _category = "All Categories";
     private string _stockStatus = "All Stock Status";
     private bool _needsAttention;
+    private int _pageSize = AdminInventoryService.PageSize;
     private int _currentPage = 1;
 
     private List<InventoryRow> Filtered =>
         InventoryService.Filter(_search, _category, _stockStatus, _needsAttention).ToList();
 
-    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)AdminInventoryService.PageSize));
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)_pageSize));
     private int CurrentPage => Math.Clamp(_currentPage, 1, TotalPages);
 
     private IEnumerable<InventoryRow> PageItems =>
-        Filtered.Skip((CurrentPage - 1) * AdminInventoryService.PageSize).Take(AdminInventoryService.PageSize);
+        Filtered.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize);
 
     private string ShowingLabel
     {
@@ -423,9 +447,21 @@
         {
             var total = Filtered.Count;
             if (total == 0) return "Showing 0 products";
-            var start = (CurrentPage - 1) * AdminInventoryService.PageSize + 1;
-            var end = Math.Min(start + AdminInventoryService.PageSize - 1, total);
+            var start = (CurrentPage - 1) * _pageSize + 1;
+            var end = Math.Min(start + _pageSize - 1, total);
             return $"Showing {start}–{end} of {total} {(total == 1 ? "product" : "products")}";
+        }
+    }
+
+    private string RangeLabel
+    {
+        get
+        {
+            var total = Filtered.Count;
+            if (total == 0) return "0 to 0 of 0";
+            var start = (CurrentPage - 1) * _pageSize + 1;
+            var end = Math.Min(CurrentPage * _pageSize, total);
+            return $"{start} to {end} of {total}";
         }
     }
 
@@ -512,6 +548,14 @@
     {
         var match = Filtered.FirstOrDefault(r => InventoryService.SearchMatchesVariantSku(r, _search));
         _expandedProductId = match?.ProductId;
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value?.ToString(), out var size) && PageSizes.Contains(size)
+            ? size
+            : AdminInventoryService.PageSize;
+        _currentPage = 1;
     }
 
     private void GoToPage(int page)
