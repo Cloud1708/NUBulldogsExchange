@@ -43,8 +43,10 @@
                                  HorizontalOptions="Center"
                                  Spacing="10"
                                  Padding="28,0">
-                <Label Text="❤️"
-                       FontSize="56"
+                <Label Text="&#xe87e;"
+                       FontFamily="MaterialIcons"
+                       FontSize="64"
+                       TextColor="#CBD5E1"
                        HorizontalTextAlignment="Center"
                        Margin="0,0,0,4" />
                 <Label Text="Your wishlist is empty"

@@ -2,15 +2,14 @@ using NUBulldogsExchange.Mobile.ViewModels;
 
 namespace NUBulldogsExchange.Mobile.Pages;
 
-public partial class ProductDetailsPage : ContentPage
+public partial class NotificationsPage : ContentPage
 {
-    private readonly ProductDetailsViewModel _vm;
+    private readonly NotificationsViewModel _vm;
 
-    public ProductDetailsPage(ProductDetailsViewModel vm)
+    public NotificationsPage(NotificationsViewModel vm)
     {
         InitializeComponent();
         _vm = vm;
-        _vm.HostPage = this;
         BindingContext = _vm;
     }
 

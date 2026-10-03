@@ -3,6 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:controls="clr-namespace:NUBulldogsExchange.Mobile.Controls"
              xmlns:vm="clr-namespace:NUBulldogsExchange.Mobile.ViewModels"
+             xmlns:models="clr-namespace:NUBulldogsExchange.Mobile.Models"
+             xmlns:conv="clr-namespace:NUBulldogsExchange.Mobile.Converters"
              x:Class="NUBulldogsExchange.Mobile.Pages.OrdersPage"
              x:Name="OrdersRoot"
              x:DataType="vm:OrdersViewModel"
@@ -10,6 +12,13 @@
              BackgroundColor="#F6F7F9"
              Shell.NavBarIsVisible="False"
              Shell.TabBarIsVisible="False">
+
+    <ContentPage.Resources>
+        <ResourceDictionary>
+            <conv:ProductImageConverter x:Key="ProductImageConverter" />
+            <conv:InvertedBoolConverter x:Key="InvertedBoolConverter" />
+        </ResourceDictionary>
+    </ContentPage.Resources>
 
     <Grid RowDefinitions="Auto,Auto,*,Auto"
           HorizontalOptions="Fill"
@@ -80,7 +89,8 @@
                             DetailsCommand="{Binding BindingContext.DetailsCommand, Source={x:Reference OrdersRoot}}"
                             TrackCommand="{Binding BindingContext.TrackCommand, Source={x:Reference OrdersRoot}}"
                             BuyAgainCommand="{Binding BindingContext.BuyAgainCommand, Source={x:Reference OrdersRoot}}"
-                            ReviewCommand="{Binding BindingContext.ReviewCommand, Source={x:Reference OrdersRoot}}" />
+                            ReviewCommand="{Binding BindingContext.ReviewCommand, Source={x:Reference OrdersRoot}}"
+                            ConfirmReceivedCommand="{Binding BindingContext.ConfirmReceivedCommand, Source={x:Reference OrdersRoot}}" />
                     </DataTemplate>
                 </CollectionView.ItemTemplate>
             </CollectionView>
@@ -90,8 +100,10 @@
                                  HorizontalOptions="Center"
                                  Spacing="8"
                                  Padding="28,0">
-                <Label Text="📦"
-                       FontSize="52"
+                <Label Text="&#xe1a1;"
+                       FontFamily="MaterialIcons"
+                       FontSize="64"
+                       TextColor="#CBD5E1"
                        HorizontalTextAlignment="Center"
                        Margin="0,0,0,4" />
                 <Label Text="No orders found"
@@ -134,5 +146,784 @@
         <controls:BottomNavBar Grid.Row="3"
                                ActiveTab="orders"
                                HorizontalOptions="Fill" />
+
+        <!-- Order Details & Tracking Bottom Sheet Overlay -->
+        <Grid Grid.Row="0"
+              Grid.RowSpan="4"
+              IsVisible="{Binding IsOrderDetailsVisible}"
+              VerticalOptions="Fill"
+              HorizontalOptions="Fill">
+
+            <!-- Backdrop -->
+            <BoxView Color="#80000000">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CloseOrderDetailsCommand}" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <!-- Sheet Content -->
+            <Border BackgroundColor="White"
+                    StrokeThickness="0"
+                    VerticalOptions="End"
+                    HorizontalOptions="Fill"
+                    MaximumHeightRequest="640"
+                    Padding="20,14,20,24">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="24,24,0,0" />
+                </Border.StrokeShape>
+
+                <ScrollView VerticalScrollBarVisibility="Never">
+                    <VerticalStackLayout Spacing="16">
+                        <!-- Drag Handle -->
+                        <Border BackgroundColor="#CBD5E1"
+                                WidthRequest="40"
+                                HeightRequest="4"
+                                StrokeThickness="0"
+                                HorizontalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="2" />
+                            </Border.StrokeShape>
+                        </Border>
+
+                        <!-- Header Row: ID, Date • Items, Status Badge, Close -->
+                        <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="8" VerticalOptions="Center">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="{Binding DetailsDisplayId, StringFormat='Order #{0}'}"
+                                       FontSize="18"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}" />
+                                <Label Text="{Binding DetailsDateAndItemsText}"
+                                       FontSize="12"
+                                       TextColor="{StaticResource MutedText}" />
+                            </VerticalStackLayout>
+
+                            <!-- Status Badge -->
+                            <Border Grid.Column="1"
+                                    BackgroundColor="{Binding DetailsBadgeBackground}"
+                                    Padding="10,4"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <Label Text="{Binding DetailsCustomerCategory}"
+                                       FontSize="11"
+                                       FontAttributes="Bold"
+                                       TextColor="{Binding DetailsBadgeTextColor}"
+                                       VerticalOptions="Center" />
+                            </Border>
+
+                            <!-- Close Button -->
+                            <Border Grid.Column="2"
+                                    WidthRequest="32"
+                                    HeightRequest="32"
+                                    BackgroundColor="#F1F5F9"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="16" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding CloseOrderDetailsCommand}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="&#xe5cd;"
+                                       FontFamily="MaterialIcons"
+                                       FontSize="16"
+                                       TextColor="#475569"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Border>
+                        </Grid>
+
+                        <!-- Order Progress Stepper Section -->
+                        <Border BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0"
+                                StrokeThickness="1"
+                                Padding="14,12">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <VerticalStackLayout Spacing="12">
+                                <Label Text="Order Progress"
+                                       FontSize="13"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}" />
+
+                                <!-- Vertical Stepper -->
+                                <VerticalStackLayout BindableLayout.ItemsSource="{Binding TimelineSteps}">
+                                    <BindableLayout.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:OrderDetailTimelineStep">
+                                            <Grid ColumnDefinitions="32,*" RowDefinitions="Auto">
+                                                <!-- Step Dot & Line Column -->
+                                                <Grid Grid.Column="0" HorizontalOptions="Center" WidthRequest="32">
+                                                    <!-- Connecting Line -->
+                                                    <BoxView WidthRequest="2"
+                                                             Color="{Binding LineColor}"
+                                                             IsVisible="{Binding ShowConnectingLine}"
+                                                             HorizontalOptions="Center"
+                                                             VerticalOptions="Fill"
+                                                             Margin="0,16,0,-16" />
+                                                    <!-- Dot Circle -->
+                                                    <Border WidthRequest="24"
+                                                            HeightRequest="24"
+                                                            StrokeThickness="0"
+                                                            BackgroundColor="{Binding DotColor}"
+                                                            HorizontalOptions="Center"
+                                                            VerticalOptions="Start">
+                                                        <Border.StrokeShape>
+                                                            <RoundRectangle CornerRadius="12" />
+                                                        </Border.StrokeShape>
+                                                        <Grid>
+                                                            <Label Text="{Binding StepIcon}"
+                                                                   FontFamily="MaterialIcons"
+                                                                   FontSize="13"
+                                                                   TextColor="White"
+                                                                   HorizontalOptions="Center"
+                                                                   VerticalOptions="Center"
+                                                                   IsVisible="{Binding HasIcon}" />
+                                                            <Label Text="{Binding StepNumber}"
+                                                                   FontSize="11"
+                                                                   FontAttributes="Bold"
+                                                                   TextColor="White"
+                                                                   HorizontalOptions="Center"
+                                                                   VerticalOptions="Center"
+                                                                   IsVisible="{Binding HasIcon, Converter={StaticResource InvertedBoolConverter}}" />
+                                                        </Grid>
+                                                    </Border>
+                                                </Grid>
+
+                                                <!-- Step Label Column -->
+                                                <VerticalStackLayout Grid.Column="1" VerticalOptions="Start" Margin="8,2,0,16">
+                                                    <Label Text="{Binding Label}"
+                                                           FontSize="13"
+                                                           FontAttributes="{Binding LabelFontAttributes}"
+                                                           TextColor="{Binding LabelColor}" />
+                                                </VerticalStackLayout>
+                                            </Grid>
+                                        </DataTemplate>
+                                    </BindableLayout.ItemTemplate>
+                                </VerticalStackLayout>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Status Panel Notice Card -->
+                        <Border BackgroundColor="#EFF6FF"
+                                Stroke="#BFDBFE"
+                                StrokeThickness="1"
+                                Padding="12,10">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="10" />
+                            </Border.StrokeShape>
+                            <Grid ColumnDefinitions="32,*" ColumnSpacing="8" VerticalOptions="Center">
+                                <Label Text="{Binding DetailsStatusIcon}"
+                                       FontFamily="MaterialIcons"
+                                       FontSize="20"
+                                       TextColor="{StaticResource NuNavy}"
+                                       VerticalOptions="Center"
+                                       HorizontalOptions="Center" />
+                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="{Binding DetailsStatusTitle}"
+                                           FontSize="12"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource NuNavy}" />
+                                    <Label Text="{Binding DetailsStatusMessage}"
+                                           FontSize="11"
+                                           TextColor="#334155" />
+                                </VerticalStackLayout>
+                            </Grid>
+                        </Border>
+
+                        <!-- Items Ordered Section -->
+                        <VerticalStackLayout Spacing="8">
+                            <Label Text="Items Ordered"
+                                   FontSize="13"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}" />
+
+                            <VerticalStackLayout BindableLayout.ItemsSource="{Binding DetailItems}" Spacing="8">
+                                <BindableLayout.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:OrderDetailItemModel">
+                                        <Border BackgroundColor="#F8FAFC"
+                                                Stroke="#E2E8F0"
+                                                StrokeThickness="1"
+                                                Padding="10,10">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="10" />
+                                            </Border.StrokeShape>
+                                            <Grid ColumnDefinitions="44,*,Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                                <!-- Thumbnail Image -->
+                                                <Border WidthRequest="44"
+                                                        HeightRequest="44"
+                                                        StrokeThickness="0"
+                                                        BackgroundColor="#E2E8F0"
+                                                        VerticalOptions="Center">
+                                                    <Border.StrokeShape>
+                                                        <RoundRectangle CornerRadius="8" />
+                                                    </Border.StrokeShape>
+                                                    <Image Source="{Binding ImageUrl, Converter={StaticResource ProductImageConverter}}"
+                                                           Aspect="AspectFill" />
+                                                </Border>
+
+                                                <!-- Item Details -->
+                                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                                    <Label Text="{Binding Name}"
+                                                           FontSize="12"
+                                                           FontAttributes="Bold"
+                                                           TextColor="{StaticResource NuNavy}"
+                                                           LineBreakMode="TailTruncation" />
+                                                    <Label Text="{Binding VariantText}"
+                                                           FontSize="10"
+                                                           TextColor="{StaticResource MutedText}"
+                                                           IsVisible="{Binding HasVariantText}" />
+                                                    <Label Text="{Binding PriceAndQtyText}"
+                                                           FontSize="11"
+                                                           TextColor="#475569" />
+                                                </VerticalStackLayout>
+
+                                                <!-- Item Total & Review Action -->
+                                                <VerticalStackLayout Grid.Column="2" Spacing="4" VerticalOptions="Center" HorizontalOptions="End">
+                                                    <Label Text="{Binding TotalText}"
+                                                           FontSize="13"
+                                                           FontAttributes="Bold"
+                                                           TextColor="{StaticResource NuNavy}"
+                                                           HorizontalOptions="End" />
+
+                                                    <!-- Write Review Button -->
+                                                    <Border IsVisible="{Binding ShowWriteReviewButton}"
+                                                            BackgroundColor="#FEF3C7"
+                                                            Stroke="#FDE68A"
+                                                            StrokeThickness="1"
+                                                            Padding="8,4"
+                                                            HorizontalOptions="End">
+                                                        <Border.StrokeShape>
+                                                            <RoundRectangle CornerRadius="6" />
+                                                        </Border.StrokeShape>
+                                                        <Border.GestureRecognizers>
+                                                            <TapGestureRecognizer
+                                                                Command="{Binding BindingContext.WriteItemReviewCommand, Source={x:Reference OrdersRoot}}"
+                                                                CommandParameter="{Binding .}" />
+                                                        </Border.GestureRecognizers>
+                                                        <Label Text="Write Review"
+                                                               TextColor="#D97706"
+                                                               FontSize="10"
+                                                               FontAttributes="Bold" />
+                                                    </Border>
+
+                                                    <!-- Reviewed Badge -->
+                                                    <Border IsVisible="{Binding ShowReviewedBadge}"
+                                                            BackgroundColor="#DCFCE7"
+                                                            StrokeThickness="0"
+                                                            Padding="8,4"
+                                                            HorizontalOptions="End">
+                                                        <Border.StrokeShape>
+                                                            <RoundRectangle CornerRadius="6" />
+                                                        </Border.StrokeShape>
+                                                        <Label Text="✓ Reviewed"
+                                                               TextColor="#16A34A"
+                                                               FontSize="10"
+                                                               FontAttributes="Bold" />
+                                                    </Border>
+                                                </VerticalStackLayout>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </BindableLayout.ItemTemplate>
+                            </VerticalStackLayout>
+                        </VerticalStackLayout>
+
+                        <!-- Fulfillment & Payment Cards -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <!-- Fulfillment Card -->
+                            <Border BackgroundColor="#F8FAFC"
+                                    Stroke="#E2E8F0"
+                                    StrokeThickness="1"
+                                    Padding="10,10">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <VerticalStackLayout Spacing="3">
+                                    <HorizontalStackLayout Spacing="4">
+                                        <Label Text="&#xe0c8;"
+                                               FontFamily="MaterialIcons"
+                                               FontSize="13"
+                                               TextColor="{StaticResource NuNavy}"
+                                               VerticalOptions="Center" />
+                                        <Label Text="Fulfillment"
+                                               FontSize="11"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}"
+                                               VerticalOptions="Center" />
+                                    </HorizontalStackLayout>
+
+                                    <!-- If Delivery -->
+                                    <VerticalStackLayout IsVisible="{Binding DetailsIsDelivery}" Spacing="2" Margin="0,4,0,0">
+                                        <Label Text="Delivery"
+                                               FontSize="11"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}" />
+                                        <Label Text="{Binding DetailsRecipientName}"
+                                               FontSize="10"
+                                               TextColor="#334155" />
+                                        <Label Text="{Binding DetailsRecipientPhone}"
+                                               FontSize="10"
+                                               TextColor="{StaticResource MutedText}" />
+                                        <Label Text="{Binding DetailsShippingAddress}"
+                                               FontSize="10"
+                                               TextColor="#475569" />
+                                    </VerticalStackLayout>
+
+                                    <!-- If Pickup -->
+                                    <VerticalStackLayout IsVisible="{Binding DetailsIsDelivery, Converter={StaticResource InvertedBoolConverter}}" Spacing="2" Margin="0,4,0,0">
+                                        <Label Text="Campus Pickup"
+                                               FontSize="11"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}" />
+                                        <Label Text="{Binding DetailsPickupLocation}"
+                                               FontSize="10"
+                                               TextColor="#334155" />
+                                        <Label Text="{Binding DetailsPickupHours}"
+                                               FontSize="10"
+                                               TextColor="{StaticResource MutedText}" />
+                                    </VerticalStackLayout>
+                                </VerticalStackLayout>
+                            </Border>
+
+                            <!-- Payment Card -->
+                            <Border Grid.Column="1"
+                                    BackgroundColor="#F8FAFC"
+                                    Stroke="#E2E8F0"
+                                    StrokeThickness="1"
+                                    Padding="10,10">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <VerticalStackLayout Spacing="3">
+                                    <HorizontalStackLayout Spacing="4">
+                                        <Label Text="&#xe870;"
+                                               FontFamily="MaterialIcons"
+                                               FontSize="13"
+                                               TextColor="{StaticResource NuNavy}"
+                                               VerticalOptions="Center" />
+                                        <Label Text="Payment"
+                                               FontSize="11"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}"
+                                               VerticalOptions="Center" />
+                                    </HorizontalStackLayout>
+
+                                    <Border BackgroundColor="#E2E8F0"
+                                            Padding="6,2"
+                                            StrokeThickness="0"
+                                            HorizontalOptions="Start"
+                                            Margin="0,4,0,0">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="4" />
+                                        </Border.StrokeShape>
+                                        <Label Text="{Binding DetailsPaymentMethod}"
+                                               FontSize="9"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}" />
+                                    </Border>
+                                    <Label Text="{Binding DetailsPaymentHeadline}"
+                                           FontSize="11"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource NuNavy}" />
+                                    <Label Text="{Binding DetailsPaymentDetail}"
+                                           FontSize="10"
+                                           TextColor="{StaticResource MutedText}" />
+                                </VerticalStackLayout>
+                            </Border>
+                        </Grid>
+
+                        <!-- Order Summary Card -->
+                        <Border BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0"
+                                StrokeThickness="1"
+                                Padding="12,10">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="10" />
+                            </Border.StrokeShape>
+                            <VerticalStackLayout Spacing="6">
+                                <Label Text="Order Summary"
+                                       FontSize="12"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}" />
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Text="Subtotal" FontSize="11" TextColor="{StaticResource MutedText}" />
+                                    <Label Grid.Column="1" Text="{Binding DetailsSubtotalText}" FontSize="11" TextColor="{StaticResource NuNavy}" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding DetailsHasDiscount}">
+                                    <Label Text="Discount" FontSize="11" TextColor="#16A34A" />
+                                    <Label Grid.Column="1" Text="{Binding DetailsDiscountText}" FontSize="11" TextColor="#16A34A" FontAttributes="Bold" />
+                                </Grid>
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Text="{Binding DetailsFeeLabel}" FontSize="11" TextColor="{StaticResource MutedText}" />
+                                    <Label Grid.Column="1" Text="{Binding DetailsFeeText}" FontSize="11" TextColor="{StaticResource NuNavy}" />
+                                </Grid>
+
+                                <BoxView HeightRequest="1" Color="#E2E8F0" Margin="0,2,0,2" />
+
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <Label Text="Total" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
+                                    <Label Grid.Column="1" Text="{Binding DetailsTotalText}" FontSize="15" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" />
+                                </Grid>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <!-- Action Buttons in Order Details -->
+                        <VerticalStackLayout Spacing="8" Margin="0,4,0,0">
+                            <!-- Order Received Button -->
+                            <Border IsVisible="{Binding DetailsCanConfirmReceived}"
+                                    BackgroundColor="#16A34A"
+                                    HeightRequest="44"
+                                    StrokeThickness="0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="12" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ConfirmReceivedCommand}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="Order Received"
+                                       TextColor="White"
+                                       FontSize="13"
+                                       FontAttributes="Bold"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"
+                                       InputTransparent="True" />
+                            </Border>
+
+                            <!-- Cancel Order Button -->
+                            <Border IsVisible="{Binding DetailsCanCancel}"
+                                    BackgroundColor="White"
+                                    Stroke="#FECACA"
+                                    StrokeThickness="1"
+                                    HeightRequest="42">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="12" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding CancelOrderFromDetailsCommand}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="Cancel Order"
+                                       TextColor="#DC2626"
+                                       FontSize="12"
+                                       FontAttributes="Bold"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"
+                                       InputTransparent="True" />
+                            </Border>
+                        </VerticalStackLayout>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+        </Grid>
+
+        <!-- Review Bottom Sheet Overlay -->
+        <Grid Grid.Row="0"
+              Grid.RowSpan="4"
+              IsVisible="{Binding IsReviewSheetVisible}"
+              VerticalOptions="Fill"
+              HorizontalOptions="Fill">
+
+            <!-- Backdrop -->
+            <BoxView Color="#80000000">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CloseReviewSheetCommand}" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <!-- Sheet Content -->
+            <Border BackgroundColor="White"
+                    StrokeThickness="0"
+                    VerticalOptions="End"
+                    HorizontalOptions="Fill"
+                    MaximumHeightRequest="600"
+                    Padding="20,14,20,24">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="24,24,0,0" />
+                </Border.StrokeShape>
+
+                <ScrollView VerticalScrollBarVisibility="Never">
+                    <VerticalStackLayout Spacing="14">
+                        <!-- Drag Handle -->
+                        <Border BackgroundColor="#CBD5E1"
+                                WidthRequest="40"
+                                HeightRequest="4"
+                                StrokeThickness="0"
+                                HorizontalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="2" />
+                            </Border.StrokeShape>
+                        </Border>
+
+                        <!-- Header Row -->
+                        <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
+                            <VerticalStackLayout Spacing="2">
+                                <Label Text="Write a Review"
+                                       FontSize="18"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}" />
+                                <Label Text="{Binding ReviewOrderTitle}"
+                                       FontSize="12"
+                                       TextColor="{StaticResource MutedText}" />
+                            </VerticalStackLayout>
+
+                            <!-- Close Button -->
+                            <Border Grid.Column="1"
+                                    WidthRequest="32"
+                                    HeightRequest="32"
+                                    BackgroundColor="#F1F5F9"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="16" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding CloseReviewSheetCommand}" />
+                                </Border.GestureRecognizers>
+                                <Label Text="&#xe5cd;"
+                                       FontFamily="MaterialIcons"
+                                       FontSize="16"
+                                       TextColor="#475569"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Border>
+                        </Grid>
+
+                        <!-- Multiple Items Carousel/Selector -->
+                        <VerticalStackLayout IsVisible="{Binding HasMultipleReviewItems}" Spacing="6">
+                            <Label Text="Select Item to Review"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}" />
+                            <CollectionView ItemsSource="{Binding ReviewItems}"
+                                            HeightRequest="68"
+                                            ItemsLayout="HorizontalList"
+                                            HorizontalScrollBarVisibility="Never"
+                                            SelectionMode="None">
+                                <CollectionView.ItemTemplate>
+                                    <DataTemplate x:DataType="models:ReviewableItemModel">
+                                        <Border Stroke="{Binding BorderColor}"
+                                                StrokeThickness="1.5"
+                                                BackgroundColor="{Binding BackgroundColor}"
+                                                Padding="8,6"
+                                                Margin="0,0,8,0"
+                                                WidthRequest="180">
+                                            <Border.StrokeShape>
+                                                <RoundRectangle CornerRadius="10" />
+                                            </Border.StrokeShape>
+                                            <Border.GestureRecognizers>
+                                                <TapGestureRecognizer
+                                                    Command="{Binding BindingContext.SelectReviewItemCommand, Source={x:Reference OrdersRoot}}"
+                                                    CommandParameter="{Binding .}" />
+                                            </Border.GestureRecognizers>
+                                            <Grid ColumnDefinitions="40,*" ColumnSpacing="8" VerticalOptions="Center">
+                                                <Border WidthRequest="40"
+                                                        HeightRequest="40"
+                                                        StrokeThickness="0"
+                                                        BackgroundColor="#F1F5F9">
+                                                    <Border.StrokeShape>
+                                                        <RoundRectangle CornerRadius="6" />
+                                                    </Border.StrokeShape>
+                                                    <Image Source="{Binding ImageUrl, Converter={StaticResource ProductImageConverter}}"
+                                                           Aspect="AspectFill" />
+                                                </Border>
+                                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                                    <Label Text="{Binding Name}"
+                                                           FontSize="11"
+                                                           FontAttributes="Bold"
+                                                           TextColor="{StaticResource NuNavy}"
+                                                           LineBreakMode="TailTruncation" />
+                                                    <Label Text="{Binding StatusBadgeText}"
+                                                           FontSize="9"
+                                                           FontAttributes="Bold"
+                                                           TextColor="{Binding StatusBadgeTextColor}" />
+                                                </VerticalStackLayout>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </CollectionView.ItemTemplate>
+                            </CollectionView>
+                        </VerticalStackLayout>
+
+                        <!-- Selected Item Preview Banner -->
+                        <Border BackgroundColor="#F8FAFC"
+                                Stroke="#E2E8F0"
+                                StrokeThickness="1"
+                                Padding="12,10">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="10" />
+                            </Border.StrokeShape>
+                            <Grid ColumnDefinitions="44,*,Auto" ColumnSpacing="10" VerticalOptions="Center">
+                                <Border WidthRequest="44"
+                                        HeightRequest="44"
+                                        StrokeThickness="0"
+                                        BackgroundColor="#F1F5F9">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="8" />
+                                    </Border.StrokeShape>
+                                    <Image Source="{Binding SelectedReviewItem.ImageUrl, Converter={StaticResource ProductImageConverter}}"
+                                           Aspect="AspectFill" />
+                                </Border>
+                                <VerticalStackLayout Grid.Column="1" Spacing="2" VerticalOptions="Center">
+                                    <Label Text="{Binding SelectedReviewItem.Name}"
+                                           FontSize="13"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource NuNavy}"
+                                           LineBreakMode="TailTruncation" />
+                                    <Label Text="{Binding SelectedReviewItem.VariantText}"
+                                           FontSize="11"
+                                           TextColor="{StaticResource MutedText}" />
+                                </VerticalStackLayout>
+                                <Border Grid.Column="2"
+                                        BackgroundColor="{Binding SelectedReviewItem.StatusBadgeColor}"
+                                        Padding="8,4"
+                                        StrokeThickness="0"
+                                        VerticalOptions="Center">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="6" />
+                                    </Border.StrokeShape>
+                                    <Label Text="{Binding SelectedReviewItem.StatusBadgeText}"
+                                           FontSize="10"
+                                           FontAttributes="Bold"
+                                           TextColor="{Binding SelectedReviewItem.StatusBadgeTextColor}" />
+                                </Border>
+                            </Grid>
+                        </Border>
+
+                        <!-- Star Rating Selector (Interactive) -->
+                        <VerticalStackLayout Spacing="6" HorizontalOptions="Center" Margin="0,4,0,0">
+                            <Label Text="Your Rating"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   HorizontalTextAlignment="Center" />
+                            <HorizontalStackLayout Spacing="10" HorizontalOptions="Center">
+                                <!-- Star 1 -->
+                                <Border BackgroundColor="Transparent" StrokeThickness="0" Padding="4">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding SetRatingCommand}" CommandParameter="1" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="&#xe838;" FontFamily="MaterialIcons" FontSize="36" TextColor="{Binding Star1Color}" />
+                                </Border>
+                                <!-- Star 2 -->
+                                <Border BackgroundColor="Transparent" StrokeThickness="0" Padding="4">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding SetRatingCommand}" CommandParameter="2" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="&#xe838;" FontFamily="MaterialIcons" FontSize="36" TextColor="{Binding Star2Color}" />
+                                </Border>
+                                <!-- Star 3 -->
+                                <Border BackgroundColor="Transparent" StrokeThickness="0" Padding="4">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding SetRatingCommand}" CommandParameter="3" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="&#xe838;" FontFamily="MaterialIcons" FontSize="36" TextColor="{Binding Star3Color}" />
+                                </Border>
+                                <!-- Star 4 -->
+                                <Border BackgroundColor="Transparent" StrokeThickness="0" Padding="4">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding SetRatingCommand}" CommandParameter="4" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="&#xe838;" FontFamily="MaterialIcons" FontSize="36" TextColor="{Binding Star4Color}" />
+                                </Border>
+                                <!-- Star 5 -->
+                                <Border BackgroundColor="Transparent" StrokeThickness="0" Padding="4">
+                                    <Border.GestureRecognizers>
+                                        <TapGestureRecognizer Command="{Binding SetRatingCommand}" CommandParameter="5" />
+                                    </Border.GestureRecognizers>
+                                    <Label Text="&#xe838;" FontFamily="MaterialIcons" FontSize="36" TextColor="{Binding Star5Color}" />
+                                </Border>
+                            </HorizontalStackLayout>
+                            <Label Text="{Binding RatingStarsLabel}"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   TextColor="#D97706"
+                                   HorizontalTextAlignment="Center" />
+                        </VerticalStackLayout>
+
+                        <!-- Review Headline -->
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="Headline (Optional)"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}" />
+                            <Border Stroke="#CBD5E1"
+                                    StrokeThickness="1"
+                                    BackgroundColor="White"
+                                    Padding="12,0">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="8" />
+                                </Border.StrokeShape>
+                                <Entry Text="{Binding ReviewTitle}"
+                                       Placeholder="e.g. Great campus hoodie, super comfy!"
+                                       FontSize="12"
+                                       HeightRequest="40"
+                                       TextColor="{StaticResource NuNavy}" />
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <!-- Review Comment -->
+                        <VerticalStackLayout Spacing="4">
+                            <Label Text="Review (Required)"
+                                   FontSize="12"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}" />
+                            <Border Stroke="#CBD5E1"
+                                    StrokeThickness="1"
+                                    BackgroundColor="White"
+                                    Padding="10,6">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="8" />
+                                </Border.StrokeShape>
+                                <Editor Text="{Binding ReviewComment}"
+                                        Placeholder="Tell us about the fabric quality, sizing, fit, and overall experience..."
+                                        FontSize="12"
+                                        HeightRequest="80"
+                                        AutoSize="Disabled"
+                                        TextColor="{StaticResource NuNavy}" />
+                            </Border>
+                        </VerticalStackLayout>
+
+                        <!-- Error Message -->
+                        <Label Text="{Binding ReviewError}"
+                               TextColor="#EF4444"
+                               FontSize="11"
+                               FontAttributes="Bold"
+                               IsVisible="{Binding HasReviewError}" />
+
+                        <!-- Submit Button -->
+                        <Border BackgroundColor="{StaticResource NuNavy}"
+                                HeightRequest="46"
+                                StrokeThickness="0"
+                                Margin="0,6,0,0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding SubmitReviewCommand}" />
+                            </Border.GestureRecognizers>
+                            <Grid>
+                                <Label Text="Submit Review"
+                                       TextColor="White"
+                                       FontSize="14"
+                                       FontAttributes="Bold"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center"
+                                       IsVisible="{Binding IsSubmittingReview, Converter={StaticResource InvertedBoolConverter}}" />
+                                <ActivityIndicator IsRunning="{Binding IsSubmittingReview}"
+                                                   IsVisible="{Binding IsSubmittingReview}"
+                                                   Color="White"
+                                                   HorizontalOptions="Center"
+                                                   VerticalOptions="Center" />
+                            </Grid>
+                        </Border>
+                    </VerticalStackLayout>
+                </ScrollView>
+            </Border>
+        </Grid>
     </Grid>
 </ContentPage>

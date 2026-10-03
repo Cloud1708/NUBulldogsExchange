@@ -26,15 +26,13 @@
             <VerticalStackLayout Padding="22,40,22,28" Spacing="0">
 
                 <!-- Back -->
-                <Label Text="‹ Back"
-                       FontSize="14"
-                       TextColor="{StaticResource NuNavy}"
-                       Margin="0,0,0,12"
-                       HorizontalOptions="Start">
-                    <Label.GestureRecognizers>
+                <HorizontalStackLayout Spacing="4" Margin="0,0,0,12" HorizontalOptions="Start">
+                    <HorizontalStackLayout.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding BackCommand}" />
-                    </Label.GestureRecognizers>
-                </Label>
+                    </HorizontalStackLayout.GestureRecognizers>
+                    <Label Text="&#xe5c4;" FontFamily="MaterialIcons" FontSize="18" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                    <Label Text="Back" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                </HorizontalStackLayout>
 
                 <!-- Logo -->
                 <Border BackgroundColor="{StaticResource NuNavy}"
@@ -87,6 +85,8 @@
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -113,6 +113,8 @@
                                ReturnCommand="{Binding LoginCommand}"
                                BackgroundColor="Transparent"
                                FontSize="14"
+                               TextColor="{StaticResource NuNavy}"
+                               PlaceholderColor="{StaticResource MutedText}"
                                VerticalOptions="Center" />
                         <Border Grid.Column="1"
                                 WidthRequest="36"
@@ -124,7 +126,9 @@
                                 <TapGestureRecognizer Command="{Binding TogglePasswordCommand}" />
                             </Border.GestureRecognizers>
                             <Label Text="{Binding PasswordToggleGlyph}"
-                                   FontSize="16"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="20"
+                                   TextColor="#64748B"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center" />
                         </Border>
@@ -223,12 +227,18 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Command="{Binding StaffPortalCommand}" />
                     </Border.GestureRecognizers>
-                    <Label Text="Staff / Admin Portal →"
-                           TextColor="#64748B"
-                           FontSize="13"
-                           FontAttributes="Bold"
-                           HorizontalOptions="Center"
-                           VerticalOptions="Center" />
+                    <HorizontalStackLayout HorizontalOptions="Center" VerticalOptions="Center" Spacing="6">
+                        <Label Text="Staff / Admin Portal"
+                               TextColor="#64748B"
+                               FontSize="13"
+                               FontAttributes="Bold"
+                               VerticalOptions="Center" />
+                        <Label Text="&#xe5c8;"
+                               FontFamily="MaterialIcons"
+                               TextColor="#64748B"
+                               FontSize="15"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
                 </Border>
 
                 <!-- Create Account -->

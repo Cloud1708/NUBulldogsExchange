@@ -42,8 +42,9 @@
                     <Border.GestureRecognizers>
                         <TapGestureRecognizer Tapped="OnHeartTapped" />
                     </Border.GestureRecognizers>
-                    <Label Text="♥"
-                           FontSize="14"
+                    <Label Text="&#xe87d;"
+                           FontFamily="MaterialIcons"
+                           FontSize="16"
                            TextColor="#EF4444"
                            HorizontalOptions="Center"
                            VerticalOptions="Center" />
@@ -59,15 +60,17 @@
                        MaxLines="2"
                        HeightRequest="32" />
 
-                <Label FontSize="10" TextColor="{StaticResource MutedText}"
-                       IsVisible="{Binding HasRating, Source={x:Reference Root}}">
-                    <Label.FormattedText>
-                        <FormattedString>
-                            <Span Text="⭐ " />
-                            <Span Text="{Binding RatingText, Source={x:Reference Root}}" />
-                        </FormattedString>
-                    </Label.FormattedText>
-                </Label>
+                <HorizontalStackLayout Spacing="3" VerticalOptions="Center" IsVisible="{Binding HasRating, Source={x:Reference Root}}">
+                    <Label Text="&#xe838;"
+                           FontFamily="MaterialIcons"
+                           FontSize="12"
+                           TextColor="#F59E0B"
+                           VerticalOptions="Center" />
+                    <Label Text="{Binding RatingText, Source={x:Reference Root}}"
+                           FontSize="10"
+                           TextColor="{StaticResource MutedText}"
+                           VerticalOptions="Center" />
+                </HorizontalStackLayout>
 
                 <Label Text="{Binding PriceText, Source={x:Reference Root}}"
                        FontSize="14"

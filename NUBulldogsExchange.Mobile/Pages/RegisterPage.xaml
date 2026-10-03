@@ -48,8 +48,9 @@
                         <Border.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding BackCommand}" />
                         </Border.GestureRecognizers>
-                        <Label Text="←"
-                               FontSize="16"
+                        <Label Text="&#xe5c4;"
+                               FontFamily="MaterialIcons"
+                               FontSize="20"
                                TextColor="#0F172A"
                                HorizontalOptions="Center"
                                VerticalOptions="Center" />
@@ -82,6 +83,8 @@
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -105,6 +108,8 @@
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -130,6 +135,8 @@
                            IsTextPredictionEnabled="False"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -154,6 +161,8 @@
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"
+                           TextColor="{StaticResource NuNavy}"
+                           PlaceholderColor="{StaticResource MutedText}"
                            VerticalOptions="Center" />
                 </Border>
 
@@ -179,6 +188,8 @@
                                ReturnType="Next"
                                BackgroundColor="Transparent"
                                FontSize="14"
+                               TextColor="{StaticResource NuNavy}"
+                               PlaceholderColor="{StaticResource MutedText}"
                                VerticalOptions="Center" />
                         <Border Grid.Column="1"
                                 WidthRequest="36"
@@ -190,7 +201,9 @@
                                 <TapGestureRecognizer Command="{Binding TogglePasswordCommand}" />
                             </Border.GestureRecognizers>
                             <Label Text="{Binding PasswordToggleGlyph}"
-                                   FontSize="16"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="20"
+                                   TextColor="#64748B"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center" />
                         </Border>
@@ -220,6 +233,8 @@
                                ReturnCommand="{Binding RegisterCommand}"
                                BackgroundColor="Transparent"
                                FontSize="14"
+                               TextColor="{StaticResource NuNavy}"
+                               PlaceholderColor="{StaticResource MutedText}"
                                VerticalOptions="Center" />
                         <Border Grid.Column="1"
                                 WidthRequest="36"
@@ -231,7 +246,9 @@
                                 <TapGestureRecognizer Command="{Binding ToggleConfirmPasswordCommand}" />
                             </Border.GestureRecognizers>
                             <Label Text="{Binding ConfirmPasswordToggleGlyph}"
-                                   FontSize="16"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="20"
+                                   TextColor="#64748B"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center" />
                         </Border>

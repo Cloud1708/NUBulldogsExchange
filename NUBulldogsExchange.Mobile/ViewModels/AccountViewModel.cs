@@ -10,6 +10,7 @@ namespace NUBulldogsExchange.Mobile.ViewModels;
 public sealed class AccountViewModel : INotifyPropertyChanged
 {
     private readonly AuthService _auth;
+    private readonly NotificationService _notifications;
     private Page? _host;
 
     private bool _isLoggedIn;
@@ -38,9 +39,10 @@ public sealed class AccountViewModel : INotifyPropertyChanged
     private string _newPassword = string.Empty;
     private string _confirmNewPassword = string.Empty;
 
-    public AccountViewModel(AuthService auth)
+    public AccountViewModel(AuthService auth, NotificationService notifications)
     {
         _auth = auth;
+        _notifications = notifications;
 
         ShowLoginFormCommand = new Command(async () => await GoAsync("login"));
         ShowRegisterFormCommand = new Command(async () => await GoAsync("register"));
@@ -63,7 +65,7 @@ public sealed class AccountViewModel : INotifyPropertyChanged
         GoOrdersCommand = new Command(async () => await GoAsync("//orders"));
         GoWishlistCommand = new Command(async () => await GoAsync("//wishlist"));
         GoMyProfileCommand = new Command(OpenEditProfile);
-        GoNotificationsCommand = new Command(async () => await InfoAsync("Notifications", "Notification center is available after you place orders."));
+        GoNotificationsCommand = new Command(async () => await GoAsync("notifications"));
         GoAddressesCommand = new Command(async () => await InfoAsync("Addresses", string.IsNullOrWhiteSpace(_auth.CurrentUser?.Address)
             ? "No address on file yet. Use Edit to add one."
             : _auth.CurrentUser!.Address));
@@ -72,6 +74,7 @@ public sealed class AccountViewModel : INotifyPropertyChanged
         GoPrivacyCommand = new Command(async () => await InfoAsync("Privacy Policy", "We use your account details only to process orders, manage pickups, and secure your session. We do not sell personal data."));
 
         _auth.OnChange += () => MainThread.BeginInvokeOnMainThread(RefreshFromAuth);
+        _notifications.OnChange += () => MainThread.BeginInvokeOnMainThread(RefreshNotifications);
         RefreshFromAuth();
     }
 
@@ -125,6 +128,15 @@ public sealed class AccountViewModel : INotifyPropertyChanged
     {
         get => _statusMessage;
         private set => SetField(ref _statusMessage, value);
+    }
+
+    public int NotificationCount => _notifications.UnreadCount;
+    public bool HasUnreadNotifications => NotificationCount > 0;
+
+    public void RefreshNotifications()
+    {
+        OnPropertyChanged(nameof(NotificationCount));
+        OnPropertyChanged(nameof(HasUnreadNotifications));
     }
 
     public bool ShowLoginForm
@@ -279,6 +291,8 @@ public sealed class AccountViewModel : INotifyPropertyChanged
         }
 
         OnPropertyChanged(nameof(HasStudentId));
+        _ = _notifications.EnsureLoadedAsync(_auth.Email);
+        RefreshNotifications();
     }
 
     private void HideAllForms()

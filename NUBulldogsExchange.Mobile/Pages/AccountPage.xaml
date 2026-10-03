@@ -44,8 +44,10 @@
                             <Border.StrokeShape>
                                 <RoundRectangle CornerRadius="28" />
                             </Border.StrokeShape>
-                            <Label Text="👤"
-                                   FontSize="26"
+                            <Label Text="&#xe7fd;"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="28"
+                                   TextColor="{StaticResource NuNavy}"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center" />
                         </Border>
@@ -235,10 +237,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FCE7F3" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="❓" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe8fd;" FontFamily="MaterialIcons" TextColor="#DB2777" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Help Center" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
@@ -247,10 +249,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FEF3C7" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="📋" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe873;" FontFamily="MaterialIcons" TextColor="#D97706" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Terms &amp; Conditions" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
@@ -259,10 +261,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#DBEAFE" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="🛡" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe9e0;" FontFamily="MaterialIcons" TextColor="#2563EB" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Privacy Policy" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                     </VerticalStackLayout>
                 </Border>
@@ -285,10 +287,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#EDE9FE" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="👤" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe7fd;" FontFamily="MaterialIcons" TextColor="#7C3AED" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="My Profile" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <!-- My Orders -->
@@ -298,10 +300,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FEF3C7" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="📦" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe1a1;" FontFamily="MaterialIcons" TextColor="#D97706" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="My Orders" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <!-- Wishlist -->
@@ -311,23 +313,39 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FEE2E2" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="♥" FontSize="14" TextColor="#EF4444" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe87d;" FontFamily="MaterialIcons" FontSize="18" TextColor="#EF4444" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Wishlist" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <!-- Notifications -->
-                        <Grid ColumnDefinitions="Auto,*,Auto" Padding="12,14" ColumnSpacing="12">
+                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" Padding="12,14" ColumnSpacing="12">
                             <Grid.GestureRecognizers>
                                 <TapGestureRecognizer Command="{Binding GoNotificationsCommand}" />
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FEF9C3" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="🔔" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe7f4;" FontFamily="MaterialIcons" TextColor="#CA8A04" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Notifications" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Border Grid.Column="2"
+                                    IsVisible="{Binding HasUnreadNotifications}"
+                                    BackgroundColor="#EF4444"
+                                    Padding="7,2"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="10" />
+                                </Border.StrokeShape>
+                                <Label Text="{Binding NotificationCount}"
+                                       TextColor="White"
+                                       FontSize="11"
+                                       FontAttributes="Bold"
+                                       HorizontalOptions="Center"
+                                       VerticalOptions="Center" />
+                            </Border>
+                            <Label Grid.Column="3" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <!-- Addresses -->
@@ -337,10 +355,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FCE7F3" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="📍" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe0c8;" FontFamily="MaterialIcons" TextColor="#DB2777" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Addresses" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <!-- Change Password -->
@@ -350,10 +368,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FFEDD5" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="🔒" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe897;" FontFamily="MaterialIcons" TextColor="#EA580C" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Change Password" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <!-- Help -->
@@ -363,10 +381,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FCE7F3" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="❓" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe8fd;" FontFamily="MaterialIcons" TextColor="#DB2777" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Help Center" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <!-- Terms -->
@@ -376,10 +394,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#FEF3C7" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="📋" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe873;" FontFamily="MaterialIcons" TextColor="#D97706" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Terms &amp; Conditions" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                         <BoxView Color="#F1F5F9" HeightRequest="1" Margin="12,0" />
                         <!-- Privacy -->
@@ -389,10 +407,10 @@
                             </Grid.GestureRecognizers>
                             <Border BackgroundColor="#DBEAFE" WidthRequest="34" HeightRequest="34" StrokeThickness="0">
                                 <Border.StrokeShape><RoundRectangle CornerRadius="10" /></Border.StrokeShape>
-                                <Label Text="🛡" FontSize="14" HorizontalOptions="Center" VerticalOptions="Center" />
+                                <Label Text="&#xe9e0;" FontFamily="MaterialIcons" TextColor="#2563EB" FontSize="18" HorizontalOptions="Center" VerticalOptions="Center" />
                             </Border>
                             <Label Grid.Column="1" Text="Privacy Policy" FontSize="14" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
-                            <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#CBD5E1" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#CBD5E1" VerticalOptions="Center" />
                         </Grid>
                     </VerticalStackLayout>
                 </Border>
@@ -412,14 +430,14 @@
                         <Grid.GestureRecognizers>
                             <TapGestureRecognizer Command="{Binding LogoutCommand}" />
                         </Grid.GestureRecognizers>
-                        <Label Text="🚪" FontSize="16" VerticalOptions="Center" />
+                        <Label Text="&#xe9ba;" FontFamily="MaterialIcons" TextColor="#EF4444" FontSize="20" VerticalOptions="Center" />
                         <Label Grid.Column="1"
                                Text="Logout"
                                FontSize="14"
                                FontAttributes="Bold"
                                TextColor="#EF4444"
                                VerticalOptions="Center" />
-                        <Label Grid.Column="2" Text="›" FontSize="18" TextColor="#EF4444" VerticalOptions="Center" />
+                        <Label Grid.Column="2" Text="&#xe5cc;" FontFamily="MaterialIcons" FontSize="20" TextColor="#EF4444" VerticalOptions="Center" />
                     </Grid>
                 </Border>
             </VerticalStackLayout>

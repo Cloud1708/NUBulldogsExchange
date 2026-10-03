@@ -23,6 +23,9 @@ public partial class OrderCardView : ContentView
     public static readonly BindableProperty ReviewCommandProperty =
         BindableProperty.Create(nameof(ReviewCommand), typeof(ICommand), typeof(OrderCardView));
 
+    public static readonly BindableProperty ConfirmReceivedCommandProperty =
+        BindableProperty.Create(nameof(ConfirmReceivedCommand), typeof(ICommand), typeof(OrderCardView));
+
     public OrderCardView()
     {
         InitializeComponent();
@@ -62,5 +65,11 @@ public partial class OrderCardView : ContentView
     {
         get => (ICommand?)GetValue(ReviewCommandProperty);
         set => SetValue(ReviewCommandProperty, value);
+    }
+
+    public ICommand? ConfirmReceivedCommand
+    {
+        get => (ICommand?)GetValue(ConfirmReceivedCommandProperty);
+        set => SetValue(ConfirmReceivedCommandProperty, value);
     }
 }

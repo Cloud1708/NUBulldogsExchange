@@ -68,7 +68,7 @@ public sealed class LoginViewModel : INotifyPropertyChanged
         }
     }
 
-    public string PasswordToggleGlyph => IsPasswordHidden ? "👁" : "🙈";
+    public string PasswordToggleGlyph => IsPasswordHidden ? Helpers.MaterialIconCodes.VisibilityOff : Helpers.MaterialIconCodes.Visibility;
 
     public bool IsBusy
     {

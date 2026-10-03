@@ -117,8 +117,8 @@ public partial class ProductCardView : ContentView
         }
     }
 
-    public string WishlistGlyph => IsWishlisted ? "♥" : "♡";
-    public Color WishlistColor => IsWishlisted ? Color.FromArgb("#EF4444") : Color.FromArgb("#A78BFA");
+    public string WishlistGlyph => IsWishlisted ? Helpers.MaterialIconCodes.Favorite : Helpers.MaterialIconCodes.FavoriteBorder;
+    public Color WishlistColor => IsWishlisted ? Color.FromArgb("#EF4444") : Color.FromArgb("#94A3B8");
 
     private static void OnProductChanged(BindableObject bindable, object oldValue, object newValue)
     {
