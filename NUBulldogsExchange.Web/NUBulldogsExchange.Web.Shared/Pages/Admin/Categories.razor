@@ -237,27 +237,55 @@
         @if (Filtered.Any())
         {
             <div class="admin-products-footer admin-category-footer">
-                <span>@ResultLabel</span>
                 @if (TotalPages > 1)
                 {
-                    <nav class="admin-pagination" aria-label="Categories pagination">
-                        <button type="button" class="admin-page-btn" aria-label="Previous page" disabled="@(CurrentPage <= 1)" @onclick="() => GoToPage(CurrentPage - 1)">
-                            <Icon Name="chevron-right" Size="14" CssClass="admin-page-prev-icon" />
-                        </button>
-                        @for (var page = 1; page <= TotalPages; page++)
-                        {
-                            var pageNumber = page;
+                    <div class="shop-pager admin-products-pager" role="navigation" aria-label="Categories pagination">
+                        <label class="shop-pager-size">
+                            <span>Page size:</span>
+                            <select value="@_pageSize" @onchange="OnPageSizeChanged" aria-label="Categories per page">
+                                @foreach (var size in PageSizes)
+                                {
+                                    <option value="@size">@size</option>
+                                }
+                            </select>
+                        </label>
+
+                        <span class="shop-pager-range">@RangeLabel</span>
+
+                        <div class="shop-pager-nav">
                             <button type="button"
-                                    class="admin-page-btn @(CurrentPage == pageNumber ? "active" : "")"
-                                    aria-current="@(CurrentPage == pageNumber ? "page" : null)"
-                                    @onclick="() => GoToPage(pageNumber)">
-                                @pageNumber
-                            </button>
-                        }
-                        <button type="button" class="admin-page-btn" aria-label="Next page" disabled="@(CurrentPage >= TotalPages)" @onclick="() => GoToPage(CurrentPage + 1)">
-                            <Icon Name="chevron-right" Size="14" />
-                        </button>
-                    </nav>
+                                    class="shop-pager-btn"
+                                    disabled="@(CurrentPage <= 1)"
+                                    title="First page"
+                                    aria-label="First page"
+                                    @onclick="() => GoToPage(1)">«</button>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(CurrentPage <= 1)"
+                                    title="Previous page"
+                                    aria-label="Previous page"
+                                    @onclick="() => GoToPage(CurrentPage - 1)">‹</button>
+                            <span class="shop-pager-status">
+                                Page <strong>@CurrentPage</strong> of @TotalPages
+                            </span>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(CurrentPage >= TotalPages)"
+                                    title="Next page"
+                                    aria-label="Next page"
+                                    @onclick="() => GoToPage(CurrentPage + 1)">›</button>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(CurrentPage >= TotalPages)"
+                                    title="Last page"
+                                    aria-label="Last page"
+                                    @onclick="() => GoToPage(TotalPages)">»</button>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    <span>@ResultLabel</span>
                 }
             </div>
         }
@@ -468,7 +496,7 @@
 }
 
 @code {
-    private const int PageSize = 9;
+    private static readonly int[] PageSizes = [6, 9, 12, 24];
 
     private static readonly (string Value, string Label)[] SortOptions =
     [
@@ -482,6 +510,7 @@
     private string _statusFilter = "All";
     private string _sort = "az";
     private bool _grid = true;
+    private int _pageSize = 9;
     private int _currentPage = 1;
     private string? _openMenuId;
     private bool _busy;
@@ -595,11 +624,11 @@
         }
     }
 
-    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)PageSize));
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(Filtered.Count / (double)_pageSize));
     private int CurrentPage => Math.Clamp(_currentPage, 1, TotalPages);
 
     private List<AdminCategory> Paged =>
-        Filtered.Skip((CurrentPage - 1) * PageSize).Take(PageSize).ToList();
+        Filtered.Skip((CurrentPage - 1) * _pageSize).Take(_pageSize).ToList();
 
     private string ResultLabel
     {
@@ -608,9 +637,21 @@
             var total = Filtered.Count;
             if (total == 0)
                 return "Showing 0 categories";
-            var start = (CurrentPage - 1) * PageSize + 1;
-            var end = Math.Min(start + PageSize - 1, total);
+            var start = (CurrentPage - 1) * _pageSize + 1;
+            var end = Math.Min(start + _pageSize - 1, total);
             return $"Showing {start}–{end} of {total} {(total == 1 ? "category" : "categories")}";
+        }
+    }
+
+    private string RangeLabel
+    {
+        get
+        {
+            var total = Filtered.Count;
+            if (total == 0) return "0 to 0 of 0";
+            var start = (CurrentPage - 1) * _pageSize + 1;
+            var end = Math.Min(CurrentPage * _pageSize, total);
+            return $"{start} to {end} of {total}";
         }
     }
 
@@ -639,6 +680,15 @@
     {
         _search = string.Empty;
         _statusFilter = "All";
+        _currentPage = 1;
+        CloseMenu();
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value?.ToString(), out var size) && PageSizes.Contains(size)
+            ? size
+            : 9;
         _currentPage = 1;
         CloseMenu();
     }

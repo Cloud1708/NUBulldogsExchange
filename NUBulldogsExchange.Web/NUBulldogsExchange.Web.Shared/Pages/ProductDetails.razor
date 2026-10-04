@@ -104,10 +104,6 @@ else
                             <s>₱@original.ToString("N0")</s>
                             <strong>₱@DisplayPrice.ToString("N0")</strong>
                         }
-                        else if (ShowFromPrice)
-                        {
-                            <strong>From ₱@DisplayPrice.ToString("N0")</strong>
-                        }
                         else
                         {
                             <strong>₱@DisplayPrice.ToString("N0")</strong>
@@ -481,9 +477,6 @@ else
             return _product.Price;
         }
     }
-
-    private bool ShowFromPrice =>
-        HasVariablePricing && ResolveSelectedVariant() is null;
 
     private IEnumerable<string> VisibleColors =>
         _product is null

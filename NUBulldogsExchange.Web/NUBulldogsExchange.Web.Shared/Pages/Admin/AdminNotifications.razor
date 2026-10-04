@@ -54,7 +54,7 @@
         {
             <button type="button"
                     class="admin-notifs-tab @(_tab == tab.Key ? "active" : "")"
-                    @onclick="() => _tab = tab.Key">
+                    @onclick="() => SetTab(tab.Key)">
                 @tab.Label
                 <strong>@NotificationHub.CountByTab(tab.Key)</strong>
             </button>
@@ -64,6 +64,12 @@
     <section class="admin-notifs-list">
         @{
             var items = NotificationHub.Filter(_tab).ToList();
+            var totalPages = Math.Max(1, (int)Math.Ceiling(items.Count / (double)_pageSize));
+            if (_currentPage > totalPages) _currentPage = totalPages;
+            if (_currentPage < 1) _currentPage = 1;
+            var pageItems = items.Skip((_currentPage - 1) * _pageSize).Take(_pageSize).ToList();
+            var rangeStart = items.Count == 0 ? 0 : ((_currentPage - 1) * _pageSize) + 1;
+            var rangeEnd = Math.Min(_currentPage * _pageSize, items.Count);
         }
         @if (!items.Any())
         {
@@ -85,7 +91,7 @@
         }
         else
         {
-            @foreach (var item in items)
+            @foreach (var item in pageItems)
             {
                 <article class="admin-notif-card @(item.Read ? "is-read" : "is-unread")"
                          @onclick="() => OnCardClick(item)">
@@ -118,6 +124,50 @@
                     }
                 </article>
             }
+
+            <div class="shop-pager admin-products-pager" role="navigation" aria-label="Notifications pagination">
+                <label class="shop-pager-size">
+                    <span>Page size:</span>
+                    <select value="@_pageSize" @onchange="OnPageSizeChanged" aria-label="Notifications per page">
+                        @foreach (var size in PageSizes)
+                        {
+                            <option value="@size">@size</option>
+                        }
+                    </select>
+                </label>
+
+                <span class="shop-pager-range">@rangeStart to @rangeEnd of @items.Count</span>
+
+                <div class="shop-pager-nav">
+                    <button type="button"
+                            class="shop-pager-btn"
+                            disabled="@(_currentPage <= 1)"
+                            title="First page"
+                            aria-label="First page"
+                            @onclick="() => GoToPage(1, totalPages)">«</button>
+                    <button type="button"
+                            class="shop-pager-btn"
+                            disabled="@(_currentPage <= 1)"
+                            title="Previous page"
+                            aria-label="Previous page"
+                            @onclick="() => GoToPage(_currentPage - 1, totalPages)">‹</button>
+                    <span class="shop-pager-status">
+                        Page <strong>@_currentPage</strong> of @totalPages
+                    </span>
+                    <button type="button"
+                            class="shop-pager-btn"
+                            disabled="@(_currentPage >= totalPages)"
+                            title="Next page"
+                            aria-label="Next page"
+                            @onclick="() => GoToPage(_currentPage + 1, totalPages)">›</button>
+                    <button type="button"
+                            class="shop-pager-btn"
+                            disabled="@(_currentPage >= totalPages)"
+                            title="Last page"
+                            aria-label="Last page"
+                            @onclick="() => GoToPage(totalPages, totalPages)">»</button>
+                </div>
+            </div>
         }
     </section>
 </div>
@@ -137,10 +187,31 @@
 }
 
 @code {
+    private static readonly int[] PageSizes = [5, 8, 10, 12, 24];
+
     private string _tab = "all";
     private bool _showClear;
+    private int _pageSize = 10;
+    private int _currentPage = 1;
 
     protected override void OnInitialized() => NotificationHub.OnChange += Refresh;
+
+    private void SetTab(string tab)
+    {
+        _tab = tab;
+        _currentPage = 1;
+    }
+
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value?.ToString(), out var size) && PageSizes.Contains(size)
+            ? size
+            : 10;
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page, int totalPages) =>
+        _currentPage = Math.Clamp(page, 1, totalPages);
 
     private void OnCardClick(AdminNotificationItem item)
     {

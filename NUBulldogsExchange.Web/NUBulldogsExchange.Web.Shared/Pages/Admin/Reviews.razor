@@ -233,45 +233,52 @@
                 </table>
             </div>
 
-            <div class="admin-customers-pager ar-pager">
-                <span>Showing @start–@end of @filtered.Count @(filtered.Count == 1 ? "review" : "reviews")</span>
-                <div class="admin-pagination">
-                    <button type="button"
-                            class="admin-page-btn"
-                            aria-label="Previous page"
-                            disabled="@(_currentPage <= 1)"
-                            @onclick="() => GoToPage(_currentPage - 1, totalPages)">&lt;</button>
-                    @foreach (var page in PageWindow(totalPages))
-                    {
-                        if (page == 0)
-                        {
-                            <span class="ar-page-gap">…</span>
-                        }
-                        else
-                        {
-                            var pageNumber = page;
-                            <button type="button"
-                                    class="admin-page-btn @(_currentPage == pageNumber ? "active" : "")"
-                                    @onclick="() => GoToPage(pageNumber, totalPages)">
-                                @pageNumber
-                            </button>
-                        }
-                    }
-                    <button type="button"
-                            class="admin-page-btn"
-                            aria-label="Next page"
-                            disabled="@(_currentPage >= totalPages)"
-                            @onclick="() => GoToPage(_currentPage + 1, totalPages)">&gt;</button>
+            @if (filtered.Count > 0)
+            {
+                <div class="shop-pager admin-products-pager ar-pager" role="navigation" aria-label="Reviews pagination">
+                    <label class="shop-pager-size">
+                        <span>Page size:</span>
+                        <select value="@_pageSize" @onchange="OnPageSizeChange" aria-label="Reviews per page">
+                            @foreach (var size in PageSizes)
+                            {
+                                <option value="@size">@size</option>
+                            }
+                        </select>
+                    </label>
+
+                    <span class="shop-pager-range">@start to @end of @filtered.Count</span>
+
+                    <div class="shop-pager-nav">
+                        <button type="button"
+                                class="shop-pager-btn"
+                                disabled="@(_currentPage <= 1)"
+                                title="First page"
+                                aria-label="First page"
+                                @onclick="() => GoToPage(1, totalPages)">«</button>
+                        <button type="button"
+                                class="shop-pager-btn"
+                                disabled="@(_currentPage <= 1)"
+                                title="Previous page"
+                                aria-label="Previous page"
+                                @onclick="() => GoToPage(_currentPage - 1, totalPages)">‹</button>
+                        <span class="shop-pager-status">
+                            Page <strong>@_currentPage</strong> of @totalPages
+                        </span>
+                        <button type="button"
+                                class="shop-pager-btn"
+                                disabled="@(_currentPage >= totalPages)"
+                                title="Next page"
+                                aria-label="Next page"
+                                @onclick="() => GoToPage(_currentPage + 1, totalPages)">›</button>
+                        <button type="button"
+                                class="shop-pager-btn"
+                                disabled="@(_currentPage >= totalPages)"
+                                title="Last page"
+                                aria-label="Last page"
+                                @onclick="() => GoToPage(totalPages, totalPages)">»</button>
+                    </div>
                 </div>
-                <label class="ar-page-size">
-                    <select class="admin-products-select" aria-label="Reviews per page" value="@_pageSize" @onchange="OnPageSizeChange">
-                        @foreach (var size in PageSizes)
-                        {
-                            <option value="@size">@size / page</option>
-                        }
-                    </select>
-                </label>
-            </div>
+            }
         }
     </section>
 </div>
@@ -311,7 +318,7 @@
                              OnConfirm="ConfirmVisibilityAsync" />
 
 @code {
-    private static readonly int[] PageSizes = [AdminReviewService.PageSize, 25, 50];
+    private static readonly int[] PageSizes = [5, 8, 10, 12, 24];
 
     [SupplyParameterFromQuery(Name = "product")]
     public int? ProductQuery { get; set; }
@@ -408,24 +415,6 @@
 
     private void GoToPage(int page, int totalPages) =>
         _currentPage = Math.Clamp(page, 1, totalPages);
-
-    /// <summary>Real page numbers only; 0 marks a gap.</summary>
-    private IEnumerable<int> PageWindow(int totalPages)
-    {
-        if (totalPages <= 7)
-        {
-            for (var i = 1; i <= totalPages; i++) yield return i;
-            yield break;
-        }
-
-        var from = Math.Max(2, _currentPage - 1);
-        var to = Math.Min(totalPages - 1, _currentPage + 1);
-        yield return 1;
-        if (from > 2) yield return 0;
-        for (var i = from; i <= to; i++) yield return i;
-        if (to < totalPages - 1) yield return 0;
-        yield return totalPages;
-    }
 
     private void OpenDetails(ProductReview review)
     {

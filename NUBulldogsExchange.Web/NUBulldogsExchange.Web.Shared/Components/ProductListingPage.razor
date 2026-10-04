@@ -145,16 +145,50 @@
                     </div>
                 }
 
-                @if (_totalPages > 1)
+                @if (_filtered.Count > 0 && _totalPages > 1)
                 {
-                    <div class="shop-pagination">
-                        <button type="button" class="page-btn" disabled="@(_currentPage <= 1)" @onclick="() => GoToPage(_currentPage - 1)">Previous</button>
-                        @for (var page = 1; page <= _totalPages; page++)
-                        {
-                            var p = page;
-                            <button type="button" class="page-btn page-num @(_currentPage == p ? "active" : "")" @onclick="() => GoToPage(p)">@p</button>
-                        }
-                        <button type="button" class="page-btn" disabled="@(_currentPage >= _totalPages)" @onclick="() => GoToPage(_currentPage + 1)">Next</button>
+                    <div class="shop-pager" role="navigation" aria-label="Product pages">
+                        <label class="shop-pager-size">
+                            <span>Page size:</span>
+                            <select value="@_pageSize" @onchange="OnPageSizeChanged" aria-label="Products per page">
+                                @foreach (var size in PageSizes)
+                                {
+                                    <option value="@size">@size</option>
+                                }
+                            </select>
+                        </label>
+
+                        <span class="shop-pager-range">@RangeLabel</span>
+
+                        <div class="shop-pager-nav">
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(_currentPage <= 1)"
+                                    title="First page"
+                                    aria-label="First page"
+                                    @onclick="() => GoToPage(1)">«</button>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(_currentPage <= 1)"
+                                    title="Previous page"
+                                    aria-label="Previous page"
+                                    @onclick="() => GoToPage(_currentPage - 1)">‹</button>
+                            <span class="shop-pager-status">
+                                Page <strong>@_currentPage</strong> of @_totalPages
+                            </span>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(_currentPage >= _totalPages)"
+                                    title="Next page"
+                                    aria-label="Next page"
+                                    @onclick="() => GoToPage(_currentPage + 1)">›</button>
+                            <button type="button"
+                                    class="shop-pager-btn"
+                                    disabled="@(_currentPage >= _totalPages)"
+                                    title="Last page"
+                                    aria-label="Last page"
+                                    @onclick="() => GoToPage(_totalPages)">»</button>
+                        </div>
                     </div>
                 }
             </div>
@@ -203,11 +237,12 @@
     [Parameter] public string DefaultSort { get; set; } = "featured";
     [Parameter] public string RadioGroupPrefix { get; set; } = "listing";
 
-    private const int PageSize = 8;
+    private static readonly int[] PageSizes = [5, 8, 12, 24];
 
     private string? _searchQuery;
     private string _sortOption = "featured";
     private string _viewMode = "grid";
+    private int _pageSize = 8;
     private int _currentPage = 1;
     private bool _filtersOpen;
     private bool _initialized;
@@ -242,9 +277,21 @@
         {
             var total = _filtered.Count;
             if (total == 0) return "Showing 0 products";
-            var start = (_currentPage - 1) * PageSize + 1;
-            var end = Math.Min(start + PageSize - 1, total);
+            var start = (_currentPage - 1) * _pageSize + 1;
+            var end = Math.Min(start + _pageSize - 1, total);
             return $"Showing {start}–{end} of {total} {(total == 1 ? "product" : "products")}";
+        }
+    }
+
+    private string RangeLabel
+    {
+        get
+        {
+            var total = _filtered.Count;
+            if (total == 0) return "0 to 0 of 0";
+            var start = (_currentPage - 1) * _pageSize + 1;
+            var end = Math.Min(_currentPage * _pageSize, total);
+            return $"{start} to {end} of {total}";
         }
     }
 
@@ -443,6 +490,15 @@
         RebuildResults();
     }
 
+    private void OnPageSizeChanged(ChangeEventArgs e)
+    {
+        _pageSize = int.TryParse(e.Value?.ToString(), out var size) && PageSizes.Contains(size)
+            ? size
+            : 8;
+        _currentPage = 1;
+        RebuildResults();
+    }
+
     private void SetGridView() => _viewMode = "grid";
     private void SetListView() => _viewMode = "list";
 
@@ -547,10 +603,10 @@
         };
 
         _filtered = list.ToList();
-        _totalPages = Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)PageSize));
+        _totalPages = Math.Max(1, (int)Math.Ceiling(_filtered.Count / (double)_pageSize));
         if (_currentPage > _totalPages) _currentPage = _totalPages;
         if (_currentPage < 1) _currentPage = 1;
-        _pageItems = _filtered.Skip((_currentPage - 1) * PageSize).Take(PageSize).ToList();
+        _pageItems = _filtered.Skip((_currentPage - 1) * _pageSize).Take(_pageSize).ToList();
     }
 
     private void GoToPage(int page)
