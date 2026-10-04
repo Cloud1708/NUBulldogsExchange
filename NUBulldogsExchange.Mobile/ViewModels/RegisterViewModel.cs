@@ -65,7 +65,22 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
     public string PhoneNumber
     {
         get => _phoneNumber;
-        set => SetField(ref _phoneNumber, value);
+        set
+        {
+            var digits = AuthValidation.DigitsOnly(value);
+            if (digits.Length > AuthValidation.MobilePhoneLength)
+                digits = digits[..AuthValidation.MobilePhoneLength];
+
+            if (SetField(ref _phoneNumber, digits))
+            {
+                if (HasError)
+                    ErrorMessage = string.Empty;
+            }
+            else if (value != digits)
+            {
+                OnPropertyChanged();
+            }
+        }
     }
 
     public string Password
@@ -166,13 +181,13 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
 
         if (string.IsNullOrWhiteSpace(PhoneNumber))
         {
-            ErrorMessage = "Contact number is required.";
+            ErrorMessage = "Phone number is required.";
             return;
         }
 
-        if (!AuthValidation.IsValidPhone(PhoneNumber))
+        if (!AuthValidation.IsValidMobilePhone(PhoneNumber))
         {
-            ErrorMessage = "Please enter a valid contact number.";
+            ErrorMessage = $"Phone number must be exactly {AuthValidation.MobilePhoneLength} digits.";
             return;
         }
 
@@ -208,7 +223,7 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
                 FirstName = FirstName.Trim(),
                 LastName = LastName.Trim(),
                 Email = Email.Trim(),
-                PhoneNumber = PhoneNumber.Trim(),
+                PhoneNumber = AuthValidation.DigitsOnly(PhoneNumber),
                 Password = Password,
                 ConfirmPassword = ConfirmPassword
             });
@@ -221,13 +236,33 @@ public sealed class RegisterViewModel : INotifyPropertyChanged
                 return;
             }
 
+            var registeredEmail = Email.Trim();
             MobileCheckoutIntent.Clear();
-            var page = HostPage ?? Shell.Current;
-            await page.DisplayAlertAsync(
-                "Account created",
-                "Your account was created successfully. Please sign in with your new credentials.",
-                "OK");
-            await GoAsync("login");
+            Password = string.Empty;
+            ConfirmPassword = string.Empty;
+            ErrorMessage = string.Empty;
+
+            var stack = Shell.Current?.Navigation?.NavigationStack;
+            var prevPage = stack != null && stack.Count >= 2 ? stack[^2] : null;
+            var route = prevPage is Pages.LoginPage
+                ? $"..?registered=1&email={Uri.EscapeDataString(registeredEmail)}"
+                : $"login?registered=1&email={Uri.EscapeDataString(registeredEmail)}";
+
+            var navParams = new Dictionary<string, object>
+            {
+                ["registered"] = "1",
+                ["email"] = registeredEmail
+            };
+
+            try
+            {
+                await Shell.Current!.GoToAsync(route, navParams);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine(ex);
+                await Shell.Current!.GoToAsync($"login?registered=1&email={Uri.EscapeDataString(registeredEmail)}", navParams);
+            }
         }
         catch (Exception)
         {

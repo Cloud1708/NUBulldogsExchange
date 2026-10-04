@@ -155,9 +155,12 @@
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="12" />
                     </Border.StrokeShape>
-                    <Entry Placeholder="09XX XXX XXXX"
+                    <Entry x:Name="PhoneNumberEntry"
+                           Placeholder="09XXXXXXXXX"
                            Text="{Binding PhoneNumber}"
-                           Keyboard="Telephone"
+                           TextChanged="OnPhoneNumberTextChanged"
+                           Keyboard="Numeric"
+                           MaxLength="11"
                            ReturnType="Next"
                            BackgroundColor="Transparent"
                            FontSize="14"

@@ -228,6 +228,15 @@
                                                    FontAttributes="Bold"
                                                    TextColor="{StaticResource NuNavy}"
                                                    Margin="0,2,0,0" />
+                                            <Label Text="{Binding StockStatusText}"
+                                                   FontSize="11"
+                                                   FontAttributes="Bold"
+                                                   TextColor="{Binding StockStatusColor}" />
+                                            <Label Text="{Binding StockWarningText}"
+                                                   IsVisible="{Binding HasStockWarning}"
+                                                   FontSize="11"
+                                                   TextColor="#EF4444"
+                                                   LineBreakMode="WordWrap" />
                                         </VerticalStackLayout>
                                     </Grid>
 
@@ -462,23 +471,32 @@
                 BackgroundColor="#F6F7F9"
                 StrokeThickness="0"
                 Padding="16,8,16,8">
-            <Border BackgroundColor="{StaticResource NuNavy}"
-                    HeightRequest="48"
-                    StrokeThickness="0"
-                    IsEnabled="{Binding CanCheckout}">
-                <Border.StrokeShape>
-                    <RoundRectangle CornerRadius="14" />
-                </Border.StrokeShape>
-                <Border.GestureRecognizers>
-                    <TapGestureRecognizer Command="{Binding CheckoutCommand}" />
-                </Border.GestureRecognizers>
-                <Label Text="{Binding CheckoutButtonText}"
-                       TextColor="White"
-                       FontSize="14"
+            <VerticalStackLayout Spacing="6">
+                <Border BackgroundColor="{Binding CheckoutButtonBackgroundColor}"
+                        HeightRequest="48"
+                        StrokeThickness="0"
+                        IsEnabled="{Binding CanCheckout}">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="14" />
+                    </Border.StrokeShape>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding CheckoutCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{Binding CheckoutButtonText}"
+                           TextColor="{Binding CheckoutButtonTextColor}"
+                           FontSize="14"
+                           FontAttributes="Bold"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+                <Label Text="{Binding CheckoutBlocker}"
+                       IsVisible="{Binding HasCheckoutBlocker}"
+                       TextColor="#DC2626"
+                       FontSize="11"
                        FontAttributes="Bold"
-                       HorizontalOptions="Center"
-                       VerticalOptions="Center" />
-            </Border>
+                       HorizontalTextAlignment="Center"
+                       LineBreakMode="WordWrap" />
+            </VerticalStackLayout>
         </Border>
 
         <!-- Bottom nav (Cart is not a tab) -->

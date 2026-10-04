@@ -177,6 +177,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         PrevImageCommand = new Command(PrevImage);
 
         _cart.OnChange += OnCartChanged;
+        _wishlist.OnChange += OnWishlistChanged;
         CartCount = _cart.TotalCount;
     }
 
@@ -814,13 +815,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         if (Product is null) return;
         _wishlist.Toggle(Product.Id);
         IsWishlisted = _wishlist.Contains(Product.Id);
-
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(_auth.Email))
-                await _db.SaveWishlistAsync(_auth.Email, _wishlist.Ids);
-        }
-        catch { }
+        await MobileWishlistSync.SaveAsync(_wishlist, _auth.Email, _db);
 
         _toast.Show(IsWishlisted ? $"Saved {Product.Name} to Wishlist." : $"Removed {Product.Name} from Wishlist.");
     }
@@ -1032,6 +1027,29 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
 
     private void OnCartChanged() =>
         MainThread.BeginInvokeOnMainThread(() => CartCount = _cart.TotalCount);
+
+    private void OnWishlistChanged()
+    {
+        if (Product is null) return;
+        if (MainThread.IsMainThread)
+        {
+            IsWishlisted = _wishlist.Contains(Product.Id);
+        }
+        else
+        {
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                if (Product is not null)
+                    IsWishlisted = _wishlist.Contains(Product.Id);
+            });
+        }
+    }
+
+    public void Detach()
+    {
+        _cart.OnChange -= OnCartChanged;
+        _wishlist.OnChange -= OnWishlistChanged;
+    }
 
     private static async Task GoAsync(string route)
     {

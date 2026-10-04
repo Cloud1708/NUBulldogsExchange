@@ -902,6 +902,23 @@ public sealed class CheckoutViewModel : INotifyPropertyChanged
             return;
 
         // Validation
+        foreach (var item in _cart.Items)
+        {
+            if (item.AvailableStock <= 0)
+            {
+                StatusMessage = $"{item.Product.Name} is out of stock. Please return to your cart and remove it.";
+                HasError = true;
+                return;
+            }
+
+            if (item.Quantity > item.AvailableStock)
+            {
+                StatusMessage = $"Only {item.AvailableStock} pieces of {item.Product.Name} available. Please reduce quantity in cart.";
+                HasError = true;
+                return;
+            }
+        }
+
         if (string.IsNullOrWhiteSpace(ContactPhone))
         {
             StatusMessage = "Please provide your contact number.";

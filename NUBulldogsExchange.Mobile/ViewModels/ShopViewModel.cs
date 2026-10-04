@@ -726,14 +726,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
     {
         if (product is null) return;
         _wishlist.Toggle(product.Id);
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(_auth.Email))
-                await _db.SaveWishlistAsync(_auth.Email, _wishlist.Ids);
-        }
-        catch
-        {
-        }
+        await MobileWishlistSync.SaveAsync(_wishlist, _auth.Email, _db);
 
         _toast.Show(_wishlist.Contains(product.Id)
             ? $"Saved {product.Name} to Wishlist."

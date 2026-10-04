@@ -19,4 +19,10 @@ public partial class ProductDetailsPage : ContentPage
         base.OnAppearing();
         await _vm.LoadAsync();
     }
+
+    protected override void OnDisappearing()
+    {
+        base.OnDisappearing();
+        _vm.Detach();
+    }
 }

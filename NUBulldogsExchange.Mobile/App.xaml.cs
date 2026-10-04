@@ -6,12 +6,22 @@ namespace NUBulldogsExchange.Mobile
     public partial class App : Application
     {
         private readonly AuthService _auth;
+        private readonly WishlistService _wishlist;
+        private readonly IAppDatabase _db;
 
-        public App(AuthService auth)
+        public App(AuthService auth, WishlistService wishlist, IAppDatabase db)
         {
             InitializeComponent();
             UserAppTheme = AppTheme.Light;
             _auth = auth;
+            _wishlist = wishlist;
+            _db = db;
+
+            // Make wishlist globally accessible for controls like ProductCardView
+            MobileWishlistSync.CurrentWishlist = wishlist;
+
+            // Immediately restore saved wishlist from device local storage
+            MobileWishlistSync.RestoreLocal(_wishlist);
         }
 
         protected override Window CreateWindow(IActivationState? activationState)
@@ -51,7 +61,14 @@ namespace NUBulldogsExchange.Mobile
 
                 var denied = await MobileAuthGuard.EnforceAsync(_auth, result.User);
                 if (denied is null)
+                {
+                    // Sync wishlist with server in background
+                    if (!string.IsNullOrWhiteSpace(_auth.Email))
+                    {
+                        await MobileWishlistSync.SyncWithServerAsync(_wishlist, _auth.Email, _db);
+                    }
                     return;
+                }
 
                 await MobileAuthGuard.ClearAsync();
                 try

@@ -46,9 +46,32 @@ public sealed class CartLineItem : INotifyPropertyChanged
 
     public string QuantityText => Quantity.ToString();
 
+    public int AvailableStock => Item.AvailableStock;
+
+    public bool IsOutOfStock => AvailableStock <= 0;
+
+    public bool IsLowStock => AvailableStock > 0 && AvailableStock <= 10;
+
+    public bool ExceedsStock => AvailableStock > 0 && Quantity > AvailableStock;
+
+    public bool HasStockWarning => IsOutOfStock || ExceedsStock;
+
+    public string StockStatusText =>
+        IsOutOfStock ? "Out of Stock" :
+        IsLowStock ? $"Only {AvailableStock} left" : "In Stock";
+
+    public Color StockStatusColor =>
+        IsOutOfStock ? Color.FromArgb("#EF4444") :
+        IsLowStock ? Color.FromArgb("#D97706") : Color.FromArgb("#16A34A");
+
+    public string StockWarningText =>
+        IsOutOfStock ? "Out of stock. Unselect or remove to continue." :
+        ExceedsStock ? $"Only {AvailableStock} available in stock. Reduce quantity." :
+        string.Empty;
+
     public bool CanDecrease => Quantity > 1;
 
-    public bool CanIncrease => Product.Stock <= 0 || Quantity < Product.Stock;
+    public bool CanIncrease => AvailableStock > 0 && Quantity < AvailableStock;
 
     public ImageSource DisplayImage => ProductImageHelper.FromProduct(Product);
 
@@ -75,6 +98,14 @@ public sealed class CartLineItem : INotifyPropertyChanged
         OnPropertyChanged(nameof(QuantityText));
         OnPropertyChanged(nameof(CanDecrease));
         OnPropertyChanged(nameof(CanIncrease));
+        OnPropertyChanged(nameof(AvailableStock));
+        OnPropertyChanged(nameof(IsOutOfStock));
+        OnPropertyChanged(nameof(IsLowStock));
+        OnPropertyChanged(nameof(ExceedsStock));
+        OnPropertyChanged(nameof(HasStockWarning));
+        OnPropertyChanged(nameof(StockStatusText));
+        OnPropertyChanged(nameof(StockStatusColor));
+        OnPropertyChanged(nameof(StockWarningText));
     }
 
     private void OnPropertyChanged([CallerMemberName] string? name = null) =>
