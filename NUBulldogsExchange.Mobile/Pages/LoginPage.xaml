@@ -52,17 +52,34 @@
                            VerticalOptions="Center" />
                 </Border>
 
-                <Label Text="Welcome Back!"
+                <Label Text="Welcome Back"
                        FontSize="23"
                        FontAttributes="Bold"
                        TextColor="{StaticResource NuNavy}"
                        HorizontalTextAlignment="Center"
                        Margin="0,16,0,4" />
-                <Label Text="Login to continue shopping."
+                <Label Text="Sign in to your account to continue shopping."
                        FontSize="13"
                        TextColor="{StaticResource MutedText}"
                        HorizontalTextAlignment="Center"
-                       Margin="0,0,0,28" />
+                       Margin="0,0,0,20" />
+
+                <!-- Success Banner (Account Created) -->
+                <Border IsVisible="{Binding ShowAccountCreatedNotice}"
+                        BackgroundColor="#ECFDF5"
+                        Stroke="#A7F3D0"
+                        StrokeThickness="1"
+                        Padding="14,12"
+                        Margin="0,0,0,20">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="10" />
+                    </Border.StrokeShape>
+                    <Label Text="Account created. Sign in with your new credentials."
+                           TextColor="#065F46"
+                           FontSize="13"
+                           FontAttributes="Bold"
+                           LineBreakMode="WordWrap" />
+                </Border>
 
                 <!-- Email -->
                 <Label Text="Email Address"

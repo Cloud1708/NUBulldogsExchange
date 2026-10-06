@@ -7,9 +7,13 @@ using NUBulldogsExchange.Web.Shared.Services;
 
 namespace NUBulldogsExchange.Mobile.ViewModels;
 
-public sealed class LoginViewModel : INotifyPropertyChanged
+[QueryProperty(nameof(Registered), "registered")]
+[QueryProperty(nameof(RegisteredEmail), "email")]
+public sealed class LoginViewModel : INotifyPropertyChanged, IQueryAttributable
 {
     private readonly AuthService _auth;
+    private readonly WishlistService _wishlist;
+    private readonly IAppDatabase _db;
     private Page? _host;
 
     private string _email = string.Empty;
@@ -18,17 +22,24 @@ public sealed class LoginViewModel : INotifyPropertyChanged
     private bool _isPasswordHidden = true;
     private bool _isBusy;
     private string _errorMessage = string.Empty;
+    private bool _showAccountCreatedNotice;
 
-    public LoginViewModel(AuthService auth)
+    public LoginViewModel(AuthService auth, WishlistService wishlist, IAppDatabase db)
     {
         _auth = auth;
+        _wishlist = wishlist;
+        _db = db;
 
         LoginCommand = new Command(async () => await LoginAsync(), () => !IsBusy);
         TogglePasswordCommand = new Command(() => IsPasswordHidden = !IsPasswordHidden);
         ContinueAsGuestCommand = new Command(async () => await GoHomeAsync());
         ForgotPasswordCommand = new Command(async () => await OnForgotPasswordAsync());
         StaffPortalCommand = new Command(async () => await OpenStaffPortalAsync());
-        CreateAccountCommand = new Command(async () => await GoAsync("register"));
+        CreateAccountCommand = new Command(async () =>
+        {
+            ShowAccountCreatedNotice = false;
+            await GoAsync("register");
+        });
         BackCommand = new Command(async () => await GoBackAsync());
     }
 
@@ -38,6 +49,42 @@ public sealed class LoginViewModel : INotifyPropertyChanged
     {
         get => _host;
         set => _host = value;
+    }
+
+    public bool ShowAccountCreatedNotice
+    {
+        get => _showAccountCreatedNotice;
+        set => SetField(ref _showAccountCreatedNotice, value);
+    }
+
+    public string Registered
+    {
+        set => ShowAccountCreatedNotice = value is "1" or "true" or "True";
+    }
+
+    public string RegisteredEmail
+    {
+        set
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+                Email = Uri.UnescapeDataString(value).Trim();
+        }
+    }
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        if (query.TryGetValue("registered", out var regVal) && regVal is not null)
+        {
+            var str = regVal.ToString();
+            ShowAccountCreatedNotice = str is "1" or "true" or "True";
+        }
+
+        if (query.TryGetValue("email", out var emailVal) && emailVal is not null)
+        {
+            var emailStr = emailVal.ToString();
+            if (!string.IsNullOrWhiteSpace(emailStr))
+                Email = Uri.UnescapeDataString(emailStr).Trim();
+        }
     }
 
     public string Email
@@ -106,6 +153,7 @@ public sealed class LoginViewModel : INotifyPropertyChanged
             return;
 
         ErrorMessage = string.Empty;
+        ShowAccountCreatedNotice = false;
 
         if (string.IsNullOrWhiteSpace(Email))
         {
@@ -146,7 +194,10 @@ public sealed class LoginViewModel : INotifyPropertyChanged
             }
 
             if (result.User is not null)
+            {
                 await MobileAuthGuard.PersistAsync(result.User);
+                await MobileWishlistSync.SyncWithServerAsync(_wishlist, result.User.Email, _db);
+            }
 
             await NavigateAfterAuthAsync();
         }

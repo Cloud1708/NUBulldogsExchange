@@ -91,16 +91,13 @@ public sealed class WishlistViewModel : INotifyPropertyChanged
             await MobileCatalogSeeder.EnsureSampleProductsAsync(_db, _catalog);
             await _cart.RestoreAsync(_auth.Email);
 
+            MobileWishlistSync.RestoreLocal(_wishlist, _auth.Email);
+
             if (!string.IsNullOrWhiteSpace(_auth.Email))
             {
                 try
                 {
-                    var ids = await _db.GetWishlistAsync(_auth.Email);
-                    foreach (var id in ids)
-                    {
-                        if (!_wishlist.Contains(id))
-                            _wishlist.Toggle(id);
-                    }
+                    await MobileWishlistSync.SyncWithServerAsync(_wishlist, _auth.Email, _db);
                 }
                 catch
                 {
@@ -150,14 +147,7 @@ public sealed class WishlistViewModel : INotifyPropertyChanged
             return;
 
         _wishlist.Toggle(product.Id);
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(_auth.Email))
-                await _db.SaveWishlistAsync(_auth.Email, _wishlist.Ids);
-        }
-        catch
-        {
-        }
+        await MobileWishlistSync.SaveAsync(_wishlist, _auth.Email, _db);
 
         _toast.Show($"Removed {product.Name} from Wishlist.");
         RefreshItems();

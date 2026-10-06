@@ -22,9 +22,14 @@ public partial class ProductCardView : ContentView
     public static readonly BindableProperty DisplayImageProperty =
         BindableProperty.Create(nameof(DisplayImage), typeof(ImageSource), typeof(ProductCardView));
 
+    private WishlistService? _subscribedWishlist;
+
     public ProductCardView()
     {
         InitializeComponent();
+        Loaded += OnViewLoaded;
+        Unloaded += OnViewUnloaded;
+
         var tap = new TapGestureRecognizer();
         tap.Tapped += (_, _) =>
         {
@@ -112,7 +117,7 @@ public partial class ProductCardView : ContentView
         get
         {
             if (Product is null) return false;
-            var wishlist = Handler?.MauiContext?.Services.GetService<WishlistService>();
+            var wishlist = ResolveWishlist();
             return wishlist?.Contains(Product.Id) == true;
         }
     }
@@ -120,10 +125,80 @@ public partial class ProductCardView : ContentView
     public string WishlistGlyph => IsWishlisted ? Helpers.MaterialIconCodes.Favorite : Helpers.MaterialIconCodes.FavoriteBorder;
     public Color WishlistColor => IsWishlisted ? Color.FromArgb("#EF4444") : Color.FromArgb("#94A3B8");
 
+    private WishlistService? ResolveWishlist()
+    {
+        return MobileWishlistSync.CurrentWishlist
+            ?? Handler?.MauiContext?.Services.GetService<WishlistService>()
+            ?? Application.Current?.Handler?.MauiContext?.Services.GetService<WishlistService>()
+            ?? IPlatformApplication.Current?.Services?.GetService<WishlistService>();
+    }
+
+    private void SubscribeWishlist()
+    {
+        var ws = ResolveWishlist();
+        if (ws is not null && _subscribedWishlist != ws)
+        {
+            if (_subscribedWishlist is not null)
+                _subscribedWishlist.OnChange -= OnWishlistChanged;
+
+            _subscribedWishlist = ws;
+            _subscribedWishlist.OnChange += OnWishlistChanged;
+        }
+    }
+
+    private void UnsubscribeWishlist()
+    {
+        if (_subscribedWishlist is not null)
+        {
+            _subscribedWishlist.OnChange -= OnWishlistChanged;
+            _subscribedWishlist = null;
+        }
+    }
+
+    private void OnWishlistChanged()
+    {
+        if (MainThread.IsMainThread)
+        {
+            RefreshWishlist();
+        }
+        else
+        {
+            MainThread.BeginInvokeOnMainThread(RefreshWishlist);
+        }
+    }
+
+    public void RefreshWishlist()
+    {
+        OnPropertyChanged(nameof(IsWishlisted));
+        OnPropertyChanged(nameof(WishlistGlyph));
+        OnPropertyChanged(nameof(WishlistColor));
+    }
+
+    protected override void OnHandlerChanged()
+    {
+        base.OnHandlerChanged();
+        SubscribeWishlist();
+        RefreshWishlist();
+    }
+
+    private void OnViewLoaded(object? sender, EventArgs e)
+    {
+        SubscribeWishlist();
+        RefreshWishlist();
+    }
+
+    private void OnViewUnloaded(object? sender, EventArgs e)
+    {
+        UnsubscribeWishlist();
+    }
+
     private static void OnProductChanged(BindableObject bindable, object oldValue, object newValue)
     {
         if (bindable is ProductCardView card)
+        {
+            card.SubscribeWishlist();
             card.RefreshDerived();
+        }
     }
 
     private void RefreshDerived()
@@ -138,16 +213,14 @@ public partial class ProductCardView : ContentView
         OnPropertyChanged(nameof(HasOriginalPrice));
         OnPropertyChanged(nameof(OriginalPriceText));
         DisplayImage = ProductImageHelper.FromProduct(Product);
-        OnPropertyChanged(nameof(WishlistGlyph));
-        OnPropertyChanged(nameof(WishlistColor));
-        OnPropertyChanged(nameof(IsWishlisted));
+        RefreshWishlist();
     }
 
     private void OnWishlistTapped(object? sender, TappedEventArgs e)
     {
         if (ToggleWishlistCommand?.CanExecute(Product) == true)
             ToggleWishlistCommand.Execute(Product);
-        RefreshDerived();
+        RefreshWishlist();
     }
 
     private void OnAddTapped(object? sender, TappedEventArgs e)

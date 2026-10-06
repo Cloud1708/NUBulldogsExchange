@@ -2,7 +2,7 @@ using NUBulldogsExchange.Mobile.ViewModels;
 
 namespace NUBulldogsExchange.Mobile.Pages;
 
-public partial class LoginPage : ContentPage
+public partial class LoginPage : ContentPage, IQueryAttributable
 {
     private readonly LoginViewModel _vm;
 
@@ -12,5 +12,10 @@ public partial class LoginPage : ContentPage
         _vm = vm;
         _vm.HostPage = this;
         BindingContext = _vm;
+    }
+
+    public void ApplyQueryAttributes(IDictionary<string, object> query)
+    {
+        _vm.ApplyQueryAttributes(query);
     }
 }

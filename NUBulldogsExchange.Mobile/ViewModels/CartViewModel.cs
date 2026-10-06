@@ -237,9 +237,41 @@ public sealed class CartViewModel : INotifyPropertyChanged
         private set
         {
             if (SetField(ref _canCheckout, value))
+            {
                 ((Command)CheckoutCommand).ChangeCanExecute();
+                OnPropertyChanged(nameof(CheckoutButtonBackgroundColor));
+            }
         }
     }
+
+    public string? CheckoutBlocker
+    {
+        get
+        {
+            var lines = SelectedLines.ToList();
+            if (lines.Count == 0)
+                return "Select at least one item to check out.";
+
+            foreach (var line in lines)
+            {
+                if (line.Product.HasVariants && line.Item.VariantId is null && line.Product.Variants.Any(v => v.IsActive))
+                    return $"Choose an available option for {line.Product.Name}.";
+
+                if (line.Item.AvailableStock <= 0)
+                    return $"{line.Product.Name} is out of stock. Remove it or unselect it to continue.";
+
+                if (line.Quantity < 1 || line.Quantity > line.Item.AvailableStock)
+                    return $"Reduce the quantity of {line.Product.Name} to {line.Item.AvailableStock} or less.";
+            }
+
+            return null;
+        }
+    }
+
+    public bool HasCheckoutBlocker => !string.IsNullOrWhiteSpace(CheckoutBlocker);
+
+    public Color CheckoutButtonBackgroundColor => CanCheckout ? Color.FromArgb("#00205B") : Color.FromArgb("#94A3B8");
+    public Color CheckoutButtonTextColor => Colors.White;
 
     public ICommand IncreaseQuantityCommand { get; }
     public ICommand DecreaseQuantityCommand { get; }
@@ -373,7 +405,8 @@ public sealed class CartViewModel : INotifyPropertyChanged
 
     private void RecalculateTotals()
     {
-        var subtotal = SelectedLines.Sum(l => l.Product.Price * l.Quantity);
+        var selected = SelectedLines.ToList();
+        var subtotal = selected.Sum(l => l.Product.Price * l.Quantity);
         var discount = PromoApplied ? Math.Min(_discount, subtotal) : 0m;
         var total = Math.Max(0, subtotal - discount + DeliveryFee);
 
@@ -382,7 +415,12 @@ public sealed class CartViewModel : INotifyPropertyChanged
         DeliveryFeeText = DeliveryFee > 0 ? $"₱{DeliveryFee:N0}" : "₱0";
         TotalText = $"₱{total:N0}";
         CheckoutButtonText = $"Proceed to Checkout · ₱{total:N0}";
-        CanCheckout = SelectedLines.Any();
+        CanCheckout = selected.Any() && CheckoutBlocker is null;
+
+        OnPropertyChanged(nameof(CheckoutBlocker));
+        OnPropertyChanged(nameof(HasCheckoutBlocker));
+        OnPropertyChanged(nameof(CheckoutButtonBackgroundColor));
+        OnPropertyChanged(nameof(CheckoutButtonTextColor));
     }
 
     private async Task ChangeQuantityAsync(CartLineItem? line, int delta)
@@ -392,10 +430,12 @@ public sealed class CartViewModel : INotifyPropertyChanged
         var next = line.Quantity + delta;
         if (next < 1) return;
 
-        var max = line.Product.Stock > 0 ? line.Product.Stock : int.MaxValue;
+        var max = line.AvailableStock > 0 ? line.AvailableStock : (line.Product.Stock > 0 ? line.Product.Stock : int.MaxValue);
         if (next > max)
         {
-            _toast.Show("Not enough stock available.");
+            _toast.Show(line.AvailableStock <= 0
+                ? $"{line.Name} is out of stock."
+                : $"Only {line.AvailableStock} available in stock.");
             return;
         }
 
@@ -427,15 +467,7 @@ public sealed class CartViewModel : INotifyPropertyChanged
 
         if (!_wishlist.Contains(line.Product.Id))
             _wishlist.Toggle(line.Product.Id);
-
-        try
-        {
-            if (!string.IsNullOrWhiteSpace(_auth.Email))
-                await _db.SaveWishlistAsync(_auth.Email, _wishlist.Ids);
-        }
-        catch
-        {
-        }
+        await MobileWishlistSync.SaveAsync(_wishlist, _auth.Email, _db);
 
         _toast.Show($"Saved {line.Name} to wishlist.");
     }
@@ -568,6 +600,14 @@ public sealed class CartViewModel : INotifyPropertyChanged
 
     private async Task CheckoutAsync()
     {
+        _cart.EnsureVariantsResolved();
+
+        if (CheckoutBlocker is { } blocker)
+        {
+            _toast.Show(blocker);
+            return;
+        }
+
         if (!CanCheckout || IsBusy) return;
 
         IsBusy = true;
