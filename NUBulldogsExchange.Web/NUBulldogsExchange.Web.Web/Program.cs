@@ -36,16 +36,13 @@ builder.Services.AddHttpClient("Supabase", (sp, client) =>
     client.DefaultVersionPolicy = System.Net.Http.HttpVersionPolicy.RequestVersionOrLower;
 });
 
-builder.Services.AddSingleton<IProductImageStore, WebProductImageStore>();
-
 builder.Services.AddScoped<SupabaseAppDatabase>(sp =>
 {
     var factory = sp.GetRequiredService<IHttpClientFactory>();
     return new SupabaseAppDatabase(
         factory.CreateClient("Supabase"),
         sp.GetRequiredService<SupabaseOptions>(),
-        sp.GetRequiredService<SupabaseSessionState>(),
-        sp.GetService<IProductImageStore>());
+        sp.GetRequiredService<SupabaseSessionState>());
 });
 
 builder.Services.AddScoped<IAppDatabase>(sp =>

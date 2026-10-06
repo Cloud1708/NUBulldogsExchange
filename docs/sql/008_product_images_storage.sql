@@ -1,7 +1,6 @@
--- Optional public bucket for product photos.
--- Run in Supabase SQL Editor if you want images stored in Supabase Storage.
--- The web app also saves uploads under wwwroot/uploads/products so Shop can
--- show them even without this bucket.
+-- Required public bucket for product / category / store photos.
+-- Run this in the Supabase SQL Editor so every device can see uploaded images.
+-- The web app uploads only to this bucket (no local wwwroot fallback).
 
 INSERT INTO storage.buckets (id, name, public)
 VALUES ('product-images', 'product-images', true)

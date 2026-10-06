@@ -18,10 +18,12 @@ namespace NUBulldogsExchange.Web.Shared.Services;
 /// </summary>
 public sealed class SupabaseAppDatabase : IAppDatabase
 {
+    private const string ProductImagesBucket = "product-images";
+
     private readonly HttpClient _http;
     private readonly SupabaseOptions _options;
     private readonly SupabaseSessionState _session;
-    private readonly IProductImageStore? _localImages;
+    private bool _productImagesBucketReady;
 
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {
@@ -34,13 +36,11 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     public SupabaseAppDatabase(
         HttpClient http,
         SupabaseOptions options,
-        SupabaseSessionState session,
-        IProductImageStore? localImages = null)
+        SupabaseSessionState session)
     {
         _http = http;
         _options = options;
         _session = session;
-        _localImages = localImages;
 
         if (_http.BaseAddress is null)
             _http.BaseAddress = new Uri(_options.Url);
@@ -152,22 +152,32 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         if (url.StartsWith("data:image/svg+xml", StringComparison.OrdinalIgnoreCase))
             return url;
 
-        var uploaded = await TryPersistUploadedImageAsync(url);
-        return uploaded ?? url;
+        return await PersistUploadedImageAsync(url);
     }
 
     public async Task<string?> UploadStoreImageAsync(string dataUrl)
     {
         RequireAuth();
-        var url = await TryPersistUploadedImageAsync(dataUrl);
-        return url is null || url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? null : url;
+        try
+        {
+            var url = await PersistUploadedImageAsync(dataUrl);
+            return url.StartsWith("data:", StringComparison.OrdinalIgnoreCase) ? null : url;
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
-    private async Task<string?> TryPersistUploadedImageAsync(string dataUrl)
+    /// <summary>
+    /// Uploads a data-URL image to the public Supabase Storage bucket <c>product-images</c>.
+    /// Does not fall back to local disk or base64 — so images are visible on every device.
+    /// </summary>
+    private async Task<string> PersistUploadedImageAsync(string dataUrl)
     {
         var comma = dataUrl.IndexOf(',');
         if (comma < 0)
-            return null;
+            throw new InvalidOperationException("Invalid image data. Please choose the image again.");
 
         var meta = dataUrl[..comma];
         var payload = dataUrl[(comma + 1)..];
@@ -178,11 +188,11 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         }
         catch
         {
-            return null;
+            throw new InvalidOperationException("Invalid image data. Please choose the image again.");
         }
 
         if (bytes.Length == 0)
-            return null;
+            throw new InvalidOperationException("The selected image is empty.");
 
         var mime = meta.Contains("image/png", StringComparison.OrdinalIgnoreCase) ? "image/png"
             : meta.Contains("image/webp", StringComparison.OrdinalIgnoreCase) ? "image/webp"
@@ -190,35 +200,108 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         var ext = mime == "image/png" ? "png" : mime == "image/webp" ? "webp" : "jpg";
         var fileName = $"{Guid.NewGuid():N}.{ext}";
 
-        foreach (var bucket in new[] { "product-images", "products", "images" })
+        var (bearer, apikey) = ResolveStorageCredentials();
+        await EnsureProductImagesBucketAsync(bearer, apikey);
+
+        string? lastError = null;
+        try
         {
-            try
-            {
-                var request = new HttpRequestMessage(HttpMethod.Post, $"storage/v1/object/{bucket}/{fileName}");
-                request.Headers.TryAddWithoutValidation("apikey", _options.AnonKey);
-                request.Headers.Authorization = new AuthenticationHeaderValue(
-                    "Bearer",
-                    !string.IsNullOrWhiteSpace(_session.AccessToken) ? _session.AccessToken : _options.AnonKey);
-                request.Headers.TryAddWithoutValidation("x-upsert", "true");
-                request.Content = new ByteArrayContent(bytes);
-                request.Content.Headers.ContentType = new MediaTypeHeaderValue(mime);
+            var request = new HttpRequestMessage(
+                HttpMethod.Post,
+                $"storage/v1/object/{ProductImagesBucket}/{fileName}");
+            request.Headers.TryAddWithoutValidation("apikey", apikey);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            request.Headers.TryAddWithoutValidation("x-upsert", "true");
+            request.Content = new ByteArrayContent(bytes);
+            request.Content.Headers.ContentType = new MediaTypeHeaderValue(mime);
 
-                using var response = await _http.SendAsync(request);
-                if (!response.IsSuccessStatusCode)
-                    continue;
-
-                return $"{_options.Url.TrimEnd('/')}/storage/v1/object/public/{bucket}/{fileName}";
-            }
-            catch
+            using var response = await _http.SendAsync(request);
+            if (response.IsSuccessStatusCode)
             {
-                // Try local disk next.
+                return $"{_options.Url.TrimEnd('/')}/storage/v1/object/public/{ProductImagesBucket}/{fileName}";
             }
+
+            lastError = await response.Content.ReadAsStringAsync();
+        }
+        catch (Exception ex)
+        {
+            lastError = ex.Message;
         }
 
-        if (_localImages is not null)
-            return await _localImages.SaveAsync(bytes, ext, mime);
+        throw new InvalidOperationException(BuildStorageUploadError(lastError));
+    }
 
-        return dataUrl.Length <= 900_000 ? dataUrl : null;
+    private (string Bearer, string ApiKey) ResolveStorageCredentials()
+    {
+        // Server-only service role bypasses Storage RLS and is preferred on Web.Web.
+        if (_options.HasServiceRoleKey)
+            return (_options.ServiceRoleKey!, _options.ServiceRoleKey!);
+
+        if (!string.IsNullOrWhiteSpace(_session.AccessToken))
+            return (_session.AccessToken, _options.AnonKey);
+
+        throw new InvalidOperationException(
+            "Sign in as admin/staff to upload images, or set Supabase:ServiceRoleKey on the Web server.");
+    }
+
+    private async Task EnsureProductImagesBucketAsync(string bearer, string apikey)
+    {
+        if (_productImagesBucketReady || !_options.HasServiceRoleKey)
+            return;
+
+        try
+        {
+            var body = JsonSerializer.Serialize(new Dictionary<string, object?>
+            {
+                ["id"] = ProductImagesBucket,
+                ["name"] = ProductImagesBucket,
+                ["public"] = true
+            });
+
+            var request = new HttpRequestMessage(HttpMethod.Post, "storage/v1/bucket");
+            request.Headers.TryAddWithoutValidation("apikey", apikey);
+            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
+            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
+
+            using var response = await _http.SendAsync(request);
+            // Created, or already exists — either way uploads can proceed.
+            if (response.IsSuccessStatusCode || (int)response.StatusCode is 409 or 400)
+                _productImagesBucketReady = true;
+        }
+        catch
+        {
+            // Upload will surface the real failure if the bucket is missing.
+        }
+    }
+
+    private static string BuildStorageUploadError(string? detail)
+    {
+        var hint =
+            "Image could not be uploaded to Supabase Storage. " +
+            "Run docs/sql/008_product_images_storage.sql in the Supabase SQL Editor, " +
+            "and set Supabase:ServiceRoleKey on the Web server.";
+
+        if (string.IsNullOrWhiteSpace(detail))
+            return hint;
+
+        var compact = detail.Trim();
+        if (compact.Length > 220)
+            compact = compact[..220] + "…";
+
+        return $"{hint} ({compact})";
+    }
+
+    // Compatibility wrapper for call sites that expect null on failure.
+    private async Task<string?> TryPersistUploadedImageAsync(string dataUrl)
+    {
+        try
+        {
+            return await PersistUploadedImageAsync(dataUrl);
+        }
+        catch (InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     public async Task<bool> DeleteProductAsync(int id)
@@ -571,12 +654,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             category.Slug = AdminCategory.ToSlug(category.Name);
 
         if (category.ImageUrl.StartsWith("data:image/", StringComparison.OrdinalIgnoreCase))
-        {
-            var stored = await TryPersistUploadedImageAsync(category.ImageUrl);
-            if (string.IsNullOrWhiteSpace(stored) || stored.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
-                throw new InvalidOperationException("Unable to store the category image. Please try again.");
-            category.ImageUrl = stored;
-        }
+            category.ImageUrl = await PersistUploadedImageAsync(category.ImageUrl);
 
         if (string.IsNullOrWhiteSpace(category.Id))
         {

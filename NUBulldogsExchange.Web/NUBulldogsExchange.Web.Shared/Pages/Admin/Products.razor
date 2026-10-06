@@ -1761,9 +1761,11 @@
             Toast.Show("Product updated successfully.");
             await CloseProductModalAsync();
         }
-        catch
+        catch (Exception ex)
         {
-            Toast.Show("Product could not be updated.");
+            Toast.Show(string.IsNullOrWhiteSpace(ex.Message)
+                ? "Product could not be updated."
+                : ex.Message);
         }
     }
 
