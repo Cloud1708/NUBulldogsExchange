@@ -27,7 +27,8 @@ namespace NUBulldogsExchange.Mobile
             // ============================================================
             var supabaseOptions = new SupabaseOptions(
                 SupabaseClientConfig.Url,
-                SupabaseClientConfig.PublishableKey);
+                SupabaseClientConfig.PublishableKey,
+                SupabaseClientConfig.ServiceRoleKey);
 
             builder.Services.AddSingleton(supabaseOptions);
             builder.Services.AddSingleton<SupabaseSessionState>();
@@ -51,6 +52,8 @@ namespace NUBulldogsExchange.Mobile
 
             builder.Services.AddSingleton<IAppDatabase>(sp =>
                 sp.GetRequiredService<SupabaseAppDatabase>());
+
+            builder.Services.AddSingleton<IAppEmailSender, MobileSmtpEmailSender>();
 
             // Existing shared services
             builder.Services.AddSingleton<ProductCatalogService>();
@@ -79,6 +82,7 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddTransient<AccountViewModel>();
             builder.Services.AddTransient<LoginViewModel>();
             builder.Services.AddTransient<RegisterViewModel>();
+            builder.Services.AddTransient<ForgotPasswordViewModel>();
             builder.Services.AddTransient<CartViewModel>();
             builder.Services.AddTransient<CheckoutViewModel>();
             builder.Services.AddTransient<ProductDetailsViewModel>();
@@ -92,6 +96,7 @@ namespace NUBulldogsExchange.Mobile
             builder.Services.AddTransient<AccountPage>();
             builder.Services.AddTransient<LoginPage>();
             builder.Services.AddTransient<RegisterPage>();
+            builder.Services.AddTransient<ForgotPasswordPage>();
             builder.Services.AddTransient<CartPage>();
             builder.Services.AddTransient<CheckoutPage>();
             builder.Services.AddTransient<ProductDetailsPage>();

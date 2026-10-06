@@ -11,6 +11,7 @@ namespace NUBulldogsExchange.Mobile
             Routing.RegisterRoute("checkout", typeof(Pages.CheckoutPage));
             Routing.RegisterRoute("product", typeof(Pages.ProductDetailsPage));
             Routing.RegisterRoute("notifications", typeof(Pages.NotificationsPage));
+            Routing.RegisterRoute("forgot-password", typeof(Pages.ForgotPasswordPage));
         }
     }
 }

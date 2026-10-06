@@ -234,11 +234,7 @@ public sealed class LoginViewModel : INotifyPropertyChanged, IQueryAttributable
 
     private async Task OnForgotPasswordAsync()
     {
-        var page = HostPage ?? Shell.Current;
-        await page.DisplayAlertAsync(
-            "Forgot Password",
-            "Password reset is handled through campus support or the NU Bulldogs Exchange web portal. Contact the merchandise desk for assistance.",
-            "OK");
+        await GoAsync("forgot-password");
     }
 
     private async Task OpenStaffPortalAsync()
