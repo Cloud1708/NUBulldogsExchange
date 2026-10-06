@@ -318,10 +318,10 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         HasFresh = FreshRows.Count > 0;
 
         var favorites = _catalog.Favorites.Take(6).ToList();
-        var newFavorites = ToPairs(favorites).ToList();
+        var newFavorites = ToPairs(favorites, assignRanks: true).ToList();
         SyncList(FavoriteRows, newFavorites, (a, b) =>
-            a.Left?.Id == b.Left?.Id && a.Left?.Price == b.Left?.Price && a.Left?.Sold == b.Left?.Sold &&
-            a.Right?.Id == b.Right?.Id && a.Right?.Price == b.Right?.Price && a.Right?.Sold == b.Right?.Sold);
+            a.Left?.Id == b.Left?.Id && a.Left?.Price == b.Left?.Price && a.Left?.Sold == b.Left?.Sold && a.LeftRank == b.LeftRank &&
+            a.Right?.Id == b.Right?.Id && a.Right?.Price == b.Right?.Price && a.Right?.Sold == b.Right?.Sold && a.RightRank == b.RightRank);
         HasFavorites = FavoriteRows.Count > 0;
     }
 
@@ -427,7 +427,7 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         }
     ];
 
-    private static IEnumerable<ProductPair> ToPairs(IEnumerable<Product> products)
+    private static IEnumerable<ProductPair> ToPairs(IEnumerable<Product> products, bool assignRanks = false)
     {
         var list = products.ToList();
         for (var i = 0; i < list.Count; i += 2)
@@ -435,7 +435,9 @@ public sealed class HomeViewModel : INotifyPropertyChanged
             yield return new ProductPair
             {
                 Left = list[i],
-                Right = i + 1 < list.Count ? list[i + 1] : null
+                Right = i + 1 < list.Count ? list[i + 1] : null,
+                LeftRank = assignRanks ? i + 1 : null,
+                RightRank = assignRanks && (i + 1 < list.Count) ? i + 2 : null
             };
         }
     }

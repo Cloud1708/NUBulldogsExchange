@@ -22,6 +22,9 @@ public partial class ProductCardView : ContentView
     public static readonly BindableProperty DisplayImageProperty =
         BindableProperty.Create(nameof(DisplayImage), typeof(ImageSource), typeof(ProductCardView));
 
+    public static readonly BindableProperty RankProperty =
+        BindableProperty.Create(nameof(Rank), typeof(int?), typeof(ProductCardView), null, propertyChanged: OnRankChanged);
+
     private WishlistService? _subscribedWishlist;
 
     public ProductCardView()
@@ -44,6 +47,47 @@ public partial class ProductCardView : ContentView
         get => (Product?)GetValue(ProductProperty);
         set => SetValue(ProductProperty, value);
     }
+
+    public int? Rank
+    {
+        get => (int?)GetValue(RankProperty);
+        set => SetValue(RankProperty, value);
+    }
+
+    public bool HasRank => Rank is > 0;
+    public string RankText => Rank is > 0 ? $"#{Rank}" : string.Empty;
+
+    public Color RankBgColor => Rank switch
+    {
+        1 => Color.FromArgb("#F5C518"), // Gold (#1)
+        2 => Color.FromArgb("#E0F2FE"), // Ice Blue / Silver (#2)
+        3 => Color.FromArgb("#F4B183"), // Bronze (#3)
+        _ => Colors.White               // White for #4+
+    };
+
+    public Color RankTextColor => Rank switch
+    {
+        3 => Color.FromArgb("#6B2E0A"), // Dark bronze
+        _ => Color.FromArgb("#00205B")  // NuNavy
+    };
+
+    public Color RankStrokeColor => Rank switch
+    {
+        1 => Colors.Transparent,
+        2 => Colors.Transparent,
+        3 => Colors.Transparent,
+        _ => Color.FromArgb("#CBD5E1")
+    };
+
+    public double RankStrokeThickness => Rank switch
+    {
+        > 3 => 1,
+        _ => 0
+    };
+
+    public Thickness ProductBadgeMargin => HasRank
+        ? new Thickness(44, 8, 8, 8)
+        : new Thickness(8);
 
     public ICommand? ToggleWishlistCommand
     {
@@ -197,6 +241,25 @@ public partial class ProductCardView : ContentView
         UnsubscribeWishlist();
     }
 
+    private static void OnRankChanged(BindableObject bindable, object oldValue, object newValue)
+    {
+        if (bindable is ProductCardView card)
+        {
+            card.RefreshRank();
+        }
+    }
+
+    private void RefreshRank()
+    {
+        OnPropertyChanged(nameof(HasRank));
+        OnPropertyChanged(nameof(RankText));
+        OnPropertyChanged(nameof(RankBgColor));
+        OnPropertyChanged(nameof(RankTextColor));
+        OnPropertyChanged(nameof(RankStrokeColor));
+        OnPropertyChanged(nameof(RankStrokeThickness));
+        OnPropertyChanged(nameof(ProductBadgeMargin));
+    }
+
     private static void OnProductChanged(BindableObject bindable, object oldValue, object newValue)
     {
         if (bindable is ProductCardView card)
@@ -208,6 +271,7 @@ public partial class ProductCardView : ContentView
 
     private void RefreshDerived()
     {
+        RefreshRank();
         OnPropertyChanged(nameof(HasBadge));
         OnPropertyChanged(nameof(BadgeText));
         OnPropertyChanged(nameof(BadgeColor));

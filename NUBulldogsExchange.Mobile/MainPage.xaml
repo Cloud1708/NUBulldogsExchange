@@ -529,6 +529,7 @@
                                 <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                                     <controls:ProductCardView
                                         Product="{Binding Left}"
+                                        Rank="{Binding LeftRank}"
                                         ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
                                         AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
                                         OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
@@ -536,6 +537,7 @@
                                         Grid.Column="1"
                                         IsVisible="{Binding HasRight}"
                                         Product="{Binding Right}"
+                                        Rank="{Binding RightRank}"
                                         ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
                                         AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
                                         OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />

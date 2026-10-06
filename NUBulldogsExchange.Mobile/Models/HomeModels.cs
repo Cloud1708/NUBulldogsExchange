@@ -27,4 +27,6 @@ public sealed class ProductPair
     public Product Left { get; init; } = null!;
     public Product? Right { get; init; }
     public bool HasRight => Right is not null;
+    public int? LeftRank { get; init; }
+    public int? RightRank { get; init; }
 }
