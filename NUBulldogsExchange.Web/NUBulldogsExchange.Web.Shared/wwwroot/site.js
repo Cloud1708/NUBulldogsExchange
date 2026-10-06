@@ -39,3 +39,8 @@ window.nubeScrollIntoView = function (el) {
     if (!el || typeof el.scrollIntoView !== "function") return;
     el.scrollIntoView({ behavior: "smooth", block: "start" });
 };
+
+window.nubeFocusById = function (id) {
+    const el = document.getElementById(id);
+    if (el && typeof el.focus === "function") el.focus();
+};

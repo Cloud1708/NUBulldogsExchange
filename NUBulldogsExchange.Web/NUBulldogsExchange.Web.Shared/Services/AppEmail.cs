@@ -104,3 +104,49 @@ public static class StaffCredentialsEmail
         return (subject, html, text);
     }
 }
+
+public static class PasswordResetCodeEmail
+{
+    public static (string Subject, string Html, string Text) Build(
+        string recipientName,
+        string code,
+        int expiresInMinutes)
+    {
+        var name = string.IsNullOrWhiteSpace(recipientName) ? "there" : recipientName.Trim();
+        var subject = "NU Bulldogs Exchange — Password Reset Code";
+        var minutes = Math.Max(1, expiresInMinutes);
+
+        var text = $"""
+            Hello {name},
+
+            We received a request to reset the password for your NU Bulldogs Exchange account.
+
+            Your verification code is:
+
+            {code}
+
+            This code will expire in {minutes} minutes.
+
+            If you did not request a password reset, you can ignore this email.
+
+            NU Bulldogs Exchange
+            """;
+
+        var html = $"""
+            <div style="font-family:Segoe UI,Arial,sans-serif;color:#0f172a;line-height:1.5;max-width:560px;margin:0 auto;">
+              <h2 style="color:#123A63;margin:0 0 12px;">Password Reset Code</h2>
+              <p style="margin:0 0 12px;">Hello <strong>{System.Net.WebUtility.HtmlEncode(name)}</strong>,</p>
+              <p style="margin:0 0 12px;">We received a request to reset the password for your <strong>NU Bulldogs Exchange</strong> account.</p>
+              <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:12px;padding:18px 16px;margin:0 0 14px;text-align:center;">
+                <p style="margin:0 0 8px;color:#64748B;font-size:13px;">Your verification code</p>
+                <p style="margin:0;letter-spacing:6px;font-size:28px;font-weight:800;color:#123A63;font-family:Consolas,Menlo,monospace;">{System.Net.WebUtility.HtmlEncode(code)}</p>
+              </div>
+              <p style="margin:0 0 12px;">This code will expire in {minutes} minutes.</p>
+              <p style="margin:0;color:#64748B;font-size:13px;">If you did not request a password reset, you can ignore this email.</p>
+              <p style="margin:18px 0 0;color:#94A3B8;font-size:12px;">NU Bulldogs Exchange</p>
+            </div>
+            """;
+
+        return (subject, html, text);
+    }
+}

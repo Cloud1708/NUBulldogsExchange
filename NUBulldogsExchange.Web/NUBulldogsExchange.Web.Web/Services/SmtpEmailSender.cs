@@ -86,7 +86,7 @@ public sealed class SmtpEmailSender : IAppEmailSender
         {
             _logger.LogError(ex, "Failed to send email to {Email}", toEmail);
             throw new InvalidOperationException(
-                "Unable to send the temporary password email. Check SMTP settings and try again.",
+                "Unable to send email. Check SMTP settings and try again.",
                 ex);
         }
         finally
