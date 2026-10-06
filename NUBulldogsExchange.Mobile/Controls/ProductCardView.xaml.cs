@@ -80,11 +80,13 @@ public partial class ProductCardView : ContentView
         _ => Color.FromArgb("#00205B")
     };
 
+    public bool HasRating => Product is not null && Product.Rating > 0;
+
     public string RatingText
     {
         get
         {
-            var rating = Product?.Rating > 0 ? Product!.Rating : 4.8;
+            var rating = Product?.Rating > 0 ? Product.Rating : 0.0;
             return rating.ToString("0.0");
         }
     }
@@ -93,7 +95,7 @@ public partial class ProductCardView : ContentView
     {
         get
         {
-            var sold = Product?.Sold > 0 ? Product!.Sold : 120;
+            var sold = Product?.Sold ?? 0;
             return $"{sold:N0} sold";
         }
     }
@@ -105,6 +107,9 @@ public partial class ProductCardView : ContentView
 
     public string OriginalPriceText =>
         HasOriginalPrice ? $"₱{Product!.OriginalPrice!.Value:N0}" : string.Empty;
+
+    public bool HasRealPhoto => ProductImageHelper.HasRealImage(Product);
+    public bool ShowPlaceholder => !HasRealPhoto;
 
     public ImageSource DisplayImage
     {
@@ -207,11 +212,14 @@ public partial class ProductCardView : ContentView
         OnPropertyChanged(nameof(BadgeText));
         OnPropertyChanged(nameof(BadgeColor));
         OnPropertyChanged(nameof(BadgeTextColor));
+        OnPropertyChanged(nameof(HasRating));
         OnPropertyChanged(nameof(RatingText));
         OnPropertyChanged(nameof(SoldText));
         OnPropertyChanged(nameof(PriceText));
         OnPropertyChanged(nameof(HasOriginalPrice));
         OnPropertyChanged(nameof(OriginalPriceText));
+        OnPropertyChanged(nameof(HasRealPhoto));
+        OnPropertyChanged(nameof(ShowPlaceholder));
         DisplayImage = ProductImageHelper.FromProduct(Product);
         RefreshWishlist();
     }

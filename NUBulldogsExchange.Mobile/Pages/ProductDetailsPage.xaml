@@ -35,7 +35,25 @@
                       HorizontalOptions="Fill"
                       BackgroundColor="#F1F5F9">
 
-                    <!-- Hero Image -->
+                    <!-- Hero Placeholder Fallback: always in background -->
+                    <Border BackgroundColor="#123A63"
+                            WidthRequest="110"
+                            HeightRequest="110"
+                            HorizontalOptions="Center"
+                            VerticalOptions="Center"
+                            StrokeThickness="0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="22" />
+                        </Border.StrokeShape>
+                        <Label Text="NU"
+                               TextColor="#F9C424"
+                               FontAttributes="Bold"
+                               FontSize="38"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+
+                    <!-- Hero Image: overlay on top of placeholder -->
                     <Image Source="{Binding DisplayImage}"
                            Aspect="AspectFill"
                            HorizontalOptions="Fill"
@@ -45,121 +63,9 @@
                         </Image.GestureRecognizers>
                     </Image>
 
-                    <!-- Top Floating Action Bar -->
-                    <Grid Margin="16,36,16,0"
-                          VerticalOptions="Start"
-                          HorizontalOptions="Fill">
-
-                        <!-- Back Button -->
-                        <Border BackgroundColor="White"
-                                WidthRequest="40"
-                                HeightRequest="40"
-                                StrokeThickness="0"
-                                HorizontalOptions="Start">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="20" />
-                            </Border.StrokeShape>
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding BackCommand}" />
-                            </Border.GestureRecognizers>
-                            <Label Text="&#xe5c4;"
-                                   FontFamily="MaterialIcons"
-                                   FontSize="20"
-                                   TextColor="{StaticResource NuNavy}"
-                                   FontAttributes="Bold"
-                                   InputTransparent="True"
-                                   HorizontalOptions="Center"
-                                   VerticalOptions="Center" />
-                        </Border>
-
-                        <!-- Right Actions (Share, Wishlist, Cart) -->
-                        <HorizontalStackLayout HorizontalOptions="End" Spacing="8">
-
-                            <!-- Share Button -->
-                            <Border BackgroundColor="White"
-                                    WidthRequest="40"
-                                    HeightRequest="40"
-                                    StrokeThickness="0">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="20" />
-                                </Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding ShareCommand}" />
-                                </Border.GestureRecognizers>
-                                <Label Text="&#xe80d;"
-                                       FontFamily="MaterialIcons"
-                                       FontSize="18"
-                                       TextColor="#1E293B"
-                                       InputTransparent="True"
-                                       HorizontalOptions="Center"
-                                       VerticalOptions="Center" />
-                            </Border>
-
-                            <!-- Wishlist Button -->
-                            <Border BackgroundColor="White"
-                                    WidthRequest="40"
-                                    HeightRequest="40"
-                                    StrokeThickness="0">
-                                <Border.StrokeShape>
-                                    <RoundRectangle CornerRadius="20" />
-                                </Border.StrokeShape>
-                                <Border.GestureRecognizers>
-                                    <TapGestureRecognizer Command="{Binding ToggleWishlistCommand}" />
-                                </Border.GestureRecognizers>
-                                <Label Text="{Binding WishlistGlyph}"
-                                       FontFamily="MaterialIcons"
-                                       FontSize="18"
-                                       TextColor="{Binding WishlistColor}"
-                                       InputTransparent="True"
-                                       HorizontalOptions="Center"
-                                       VerticalOptions="Center" />
-                            </Border>
-
-                            <!-- Cart Button with Badge -->
-                            <Grid WidthRequest="40" HeightRequest="40">
-                                <Border BackgroundColor="White"
-                                        WidthRequest="40"
-                                        HeightRequest="40"
-                                        StrokeThickness="0">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="20" />
-                                    </Border.StrokeShape>
-                                    <Border.GestureRecognizers>
-                                        <TapGestureRecognizer Command="{Binding OpenCartCommand}" />
-                                    </Border.GestureRecognizers>
-                                    <Label Text="&#xe8cc;"
-                                           FontFamily="MaterialIcons"
-                                           FontSize="18"
-                                           TextColor="#1E293B"
-                                           InputTransparent="True"
-                                           HorizontalOptions="Center"
-                                           VerticalOptions="Center" />
-                                </Border>
-                                <Border IsVisible="{Binding HasCartItems}"
-                                        BackgroundColor="#EF4444"
-                                        WidthRequest="18"
-                                        HeightRequest="18"
-                                        StrokeThickness="0"
-                                        HorizontalOptions="End"
-                                        VerticalOptions="Start"
-                                        Margin="0,-2,-2,0">
-                                    <Border.StrokeShape>
-                                        <RoundRectangle CornerRadius="9" />
-                                    </Border.StrokeShape>
-                                    <Label Text="{Binding CartCount}"
-                                           TextColor="White"
-                                           FontSize="9"
-                                           FontAttributes="Bold"
-                                           InputTransparent="True"
-                                           HorizontalOptions="Center"
-                                           VerticalOptions="Center" />
-                                </Border>
-                            </Grid>
-                        </HorizontalStackLayout>
-                    </Grid>
-
                     <!-- Bottom-Left Counter Pill (1 / 4) -->
-                    <Border BackgroundColor="#99000000"
+                    <Border IsVisible="{Binding HasMultipleImages}"
+                            BackgroundColor="#99000000"
                             Padding="12,5"
                             StrokeThickness="0"
                             HorizontalOptions="Start"
@@ -175,7 +81,8 @@
                     </Border>
 
                     <!-- Bottom-Right Pagination Dots -->
-                    <HorizontalStackLayout Spacing="6"
+                    <HorizontalStackLayout IsVisible="{Binding HasMultipleImages}"
+                                           Spacing="6"
                                            HorizontalOptions="End"
                                            VerticalOptions="End"
                                            Margin="0,0,16,24">
@@ -243,13 +150,15 @@
 
                     <!-- Rating & Reviews & Sold Row -->
                     <HorizontalStackLayout Spacing="8" VerticalOptions="Center">
-                        <Label Text="&#xe838;" FontFamily="MaterialIcons" FontSize="14" TextColor="#F59E0B" VerticalOptions="Center" />
-                        <Label Text="{Binding RatingText}"
-                               FontSize="13"
-                               FontAttributes="Bold"
-                               TextColor="{StaticResource NuNavy}"
-                               VerticalOptions="Center" />
-                        <Label Text="|" TextColor="#CBD5E1" FontSize="13" VerticalOptions="Center" />
+                        <HorizontalStackLayout Spacing="4" VerticalOptions="Center" IsVisible="{Binding HasRating}">
+                            <Label Text="&#xe838;" FontFamily="MaterialIcons" FontSize="14" TextColor="#F59E0B" VerticalOptions="Center" />
+                            <Label Text="{Binding RatingText}"
+                                   FontSize="13"
+                                   FontAttributes="Bold"
+                                   TextColor="{StaticResource NuNavy}"
+                                   VerticalOptions="Center" />
+                            <Label Text="|" TextColor="#CBD5E1" FontSize="13" VerticalOptions="Center" Margin="4,0,0,0" />
+                        </HorizontalStackLayout>
                         <Label Text="{Binding ReviewsText}"
                                TextColor="#64748B"
                                FontSize="13"
@@ -356,16 +265,21 @@
                                 </Border>
                             </HorizontalStackLayout>
 
-                            <Label Grid.Column="1"
-                                   Text="Size Guide"
-                                   FontSize="12"
-                                   FontAttributes="Bold"
-                                   TextColor="{StaticResource NuNavy}"
-                                   VerticalOptions="Center">
-                                <Label.GestureRecognizers>
+                            <Border Grid.Column="1"
+                                    BackgroundColor="Transparent"
+                                    StrokeThickness="0"
+                                    Padding="6,4"
+                                    VerticalOptions="Center">
+                                <Border.GestureRecognizers>
                                     <TapGestureRecognizer Command="{Binding OpenSizeGuideCommand}" />
-                                </Label.GestureRecognizers>
-                            </Label>
+                                </Border.GestureRecognizers>
+                                <Label Text="Size Guide"
+                                       FontSize="12"
+                                       FontAttributes="Bold"
+                                       TextColor="{StaticResource NuNavy}"
+                                       TextDecorations="Underline"
+                                       VerticalOptions="Center" />
+                            </Border>
                         </Grid>
 
                         <!-- Size Pills List -->
@@ -612,12 +526,46 @@
                                    InputTransparent="True"
                                    VerticalOptions="Center" />
                         </Grid>
-                        <Label Text="{Binding SizeGuideText}"
-                               IsVisible="{Binding IsSizeGuideExpanded}"
-                               FontSize="13"
-                               TextColor="#64748B"
-                               LineHeight="1.35"
-                               Margin="0,0,0,12" />
+                        <VerticalStackLayout IsVisible="{Binding IsSizeGuideExpanded}"
+                                             Spacing="8"
+                                             Margin="0,0,0,12">
+                            <Border BackgroundColor="#F8FAFC"
+                                    Stroke="#E2E8F0"
+                                    StrokeThickness="1"
+                                    Padding="12,10">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="8" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding OpenSizeGuideCommand}" />
+                                </Border.GestureRecognizers>
+                                <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
+                                    <Label Text="Standard Campus Sizing (XS – XXL)"
+                                           FontSize="12"
+                                           FontAttributes="Bold"
+                                           TextColor="{StaticResource NuNavy}"
+                                           VerticalOptions="Center" />
+                                    <Border Grid.Column="1"
+                                            BackgroundColor="#EEF2FF"
+                                            Stroke="#C7D2FE"
+                                            StrokeThickness="1"
+                                            Padding="8,4"
+                                            VerticalOptions="Center">
+                                        <Border.StrokeShape>
+                                            <RoundRectangle CornerRadius="6" />
+                                        </Border.StrokeShape>
+                                        <Label Text="View Chart"
+                                               FontSize="11"
+                                               FontAttributes="Bold"
+                                               TextColor="{StaticResource NuNavy}" />
+                                    </Border>
+                                </Grid>
+                            </Border>
+                            <Label Text="{Binding SizeGuideText}"
+                                   FontSize="13"
+                                   TextColor="#64748B"
+                                   LineHeight="1.35" />
+                        </VerticalStackLayout>
 
                         <!-- Shipping & Pickup Accordion -->
                         <BoxView Color="#F1F5F9" HeightRequest="1" />
@@ -959,6 +907,136 @@
                 </VerticalStackLayout>
             </VerticalStackLayout>
         </ScrollView>
+
+        <!-- Top Floating Action Bar (Sticky at Top while scrolling) -->
+        <Grid Grid.Row="0"
+              Margin="16,36,16,0"
+              VerticalOptions="Start"
+              HorizontalOptions="Fill">
+
+            <!-- Back Button -->
+            <Border BackgroundColor="White"
+                    WidthRequest="40"
+                    HeightRequest="40"
+                    Stroke="#E2E8F0"
+                    StrokeThickness="1"
+                    HorizontalOptions="Start">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="20" />
+                </Border.StrokeShape>
+                <Border.Shadow>
+                    <Shadow Brush="#33000000" Offset="0,2" Radius="8" Opacity="0.4" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding BackCommand}" />
+                </Border.GestureRecognizers>
+                <Label Text="&#xe5c4;"
+                       FontFamily="MaterialIcons"
+                       FontSize="20"
+                       TextColor="{StaticResource NuNavy}"
+                       FontAttributes="Bold"
+                       InputTransparent="True"
+                       HorizontalOptions="Center"
+                       VerticalOptions="Center" />
+            </Border>
+
+            <!-- Right Actions (Share, Wishlist, Cart) -->
+            <HorizontalStackLayout HorizontalOptions="End" Spacing="8">
+
+                <!-- Share Button -->
+                <Border BackgroundColor="White"
+                        WidthRequest="40"
+                        HeightRequest="40"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20" />
+                    </Border.StrokeShape>
+                    <Border.Shadow>
+                        <Shadow Brush="#33000000" Offset="0,2" Radius="8" Opacity="0.4" />
+                    </Border.Shadow>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ShareCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="&#xe80d;"
+                           FontFamily="MaterialIcons"
+                           FontSize="18"
+                           TextColor="#1E293B"
+                           InputTransparent="True"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Wishlist Button -->
+                <Border BackgroundColor="White"
+                        WidthRequest="40"
+                        HeightRequest="40"
+                        Stroke="#E2E8F0"
+                        StrokeThickness="1">
+                    <Border.StrokeShape>
+                        <RoundRectangle CornerRadius="20" />
+                    </Border.StrokeShape>
+                    <Border.Shadow>
+                        <Shadow Brush="#33000000" Offset="0,2" Radius="8" Opacity="0.4" />
+                    </Border.Shadow>
+                    <Border.GestureRecognizers>
+                        <TapGestureRecognizer Command="{Binding ToggleWishlistCommand}" />
+                    </Border.GestureRecognizers>
+                    <Label Text="{Binding WishlistGlyph}"
+                           FontFamily="MaterialIcons"
+                           FontSize="18"
+                           TextColor="{Binding WishlistColor}"
+                           InputTransparent="True"
+                           HorizontalOptions="Center"
+                           VerticalOptions="Center" />
+                </Border>
+
+                <!-- Cart Button with Badge -->
+                <Grid WidthRequest="40" HeightRequest="40">
+                    <Border BackgroundColor="White"
+                            WidthRequest="40"
+                            HeightRequest="40"
+                            Stroke="#E2E8F0"
+                            StrokeThickness="1">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="20" />
+                        </Border.StrokeShape>
+                        <Border.Shadow>
+                            <Shadow Brush="#33000000" Offset="0,2" Radius="8" Opacity="0.4" />
+                        </Border.Shadow>
+                        <Border.GestureRecognizers>
+                            <TapGestureRecognizer Command="{Binding OpenCartCommand}" />
+                        </Border.GestureRecognizers>
+                        <Label Text="&#xe8cc;"
+                               FontFamily="MaterialIcons"
+                               FontSize="18"
+                               TextColor="#1E293B"
+                               InputTransparent="True"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+                    <Border IsVisible="{Binding HasCartItems}"
+                            BackgroundColor="#EF4444"
+                            WidthRequest="18"
+                            HeightRequest="18"
+                            StrokeThickness="0"
+                            HorizontalOptions="End"
+                            VerticalOptions="Start"
+                            Margin="0,-2,-2,0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="9" />
+                        </Border.StrokeShape>
+                        <Label Text="{Binding CartCount}"
+                               TextColor="White"
+                               FontSize="9"
+                               FontAttributes="Bold"
+                               InputTransparent="True"
+                               HorizontalOptions="Center"
+                               VerticalOptions="Center" />
+                    </Border>
+                </Grid>
+            </HorizontalStackLayout>
+        </Grid>
 
         <!-- 5. Sticky Bottom Action Bar -->
         <Border Grid.Row="1"
@@ -1386,6 +1464,160 @@
                         </Border>
                     </VerticalStackLayout>
                 </ScrollView>
+            </Border>
+        </Grid>
+
+        <!-- Size Guide Modal Dialog Overlay -->
+        <Grid Grid.Row="0"
+              Grid.RowSpan="2"
+              IsVisible="{Binding IsSizeGuideModalVisible}"
+              VerticalOptions="Fill"
+              HorizontalOptions="Fill">
+
+            <!-- Backdrop -->
+            <BoxView Color="#730F172A">
+                <BoxView.GestureRecognizers>
+                    <TapGestureRecognizer Command="{Binding CloseSizeGuideCommand}" />
+                </BoxView.GestureRecognizers>
+            </BoxView>
+
+            <!-- Centered Modal Card -->
+            <Border BackgroundColor="White"
+                    Stroke="#E2E8F0"
+                    StrokeThickness="1"
+                    VerticalOptions="Center"
+                    HorizontalOptions="Center"
+                    WidthRequest="340"
+                    MaximumWidthRequest="420"
+                    Margin="20"
+                    Padding="22"
+                    InputTransparent="False">
+                <Border.StrokeShape>
+                    <RoundRectangle CornerRadius="18" />
+                </Border.StrokeShape>
+                <Border.Shadow>
+                    <Shadow Brush="#400F172A" Offset="0,10" Radius="24" Opacity="0.5" />
+                </Border.Shadow>
+                <Border.GestureRecognizers>
+                    <!-- Absorbs taps so clicking inside the card does not dismiss it -->
+                    <TapGestureRecognizer />
+                </Border.GestureRecognizers>
+
+                <VerticalStackLayout Spacing="16">
+                    <!-- Header Row: Title & Close Button -->
+                    <Grid ColumnDefinitions="*,Auto" VerticalOptions="Center">
+                        <Label Text="Size Guide"
+                               FontSize="20"
+                               FontAttributes="Bold"
+                               TextColor="{StaticResource NuNavy}"
+                               VerticalOptions="Center" />
+
+                        <!-- Close Circle Button -->
+                        <Border Grid.Column="1"
+                                WidthRequest="34"
+                                HeightRequest="34"
+                                BackgroundColor="#F1F5F9"
+                                StrokeThickness="0"
+                                VerticalOptions="Center">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="17" />
+                            </Border.StrokeShape>
+                            <Border.GestureRecognizers>
+                                <TapGestureRecognizer Command="{Binding CloseSizeGuideCommand}" />
+                            </Border.GestureRecognizers>
+                            <Label Text="&#xe5cd;"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="16"
+                                   TextColor="#475569"
+                                   FontAttributes="Bold"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+                    </Grid>
+
+                    <!-- Apparel Size Table -->
+                    <VerticalStackLayout IsVisible="{Binding IsApparelItem}" Spacing="0">
+                        <!-- Table Header -->
+                        <Grid ColumnDefinitions="70,1.2*,1*" Padding="6,8">
+                            <Label Grid.Column="0" Text="Size" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="Chest (in)" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="Length (in)" FontSize="14" FontAttributes="Bold" TextColor="{StaticResource NuNavy}" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView HeightRequest="1" Color="#E2E8F0" />
+
+                        <!-- Row XS -->
+                        <Grid ColumnDefinitions="70,1.2*,1*" Padding="6,11">
+                            <Label Grid.Column="0" Text="XS" FontSize="14" TextColor="#1E293B" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="34–36" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="26" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView HeightRequest="1" Color="#F1F5F9" />
+
+                        <!-- Row S -->
+                        <Grid ColumnDefinitions="70,1.2*,1*" Padding="6,11">
+                            <Label Grid.Column="0" Text="S" FontSize="14" TextColor="#1E293B" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="36–38" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="27" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView HeightRequest="1" Color="#F1F5F9" />
+
+                        <!-- Row M -->
+                        <Grid ColumnDefinitions="70,1.2*,1*" Padding="6,11">
+                            <Label Grid.Column="0" Text="M" FontSize="14" TextColor="#1E293B" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="38–40" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="28" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView HeightRequest="1" Color="#F1F5F9" />
+
+                        <!-- Row L -->
+                        <Grid ColumnDefinitions="70,1.2*,1*" Padding="6,11">
+                            <Label Grid.Column="0" Text="L" FontSize="14" TextColor="#1E293B" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="40–42" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="29" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView HeightRequest="1" Color="#F1F5F9" />
+
+                        <!-- Row XL -->
+                        <Grid ColumnDefinitions="70,1.2*,1*" Padding="6,11">
+                            <Label Grid.Column="0" Text="XL" FontSize="14" TextColor="#1E293B" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="42–44" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="30" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView HeightRequest="1" Color="#F1F5F9" />
+
+                        <!-- Row XXL -->
+                        <Grid ColumnDefinitions="70,1.2*,1*" Padding="6,11">
+                            <Label Grid.Column="0" Text="XXL" FontSize="14" TextColor="#1E293B" VerticalOptions="Center" />
+                            <Label Grid.Column="1" Text="44–46" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                            <Label Grid.Column="2" Text="31" FontSize="14" TextColor="#334155" VerticalOptions="Center" />
+                        </Grid>
+                        <BoxView HeightRequest="1" Color="#E2E8F0" />
+                    </VerticalStackLayout>
+
+                    <!-- Non-Apparel Universal Fit Note -->
+                    <Border IsVisible="{Binding IsNonApparelItem}"
+                            BackgroundColor="#F8FAFC"
+                            Stroke="#E2E8F0"
+                            StrokeThickness="1"
+                            Padding="16,14"
+                            Margin="0,4,0,0">
+                        <Border.StrokeShape>
+                            <RoundRectangle CornerRadius="12" />
+                        </Border.StrokeShape>
+                        <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
+                            <Label Text="&#xe8fd;"
+                                   FontFamily="MaterialIcons"
+                                   FontSize="20"
+                                   TextColor="{StaticResource NuNavy}"
+                                   VerticalOptions="Center" />
+                            <Label Text="This item is offered in One Size and is designed for a universal fit."
+                                   FontSize="13"
+                                   TextColor="#475569"
+                                   LineHeight="1.4"
+                                   VerticalOptions="Center" />
+                        </HorizontalStackLayout>
+                    </Border>
+                </VerticalStackLayout>
             </Border>
         </Grid>
     </Grid>

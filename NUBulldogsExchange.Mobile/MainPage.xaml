@@ -322,50 +322,10 @@
                     </CollectionView>
                 </VerticalStackLayout>
 
-                <!-- Featured -->
-                <VerticalStackLayout Spacing="8">
-                    <Grid ColumnDefinitions="*,Auto">
-                        <Label Text="Featured Bulldogs Picks"
-                               FontSize="15"
-                               FontAttributes="Bold"
-                               TextColor="{StaticResource NuNavy}" />
-                        <Label Grid.Column="1"
-                               Text="See All"
-                               FontSize="11"
-                               TextColor="#2563EB"
-                               VerticalOptions="Center">
-                            <Label.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding SeeAllFeaturedCommand}" />
-                            </Label.GestureRecognizers>
-                        </Label>
-                    </Grid>
 
-                    <VerticalStackLayout BindableLayout.ItemsSource="{Binding FeaturedRows}"
-                                         Spacing="10"
-                                         IsVisible="{Binding HasFeatured}">
-                        <BindableLayout.ItemTemplate>
-                            <DataTemplate x:DataType="models:ProductPair">
-                                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
-                                    <controls:ProductCardView
-                                        Product="{Binding Left}"
-                                        ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
-                                        AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
-                                        OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
-                                    <controls:ProductCardView
-                                        Grid.Column="1"
-                                        IsVisible="{Binding HasRight}"
-                                        Product="{Binding Right}"
-                                        ToggleWishlistCommand="{Binding BindingContext.ToggleWishlistCommand, Source={x:Reference HomePage}}"
-                                        AddToCartCommand="{Binding BindingContext.AddToCartCommand, Source={x:Reference HomePage}}"
-                                        OpenProductCommand="{Binding BindingContext.OpenProductCommand, Source={x:Reference HomePage}}" />
-                                </Grid>
-                            </DataTemplate>
-                        </BindableLayout.ItemTemplate>
-                    </VerticalStackLayout>
-                </VerticalStackLayout>
 
                 <!-- Fresh Drops -->
-                <VerticalStackLayout Spacing="8">
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding HasFresh}">
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Text="Fresh Drops"
                                FontSize="15"
@@ -406,43 +366,146 @@
                     </VerticalStackLayout>
                 </VerticalStackLayout>
 
-                <!-- Campus promo -->
-                <Border BackgroundColor="{StaticResource CampusPromo}"
-                        StrokeThickness="0"
-                        Padding="14"
+                <!-- Limited-Time Promo Banner -->
+                <Border StrokeThickness="0"
+                        Padding="16,14"
                         HorizontalOptions="Fill">
                     <Border.StrokeShape>
-                        <RoundRectangle CornerRadius="16" />
+                        <RoundRectangle CornerRadius="18" />
                     </Border.StrokeShape>
-                    <VerticalStackLayout Spacing="5">
-                        <Label Text="Complete Your Campus Look"
-                               FontSize="15"
-                               FontAttributes="Bold"
-                               TextColor="{StaticResource NuNavy}" />
-                        <Label Text="Find everything you need to represent NU."
-                               FontSize="11"
-                               TextColor="{StaticResource NuNavy}" />
-                        <Border BackgroundColor="{StaticResource NuNavy}"
-                                Padding="12,7"
-                                HorizontalOptions="Start"
-                                Margin="0,4,0,0"
-                                StrokeThickness="0">
-                            <Border.StrokeShape>
-                                <RoundRectangle CornerRadius="10" />
-                            </Border.StrokeShape>
-                            <Border.GestureRecognizers>
-                                <TapGestureRecognizer Command="{Binding ExploreCollectionCommand}" />
-                            </Border.GestureRecognizers>
-                            <Label Text="Explore Collection"
-                                   TextColor="White"
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                            <GradientStop Color="#0F233C" Offset="0.0" />
+                            <GradientStop Color="#183457" Offset="0.4" />
+                            <GradientStop Color="#224570" Offset="1.0" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+
+                    <Grid RowDefinitions="Auto,Auto" RowSpacing="12">
+                        <!-- Top Text & Badges -->
+                        <VerticalStackLayout Spacing="3">
+                            <Label Text="{Binding PromoTag}"
+                                   TextColor="#F5C518"
+                                   FontSize="10"
                                    FontAttributes="Bold"
-                                   FontSize="11" />
-                        </Border>
-                    </VerticalStackLayout>
+                                   CharacterSpacing="1" />
+                            <Label Text="{Binding PromoTitle}"
+                                   TextColor="White"
+                                   FontSize="22"
+                                   FontAttributes="Bold"
+                                   Margin="0,2,0,0" />
+                            <Label Text="{Binding PromoDescription}"
+                                   TextColor="#CBD5E1"
+                                   FontSize="11"
+                                   LineBreakMode="TailTruncation"
+                                   MaxLines="2" />
+
+                            <!-- Promo Badges Row -->
+                            <HorizontalStackLayout Spacing="6" Margin="0,5,0,0">
+                                <Border BackgroundColor="#173042"
+                                        StrokeThickness="0"
+                                        Padding="9,4">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12" />
+                                    </Border.StrokeShape>
+                                    <HorizontalStackLayout Spacing="4" VerticalOptions="Center">
+                                        <Label Text="Code:"
+                                               FontSize="10"
+                                               TextColor="#CBD5E1"
+                                               VerticalOptions="Center" />
+                                        <Label Text="{Binding PromoCode}"
+                                               FontSize="10"
+                                               FontAttributes="Bold"
+                                               TextColor="#F5C518"
+                                               VerticalOptions="Center" />
+                                    </HorizontalStackLayout>
+                                </Border>
+
+                                <Border BackgroundColor="#203A58"
+                                        StrokeThickness="0"
+                                        Padding="9,4">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="12" />
+                                    </Border.StrokeShape>
+                                    <Label Text="{Binding PromoDiscount}"
+                                           FontSize="10"
+                                           FontAttributes="Bold"
+                                           TextColor="#E2E8F0"
+                                           VerticalOptions="Center" />
+                                </Border>
+                            </HorizontalStackLayout>
+                        </VerticalStackLayout>
+
+                        <!-- Bottom Row: Shop Now Button (Left) + 3 Product Thumbnails (Right) -->
+                        <Grid Grid.Row="1" ColumnDefinitions="Auto,*" ColumnSpacing="10" VerticalOptions="Center">
+                            <!-- Shop Now Button -->
+                            <Border BackgroundColor="#F5C518"
+                                    Padding="16,8"
+                                    HeightRequest="36"
+                                    StrokeThickness="0"
+                                    VerticalOptions="Center">
+                                <Border.StrokeShape>
+                                    <RoundRectangle CornerRadius="18" />
+                                </Border.StrokeShape>
+                                <Border.GestureRecognizers>
+                                    <TapGestureRecognizer Command="{Binding ExploreCollectionCommand}" />
+                                </Border.GestureRecognizers>
+                                <HorizontalStackLayout Spacing="5" VerticalOptions="Center">
+                                    <Label Text="Shop Now"
+                                           TextColor="#00205B"
+                                           FontAttributes="Bold"
+                                           FontSize="12"
+                                           VerticalOptions="Center" />
+                                    <Label Text="&#xe5c8;"
+                                           FontFamily="MaterialIcons"
+                                           TextColor="#00205B"
+                                           FontSize="14"
+                                           VerticalOptions="Center" />
+                                </HorizontalStackLayout>
+                            </Border>
+
+                            <!-- 3 Product Preview Thumbnails -->
+                            <HorizontalStackLayout Grid.Column="1"
+                                                   HorizontalOptions="End"
+                                                   Spacing="6"
+                                                   VerticalOptions="Center">
+                                <Border WidthRequest="58"
+                                        HeightRequest="58"
+                                        BackgroundColor="#F8FAFC"
+                                        StrokeThickness="0">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10" />
+                                    </Border.StrokeShape>
+                                    <Image Source="{Binding PromoImage1}"
+                                           Aspect="AspectFill" />
+                                </Border>
+                                <Border WidthRequest="58"
+                                        HeightRequest="58"
+                                        BackgroundColor="#F8FAFC"
+                                        StrokeThickness="0">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10" />
+                                    </Border.StrokeShape>
+                                    <Image Source="{Binding PromoImage2}"
+                                           Aspect="AspectFill" />
+                                </Border>
+                                <Border WidthRequest="58"
+                                        HeightRequest="58"
+                                        BackgroundColor="#F8FAFC"
+                                        StrokeThickness="0">
+                                    <Border.StrokeShape>
+                                        <RoundRectangle CornerRadius="10" />
+                                    </Border.StrokeShape>
+                                    <Image Source="{Binding PromoImage3}"
+                                           Aspect="AspectFill" />
+                                </Border>
+                            </HorizontalStackLayout>
+                        </Grid>
+                    </Grid>
                 </Border>
 
                 <!-- Favorites -->
-                <VerticalStackLayout Spacing="8">
+                <VerticalStackLayout Spacing="8" IsVisible="{Binding HasFavorites}">
                     <Grid ColumnDefinitions="*,Auto">
                         <Label Text="Bulldog Favorites"
                                FontSize="15"

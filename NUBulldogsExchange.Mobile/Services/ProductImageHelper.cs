@@ -20,27 +20,81 @@ public static class ProductImageHelper
         0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
     ];
 
-    private static readonly ImageSource EmptySource =
-        ImageSource.FromStream(() => new MemoryStream(TransparentPng, writable: false));
+    public static ImageSource NuPlaceholderSource => ImageSource.FromFile("nu_placeholder.png");
+    public static ImageSource EmptySource => ImageSource.FromStream(() => new MemoryStream(TransparentPng, writable: false));
+
+    public static bool HasRealImage(string? raw)
+    {
+        var url = raw?.Trim();
+        if (string.IsNullOrWhiteSpace(url))
+            return false;
+
+        if (url.Equals("null", StringComparison.OrdinalIgnoreCase) ||
+            url.Equals("undefined", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (string.Equals(url, CatalogHelpers.PlaceholderImage, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (url.StartsWith("data:image/svg", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            var comma = url.IndexOf(',');
+            if (comma <= 5)
+                return false;
+
+            var payload = url[(comma + 1)..].Trim();
+            if (payload.Length == 0)
+                return false;
+        }
+
+        // Relative paths (e.g. /uploads/products/...) cannot be resolved on Mobile without a base web URL.
+        if (url.StartsWith('/') && !url.StartsWith("//"))
+            return false;
+
+        return true;
+    }
+
+    public static bool HasRealImage(Product? product)
+    {
+        if (product is null)
+            return false;
+
+        if (HasRealImage(product.ImageUrl))
+            return true;
+
+        if (product.Images is { Count: > 0 } images && images.Any(HasRealImage))
+            return true;
+
+        return false;
+    }
 
     public static ImageSource FromProduct(Product? product)
     {
         if (product is null)
-            return EmptySource;
+            return NuPlaceholderSource;
 
         foreach (var candidate in EnumerateCandidates(product))
         {
+            if (!HasRealImage(candidate))
+                continue;
+
             var source = TryCreate(candidate);
             if (source is not null)
                 return source;
         }
 
-        return EmptySource;
+        return NuPlaceholderSource;
     }
 
     public static ImageSource FromUrl(string? url)
     {
-        return TryCreate(url) ?? EmptySource;
+        if (!HasRealImage(url))
+            return NuPlaceholderSource;
+
+        return TryCreate(url) ?? NuPlaceholderSource;
     }
 
     private static IEnumerable<string> EnumerateCandidates(Product product)
@@ -70,6 +124,9 @@ public static class ProductImageHelper
         {
             return null;
         }
+
+        if (string.Equals(url, CatalogHelpers.PlaceholderImage, StringComparison.OrdinalIgnoreCase))
+            return NuPlaceholderSource;
 
         if (url.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
             return FromDataUri(url);
@@ -105,9 +162,9 @@ public static class ProductImageHelper
             return null;
 
         var header = dataUri[..comma];
-        // MAUI's raster decoder cannot render SVG placeholders used on the web.
+        // MAUI's raster decoder cannot render SVG placeholders used on the web; return the NU logo placeholder instead.
         if (header.Contains("svg", StringComparison.OrdinalIgnoreCase))
-            return null;
+            return NuPlaceholderSource;
 
         var payload = dataUri[(comma + 1)..].Trim();
         if (payload.Length == 0)

@@ -202,10 +202,31 @@
                                             <Border.StrokeShape>
                                                 <RoundRectangle CornerRadius="10" />
                                             </Border.StrokeShape>
-                                            <Image Source="{Binding DisplayImage}"
-                                                   Aspect="AspectFill"
-                                                   HorizontalOptions="Fill"
-                                                   VerticalOptions="Fill" />
+                                            <Grid>
+                                                <!-- Fallback Navy NU Badge: always in background -->
+                                                <Border BackgroundColor="#123A63"
+                                                        WidthRequest="32"
+                                                        HeightRequest="32"
+                                                        HorizontalOptions="Center"
+                                                        VerticalOptions="Center"
+                                                        StrokeThickness="0">
+                                                    <Border.StrokeShape>
+                                                        <RoundRectangle CornerRadius="8" />
+                                                    </Border.StrokeShape>
+                                                    <Label Text="NU"
+                                                           TextColor="#F9C424"
+                                                           FontAttributes="Bold"
+                                                           FontSize="12"
+                                                           HorizontalOptions="Center"
+                                                           VerticalOptions="Center" />
+                                                </Border>
+
+                                                <!-- Product Image: overlay on top of placeholder -->
+                                                <Image Source="{Binding DisplayImage}"
+                                                       Aspect="AspectFill"
+                                                       HorizontalOptions="Fill"
+                                                       VerticalOptions="Fill" />
+                                            </Grid>
                                         </Border>
 
                                         <VerticalStackLayout Grid.Column="2"

@@ -28,9 +28,18 @@ public sealed class HomeViewModel : INotifyPropertyChanged
     private int _cartCount;
     private int _notificationCount;
     private string? _statusMessage;
-    private bool _hasFeatured;
     private bool _hasFresh;
+    private bool _hasFavorites;
     private bool _updatePending;
+
+    private string _promoTag = "LIMITED-TIME OFFER · ENDS OCT 23";
+    private string _promoTitle = "BULLDOGS";
+    private string _promoDescription = "Save 10% on official NU merchandise.";
+    private string _promoCode = "BULLDOGS10";
+    private string _promoDiscount = "10% off";
+    private ImageSource? _promoImage1;
+    private ImageSource? _promoImage2;
+    private ImageSource? _promoImage3;
 
     public HomeViewModel(
         ProductCatalogService catalog,
@@ -65,8 +74,8 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         ShopNowCommand = new Command<HeroBannerItem>(async h => await OnHeroAsync(h));
         ExploreCollectionCommand = new Command(async () => await GoAsync("//shop"));
         SeeAllFeaturedCommand = new Command(async () => await GoAsync("//shop"));
-        SeeAllFreshCommand = new Command(async () => await GoAsync("//shop"));
-        SeeAllFavoritesCommand = new Command(async () => await GoAsync("//shop"));
+        SeeAllFreshCommand = new Command(async () => await GoAsync("//shop?sort=Newest"));
+        SeeAllFavoritesCommand = new Command(async () => await GoAsync("//shop?sort=Best+Selling"));
         SeeAllCategoriesCommand = new Command(async () => await GoAsync("//shop"));
 
         // Initialize hero banners once
@@ -76,6 +85,8 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         // Pre-populate immediately from memory so page loads instantly
         RebuildCollections();
         RefreshHeader();
+        ApplyDefaultPromo();
+        _ = RefreshPromoAsync();
 
         _catalog.OnChange += OnServicesChanged;
         _adminCategories.OnChange += OnServicesChanged;
@@ -89,7 +100,6 @@ public sealed class HomeViewModel : INotifyPropertyChanged
 
     public ObservableCollection<CategoryChip> Categories { get; } = [];
     public ObservableCollection<HeroBannerItem> HeroBanners { get; } = [];
-    public ObservableCollection<ProductPair> FeaturedRows { get; } = [];
     public ObservableCollection<ProductPair> FreshRows { get; } = [];
     public ObservableCollection<ProductPair> FavoriteRows { get; } = [];
 
@@ -132,16 +142,64 @@ public sealed class HomeViewModel : INotifyPropertyChanged
     public bool HasNotifications => NotificationCount > 0;
     public bool HasCartItems => CartCount > 0;
 
-    public bool HasFeatured
-    {
-        get => _hasFeatured;
-        private set => SetField(ref _hasFeatured, value);
-    }
-
     public bool HasFresh
     {
         get => _hasFresh;
         private set => SetField(ref _hasFresh, value);
+    }
+
+    public bool HasFavorites
+    {
+        get => _hasFavorites;
+        private set => SetField(ref _hasFavorites, value);
+    }
+
+    public string PromoTag
+    {
+        get => _promoTag;
+        private set => SetField(ref _promoTag, value);
+    }
+
+    public string PromoTitle
+    {
+        get => _promoTitle;
+        private set => SetField(ref _promoTitle, value);
+    }
+
+    public string PromoDescription
+    {
+        get => _promoDescription;
+        private set => SetField(ref _promoDescription, value);
+    }
+
+    public string PromoCode
+    {
+        get => _promoCode;
+        private set => SetField(ref _promoCode, value);
+    }
+
+    public string PromoDiscount
+    {
+        get => _promoDiscount;
+        private set => SetField(ref _promoDiscount, value);
+    }
+
+    public ImageSource? PromoImage1
+    {
+        get => _promoImage1;
+        private set => SetField(ref _promoImage1, value);
+    }
+
+    public ImageSource? PromoImage2
+    {
+        get => _promoImage2;
+        private set => SetField(ref _promoImage2, value);
+    }
+
+    public ImageSource? PromoImage3
+    {
+        get => _promoImage3;
+        private set => SetField(ref _promoImage3, value);
     }
 
     public string? StatusMessage
@@ -193,6 +251,7 @@ public sealed class HomeViewModel : INotifyPropertyChanged
 
             RebuildCollections();
             RefreshHeader();
+            await RefreshPromoAsync();
         }
         catch (Exception ex)
         {
@@ -215,11 +274,12 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         if (_updatePending) return;
         _updatePending = true;
 
-        MainThread.BeginInvokeOnMainThread(() =>
+        MainThread.BeginInvokeOnMainThread(async () =>
         {
             _updatePending = false;
             RebuildCollections();
             RefreshHeader();
+            await RefreshPromoAsync();
         });
     }
 
@@ -250,23 +310,19 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         SyncList(Categories, newCategories, (a, b) =>
             a.Id == b.Id && a.Name == b.Name && a.ImageUrl == b.ImageUrl && a.Icon == b.Icon);
 
-        var featured = _catalog.Featured.Take(6).ToList();
-        var newFeaturedRows = ToPairs(featured).ToList();
-        SyncList(FeaturedRows, newFeaturedRows, (a, b) =>
-            a.Left?.Id == b.Left?.Id && a.Left?.Price == b.Left?.Price &&
-            a.Right?.Id == b.Right?.Id && a.Right?.Price == b.Right?.Price);
-        HasFeatured = FeaturedRows.Count > 0;
-
         var fresh = _catalog.FreshDrops.Take(6).ToList();
         var newFreshRows = ToPairs(fresh).ToList();
         SyncList(FreshRows, newFreshRows, (a, b) =>
-            a.Left?.Id == b.Left?.Id && a.Left?.Price == b.Left?.Price &&
-            a.Right?.Id == b.Right?.Id && a.Right?.Price == b.Right?.Price);
+            a.Left?.Id == b.Left?.Id && a.Left?.Price == b.Left?.Price && a.Left?.Sold == b.Left?.Sold &&
+            a.Right?.Id == b.Right?.Id && a.Right?.Price == b.Right?.Price && a.Right?.Sold == b.Right?.Sold);
         HasFresh = FreshRows.Count > 0;
 
-        var newFavorites = ToPairs(_catalog.Favorites.Take(4)).ToList();
+        var favorites = _catalog.Favorites.Take(6).ToList();
+        var newFavorites = ToPairs(favorites).ToList();
         SyncList(FavoriteRows, newFavorites, (a, b) =>
-            a.Left?.Id == b.Left?.Id && a.Right?.Id == b.Right?.Id);
+            a.Left?.Id == b.Left?.Id && a.Left?.Price == b.Left?.Price && a.Left?.Sold == b.Left?.Sold &&
+            a.Right?.Id == b.Right?.Id && a.Right?.Price == b.Right?.Price && a.Right?.Sold == b.Right?.Sold);
+        HasFavorites = FavoriteRows.Count > 0;
     }
 
     private static void SyncList<T>(ObservableCollection<T> collection, IList<T> newItems, Func<T, T, bool> areEqual)
@@ -430,6 +486,68 @@ public sealed class HomeViewModel : INotifyPropertyChanged
         await _cart.PersistAsync(_auth.Email);
         _toast.Show($"Added {product.Name} to cart!");
         RefreshHeader();
+    }
+
+    private async Task RefreshPromoAsync()
+    {
+        try
+        {
+            var promo = await _catalog.GetStorefrontPromotionAsync();
+            if (promo?.Promotion is not null)
+            {
+                var p = promo.Promotion;
+                PromoTag = $"LIMITED-TIME OFFER · ENDS {p.EndDate:MMM d}".ToUpperInvariant();
+                PromoTitle = string.IsNullOrWhiteSpace(p.Name) ? "BULLDOGS" : p.Name;
+                PromoDescription = string.IsNullOrWhiteSpace(p.Description)
+                    ? $"Save {p.DiscountLabel} on official NU merchandise."
+                    : p.Description;
+                PromoCode = string.IsNullOrWhiteSpace(p.Code) ? "BULLDOGS10" : p.Code;
+                PromoDiscount = $"{p.DiscountLabel} off";
+
+                var pool = (promo.Products.Count > 0 ? promo.Products : _catalog.StorefrontProducts)
+                    .Take(3)
+                    .ToList();
+                UpdatePromoImages(pool);
+            }
+            else
+            {
+                ApplyDefaultPromo();
+            }
+        }
+        catch
+        {
+            ApplyDefaultPromo();
+        }
+    }
+
+    private void ApplyDefaultPromo()
+    {
+        PromoTag = "LIMITED-TIME OFFER · ENDS OCT 23";
+        PromoTitle = "BULLDOGS";
+        PromoDescription = "wala";
+        PromoCode = "BULLDOGS10";
+        PromoDiscount = "10% off";
+
+        var pool = _catalog.StorefrontProducts.Take(3).ToList();
+        UpdatePromoImages(pool);
+    }
+
+    private void UpdatePromoImages(List<Product> products)
+    {
+        if (products.Count > 0)
+            PromoImage1 = ProductImageHelper.FromProduct(products[0]);
+        else
+            PromoImage1 = ProductImageHelper.FromUrl(CatalogHelpers.PlaceholderImage);
+
+        if (products.Count > 1)
+            PromoImage2 = ProductImageHelper.FromProduct(products[1]);
+        else
+            PromoImage2 = ProductImageHelper.FromUrl(CatalogHelpers.PlaceholderImage);
+
+        if (products.Count > 2)
+            PromoImage3 = ProductImageHelper.FromProduct(products[2]);
+        else
+            PromoImage3 = ProductImageHelper.FromUrl(CatalogHelpers.PlaceholderImage);
     }
 
     private static async Task GoAsync(string route)

@@ -239,6 +239,19 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         {
             SetSelectedCategory(categoryId);
         }
+
+        if (query.TryGetValue("sort", out var sortObj) && sortObj is string sortStr && !string.IsNullOrWhiteSpace(sortStr))
+        {
+            SetSort(sortStr);
+        }
+    }
+
+    public void SetSort(string sortKey)
+    {
+        _sortMode = sortKey;
+        SyncSortOptions();
+        ApplyFilters();
+        NotifySortStateChanged();
     }
 
     public void SetSelectedCategory(string? categoryKeyOrId)
@@ -593,7 +606,7 @@ public sealed class ShopViewModel : INotifyPropertyChanged, IQueryAttributable
         {
             "Price: Low to High" => query.OrderBy(p => p.Price),
             "Price: High to Low" => query.OrderByDescending(p => p.Price),
-            "Newest" => query.OrderByDescending(p => p.IsNewArrival || p.IsFreshDrop)
+            "Newest" => query.OrderByDescending(p => p.CreatedAt ?? p.PublishedAt ?? DateTime.MinValue)
                 .ThenByDescending(p => p.Id),
             "Best Selling" => query.OrderByDescending(p => p.Sold).ThenByDescending(p => p.Rating),
             "Highest Rated" => query.OrderByDescending(p => p.Rating).ThenByDescending(p => p.Sold),

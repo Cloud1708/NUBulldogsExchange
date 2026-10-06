@@ -117,6 +117,9 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     private bool _isShippingExpanded;
     private bool _isReturnsExpanded;
 
+    // Size Guide Modal State
+    private bool _isSizeGuideModalVisible;
+
     // Review Sheets & Eligibility State
     private bool _isAllReviewsSheetVisible;
     private bool _isWriteReviewSheetVisible;
@@ -157,6 +160,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         ShareCommand = new Command(async () => await OnShareAsync());
         OpenCartCommand = new Command(async () => await GoAsync("cart"));
         OpenSizeGuideCommand = new Command(OpenSizeGuide);
+        CloseSizeGuideCommand = new Command(CloseSizeGuide);
         ViewAllReviewsCommand = new Command(OnOpenAllReviews);
         OpenAllReviewsCommand = new Command(OnOpenAllReviews);
         CloseAllReviewsCommand = new Command(() => IsAllReviewsSheetVisible = false);
@@ -202,6 +206,15 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         get => _canUserWriteReview;
         private set => SetField(ref _canUserWriteReview, value);
     }
+
+    public bool IsSizeGuideModalVisible
+    {
+        get => _isSizeGuideModalVisible;
+        set => SetField(ref _isSizeGuideModalVisible, value);
+    }
+
+    public bool IsApparelItem => Product is null || IsApparel(Product);
+    public bool IsNonApparelItem => !IsApparelItem;
 
     public bool IsAllReviewsSheetVisible
     {
@@ -305,6 +318,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(Name));
                 OnPropertyChanged(nameof(Badge));
                 OnPropertyChanged(nameof(HasBadge));
+                OnPropertyChanged(nameof(HasRating));
                 OnPropertyChanged(nameof(RatingText));
                 OnPropertyChanged(nameof(ReviewsText));
                 OnPropertyChanged(nameof(SoldText));
@@ -316,6 +330,8 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(DetailsText));
                 OnPropertyChanged(nameof(MaterialsText));
                 OnPropertyChanged(nameof(SizeGuideText));
+                OnPropertyChanged(nameof(IsApparelItem));
+                OnPropertyChanged(nameof(IsNonApparelItem));
                 OnPropertyChanged(nameof(ShippingText));
                 OnPropertyChanged(nameof(ReturnsText));
                 OnPropertyChanged(nameof(HasMultipleImages));
@@ -338,13 +354,16 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     public string Name => Product?.Name ?? "NU Product";
     public string Badge => Product?.Badge ?? (Product?.IsBestSeller == true ? "Best Seller" : (Product?.IsFreshDrop == true ? "Fresh Drop" : (Product?.IsNewArrival == true ? "New" : string.Empty)));
     public bool HasBadge => !string.IsNullOrWhiteSpace(Badge);
-    public string RatingText => Product is null ? "4.7" : $"{Product.Rating:0.0}";
-    public string ReviewsText => $"{Product?.Reviews ?? 89} Reviews";
-    public string SoldText => $"{Product?.Sold ?? 342} Sold";
+    public bool HasRating => Product is not null && Product.Rating > 0;
+    public string RatingText => Product is null || Product.Rating <= 0 ? "0.0" : $"{Product.Rating:0.0}";
+    public string ReviewsText => $"{Product?.Reviews ?? 0} Reviews";
+    public string SoldText => $"{Product?.Sold ?? 0} Sold";
     public string PriceFormatted => Product is null ? "₱0" : $"₱{Product.Price:N0}";
     public string OriginalPriceFormatted => Product?.OriginalPrice is decimal o ? $"₱{o:N0}" : string.Empty;
     public bool HasOriginalPrice => Product?.OriginalPrice is decimal o && o > Product.Price;
     public ImageSource DisplayImage => ProductImageHelper.FromUrl(SelectedImage);
+    public bool HasRealPhoto => ProductImageHelper.HasRealImage(SelectedImage);
+    public bool ShowPlaceholder => !HasRealPhoto;
 
     public string SelectedImage
     {
@@ -366,6 +385,8 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(ImageCounterText));
                 OnPropertyChanged(nameof(SelectedImage));
                 OnPropertyChanged(nameof(DisplayImage));
+                OnPropertyChanged(nameof(HasRealPhoto));
+                OnPropertyChanged(nameof(ShowPlaceholder));
                 OnPropertyChanged(nameof(IsDot1Active));
                 OnPropertyChanged(nameof(IsDot2Active));
                 OnPropertyChanged(nameof(IsDot3Active));
@@ -606,6 +627,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
     public ICommand ShareCommand { get; }
     public ICommand OpenCartCommand { get; }
     public ICommand OpenSizeGuideCommand { get; }
+    public ICommand CloseSizeGuideCommand { get; }
     public ICommand ViewAllReviewsCommand { get; }
     public ICommand OpenAllReviewsCommand { get; }
     public ICommand CloseAllReviewsCommand { get; }
@@ -738,6 +760,8 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(HasColors));
         OnPropertyChanged(nameof(SelectedImage));
         OnPropertyChanged(nameof(DisplayImage));
+        OnPropertyChanged(nameof(HasRealPhoto));
+        OnPropertyChanged(nameof(ShowPlaceholder));
         OnPropertyChanged(nameof(ImageCounterText));
         OnPropertyChanged(nameof(TotalImages));
         OnPropertyChanged(nameof(AvailableStock));
@@ -840,8 +864,12 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
 
     private void OpenSizeGuide()
     {
-        IsSizeGuideExpanded = true;
-        _toast.Show("Size Guide opened below.");
+        IsSizeGuideModalVisible = true;
+    }
+
+    private void CloseSizeGuide()
+    {
+        IsSizeGuideModalVisible = false;
     }
 
     private void OnOpenAllReviews()
@@ -933,6 +961,7 @@ public sealed class ProductDetailsViewModel : INotifyPropertyChanged
                     TopReviews.Add(model);
             }
 
+            OnPropertyChanged(nameof(HasRating));
             OnPropertyChanged(nameof(RatingText));
             OnPropertyChanged(nameof(ReviewsText));
             OnPropertyChanged(nameof(Star5Percent));

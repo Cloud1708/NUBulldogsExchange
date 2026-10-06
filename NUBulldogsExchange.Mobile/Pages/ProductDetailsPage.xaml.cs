@@ -25,4 +25,24 @@ public partial class ProductDetailsPage : ContentPage
         base.OnDisappearing();
         _vm.Detach();
     }
+
+    protected override bool OnBackButtonPressed()
+    {
+        if (_vm.IsSizeGuideModalVisible)
+        {
+            _vm.IsSizeGuideModalVisible = false;
+            return true;
+        }
+        if (_vm.IsWriteReviewSheetVisible)
+        {
+            _vm.IsWriteReviewSheetVisible = false;
+            return true;
+        }
+        if (_vm.IsAllReviewsSheetVisible)
+        {
+            _vm.IsAllReviewsSheetVisible = false;
+            return true;
+        }
+        return base.OnBackButtonPressed();
+    }
 }

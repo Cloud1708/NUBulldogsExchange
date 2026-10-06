@@ -194,27 +194,16 @@ public class ProductCatalogService
         }
     }
 
-    public IEnumerable<Product> FreshDrops
-    {
-        get
-        {
-            var items = _products.Where(p => p.IsFreshDrop || p.IsNewArrival || p.Badge == "New").Take(4).ToList();
-            if (items.Count > 0)
-                return items;
-            return _products.Count > 4 ? _products.Skip(4).Take(4) : _products.Take(4);
-        }
-    }
+    public IEnumerable<Product> FreshDrops => StorefrontProducts
+        .OrderByDescending(p => p.CreatedAt ?? p.PublishedAt ?? DateTime.MinValue)
+        .ThenByDescending(p => p.Id);
 
-    public IEnumerable<Product> Favorites
-    {
-        get
-        {
-            var items = _products.Where(p => p.IsFavorite || p.IsBestSeller || p.Rating >= 4.5).Take(4).ToList();
-            if (items.Count > 0)
-                return items;
-            return _products.OrderByDescending(p => p.Rating).ThenByDescending(p => p.Sold).Take(4);
-        }
-    }
+    public IEnumerable<Product> Favorites => StorefrontProducts
+        .Where(p => p.Sold > 0)
+        .OrderByDescending(p => p.Sold)
+        .ThenByDescending(p => p.Rating)
+        .ThenByDescending(p => p.Reviews)
+        .ThenByDescending(p => p.Id);
 
     public IEnumerable<Product> BestSellers
     {
@@ -332,6 +321,15 @@ public class ProductCatalogService
             HeroMain = heroMain,
             HeroSide = heroSide
         };
+    }
+
+    public async Task<HomePromotion?> GetStorefrontPromotionAsync()
+    {
+        await EnsureLoadedAsync();
+        var promo = await _db.GetStorefrontPromotionAsync();
+        if (promo is null)
+            return null;
+        return BuildHomePromotion(promo, StorefrontProducts);
     }
 
     private (Product? Main, List<Product> Side) PickHeroProducts(IEnumerable<Product> preferred)

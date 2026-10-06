@@ -39,10 +39,13 @@
         <h3 class="product-title">@Product.Name</h3>
 
         <div class="mobile-rating-row">
-            <span class="star-icon">⭐</span>
-            <span class="rating-num">@(Product.Rating > 0 ? Product.Rating.ToString("0.0") : "4.8")</span>
-            <span class="rating-dot">·</span>
-            <span class="sold-count">@(Product.Sold > 0 ? Product.Sold.ToString("N0") : "120") sold</span>
+            @if (Product.Rating > 0)
+            {
+                <span class="star-icon">⭐</span>
+                <span class="rating-num">@Product.Rating.ToString("0.0")</span>
+                <span class="rating-dot">·</span>
+            }
+            <span class="sold-count">@Product.Sold.ToString("N0") sold</span>
         </div>
 
         <div class="product-bottom">

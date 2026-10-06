@@ -22,11 +22,31 @@
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="14,14,0,0" />
                     </Border.StrokeShape>
-                    <Image Source="{Binding DisplayImage, Source={x:Reference Root}}"
-                           Aspect="AspectFill"
-                           HeightRequest="130"
-                           HorizontalOptions="Fill"
-                           VerticalOptions="Fill" />
+                    <Grid>
+                        <!-- Centered Navy NU badge fallback: always present as the background placeholder -->
+                        <Border BackgroundColor="#123A63"
+                                WidthRequest="50"
+                                HeightRequest="50"
+                                HorizontalOptions="Center"
+                                VerticalOptions="Center"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Label Text="NU"
+                                   TextColor="#F9C424"
+                                   FontAttributes="Bold"
+                                   FontSize="17"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+
+                        <Image Source="{Binding DisplayImage, Source={x:Reference Root}}"
+                               Aspect="AspectFill"
+                               HeightRequest="130"
+                               HorizontalOptions="Fill"
+                               VerticalOptions="Fill" />
+                    </Grid>
                 </Border>
 
                 <Border BackgroundColor="White"

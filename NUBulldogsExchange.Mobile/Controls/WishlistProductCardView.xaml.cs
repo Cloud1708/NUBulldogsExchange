@@ -65,6 +65,9 @@ public partial class WishlistProductCardView : ContentView
 
     public string PriceText => Product is null ? "₱0" : $"₱{Product.Price:N0}";
 
+    public bool HasRealPhoto => ProductImageHelper.HasRealImage(Product);
+    public bool ShowPlaceholder => !HasRealPhoto;
+
     public ImageSource DisplayImage
     {
         get => (ImageSource?)GetValue(DisplayImageProperty) ?? ProductImageHelper.FromProduct(Product);
@@ -82,6 +85,8 @@ public partial class WishlistProductCardView : ContentView
         OnPropertyChanged(nameof(HasRating));
         OnPropertyChanged(nameof(RatingText));
         OnPropertyChanged(nameof(PriceText));
+        OnPropertyChanged(nameof(HasRealPhoto));
+        OnPropertyChanged(nameof(ShowPlaceholder));
         DisplayImage = ProductImageHelper.FromProduct(Product);
     }
 

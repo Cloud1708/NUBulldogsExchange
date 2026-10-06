@@ -23,11 +23,31 @@
                     <Border.StrokeShape>
                         <RoundRectangle CornerRadius="14,14,0,0" />
                     </Border.StrokeShape>
-                    <Image Source="{Binding DisplayImage, Source={x:Reference Root}}"
-                           Aspect="AspectFill"
-                           HeightRequest="140"
-                           HorizontalOptions="Fill"
-                           VerticalOptions="Fill" />
+                    <Grid>
+                        <!-- Centered Navy NU badge fallback: always present as the background placeholder -->
+                        <Border BackgroundColor="#123A63"
+                                WidthRequest="52"
+                                HeightRequest="52"
+                                HorizontalOptions="Center"
+                                VerticalOptions="Center"
+                                StrokeThickness="0">
+                            <Border.StrokeShape>
+                                <RoundRectangle CornerRadius="12" />
+                            </Border.StrokeShape>
+                            <Label Text="NU"
+                                   TextColor="#F9C424"
+                                   FontAttributes="Bold"
+                                   FontSize="18"
+                                   HorizontalOptions="Center"
+                                   VerticalOptions="Center" />
+                        </Border>
+
+                        <Image Source="{Binding DisplayImage, Source={x:Reference Root}}"
+                               Aspect="AspectFill"
+                               HeightRequest="140"
+                               HorizontalOptions="Fill"
+                               VerticalOptions="Fill" />
+                    </Grid>
                 </Border>
 
                 <Border IsVisible="{Binding HasBadge, Source={x:Reference Root}}"
@@ -79,19 +99,23 @@
                        HeightRequest="32" />
 
                 <HorizontalStackLayout Spacing="3" VerticalOptions="Center">
-                    <Label Text="&#xe838;"
-                           FontFamily="MaterialIcons"
-                           FontSize="12"
-                           TextColor="#F59E0B"
-                           VerticalOptions="Center" />
-                    <Label Text="{Binding RatingText, Source={x:Reference Root}}"
-                           FontSize="10"
-                           TextColor="{StaticResource MutedText}"
-                           VerticalOptions="Center" />
-                    <Label Text=" · "
-                           FontSize="10"
-                           TextColor="{StaticResource MutedText}"
-                           VerticalOptions="Center" />
+                    <HorizontalStackLayout Spacing="3"
+                                           VerticalOptions="Center"
+                                           IsVisible="{Binding HasRating, Source={x:Reference Root}}">
+                        <Label Text="&#xe838;"
+                               FontFamily="MaterialIcons"
+                               FontSize="12"
+                               TextColor="#F59E0B"
+                               VerticalOptions="Center" />
+                        <Label Text="{Binding RatingText, Source={x:Reference Root}}"
+                               FontSize="10"
+                               TextColor="{StaticResource MutedText}"
+                               VerticalOptions="Center" />
+                        <Label Text=" · "
+                               FontSize="10"
+                               TextColor="{StaticResource MutedText}"
+                               VerticalOptions="Center" />
+                    </HorizontalStackLayout>
                     <Label Text="{Binding SoldText, Source={x:Reference Root}}"
                            FontSize="10"
                            TextColor="{StaticResource MutedText}"

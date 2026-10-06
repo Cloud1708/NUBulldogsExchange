@@ -74,6 +74,8 @@ public sealed class CartLineItem : INotifyPropertyChanged
     public bool CanIncrease => AvailableStock > 0 && Quantity < AvailableStock;
 
     public ImageSource DisplayImage => ProductImageHelper.FromProduct(Product);
+    public bool HasRealPhoto => ProductImageHelper.HasRealImage(Product);
+    public bool ShowPlaceholder => !HasRealPhoto;
 
     public string ImageUrl => Product.ImageUrl ?? string.Empty;
 
