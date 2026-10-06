@@ -551,7 +551,16 @@
                                           UseDifferentPrices="_useDifferentPrices"
                                           UseDifferentPricesChanged="OnPricingModeChanged"
                                           PriceModeLocked="_isEditMode"
-                                          PriceInputsReadOnly="_isEditMode" />
+                                          PriceInputsReadOnly="_isEditMode"
+                                          UseColorVariants="_useColorVariants"
+                                          UseColorVariantsChanged="OnUseColorChanged"
+                                          UseSizeVariants="_useSizeVariants"
+                                          UseSizeVariantsChanged="OnUseSizeChanged" />
+
+                <SizeGuidePicker Visible="@(_hasVariants && _useSizeVariants)"
+                                 SelectedId="_sizeGuideId"
+                                 SelectedIdChanged="OnSizeGuideChanged"
+                                 ProductSizes="_formSizeNames" />
 
                 @if (_isEditMode && !_hasVariants)
                 {
@@ -667,22 +676,22 @@
             <footer class="admin-product-modal-footer @(_isEditMode ? "is-edit" : null)">
                 @if (_isEditMode)
                 {
-                    <button type="button" class="btn btn-outline-navy" @onclick="RequestCloseProductModal">
+                    <button type="button" class="btn btn-outline-navy" @onclick="RequestCloseProductModal" disabled="@_formSaving">
                         Cancel
                     </button>
-                    <button type="button" class="btn btn-navy admin-product-save-btn" @onclick="SaveEditedProduct">
-                        Save Changes
+                    <button type="button" class="btn btn-navy admin-product-save-btn" @onclick="SaveEditedProduct" disabled="@_formSaving">
+                        @(_formSaving ? "Saving…" : "Save Changes")
                     </button>
                 }
                 else
                 {
-                    <button type="button" class="btn btn-navy admin-product-save-btn" @onclick="SaveProduct">
-                        Save Product
+                    <button type="button" class="btn btn-navy admin-product-save-btn" @onclick="SaveProduct" disabled="@_formSaving">
+                        @(_formSaving ? "Saving…" : "Save Product")
                     </button>
-                    <button type="button" class="btn btn-outline-navy" @onclick="SaveDraft">
-                        Save Draft
+                    <button type="button" class="btn btn-outline-navy" @onclick="SaveDraft" disabled="@_formSaving">
+                        @(_formSaving ? "Saving…" : "Save Draft")
                     </button>
-                    <button type="button" class="btn btn-outline-navy" @onclick="RequestCloseProductModal">
+                    <button type="button" class="btn btn-outline-navy" @onclick="RequestCloseProductModal" disabled="@_formSaving">
                         Cancel
                     </button>
                 }
@@ -779,6 +788,7 @@
     private bool _discardConfirm;
     private bool _isDragOver;
     private bool _formDirty;
+    private bool _formSaving;
     private int? _editProductId;
     private string _originalCategory = string.Empty;
     private int _formSold;
@@ -792,12 +802,23 @@
     private string _formStockText = string.Empty;
     private string _formColors = string.Empty;
     private bool _hasVariants;
+    private bool _useColorVariants = true;
+    private bool _useSizeVariants = true;
     private bool _useDifferentPrices;
     private List<ProductVariant> _formVariants = [];
+    private string? _sizeGuideId;
     private readonly List<ImagePreview> _previewImages = [];
     private readonly Dictionary<string, string> _formErrors = new(StringComparer.Ordinal);
 
     private bool _isEditMode => _editProductId is > 0;
+
+    private IReadOnlyList<string> _formSizeNames =>
+        _formVariants
+            .Select(v => v.Size)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private static readonly (string Value, string Label)[] SortOptions =
     [
@@ -1229,8 +1250,16 @@
         _formSold = product.Sold;
         _formColors = string.Join(", ", product.Colors ?? []);
         _hasVariants = product.HasVariants;
+        _useColorVariants = product.HasColorVariants || !product.HasSizeVariants;
+        _useSizeVariants = product.HasSizeVariants || !product.HasColorVariants;
+        if (product.HasVariants && !product.HasColorVariants && !product.HasSizeVariants)
+        {
+            _useColorVariants = true;
+            _useSizeVariants = true;
+        }
         _useDifferentPrices = ProductVariantLogic.HasVariablePricing(product.Variants);
         _formVariants = product.Variants.Select(v => v.Clone()).ToList();
+        _sizeGuideId = product.HasSizeVariants ? product.SizeGuideId : null;
 
         var images = product.Images is { Count: > 0 }
             ? product.Images
@@ -1462,8 +1491,11 @@
         _formStockText = string.Empty;
         _formColors = string.Empty;
         _hasVariants = false;
+        _useColorVariants = true;
+        _useSizeVariants = true;
         _useDifferentPrices = false;
         _formVariants = [];
+        _sizeGuideId = null;
         _previewImages.Clear();
         _formErrors.Clear();
         _formDirty = false;
@@ -1560,6 +1592,36 @@
         MarkDirty();
         _formErrors.Remove("stock");
         _formErrors.Remove("variants");
+        if (!value)
+            _sizeGuideId = null;
+        else if (!_useColorVariants && !_useSizeVariants)
+        {
+            _useColorVariants = true;
+            _useSizeVariants = true;
+        }
+        return Task.CompletedTask;
+    }
+
+    private Task OnUseColorChanged(bool value)
+    {
+        _useColorVariants = value;
+        MarkDirty();
+        return Task.CompletedTask;
+    }
+
+    private Task OnUseSizeChanged(bool value)
+    {
+        _useSizeVariants = value;
+        MarkDirty();
+        if (!value)
+            _sizeGuideId = null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSizeGuideChanged(string? id)
+    {
+        _sizeGuideId = string.IsNullOrWhiteSpace(id) ? null : id;
+        MarkDirty();
         return Task.CompletedTask;
     }
 
@@ -1667,9 +1729,13 @@
         if (string.IsNullOrWhiteSpace(_formStatus))
             _formErrors["status"] = "Status is required.";
 
-        if (_hasVariants && _useDifferentPrices)
+        if (_hasVariants && !_useColorVariants && !_useSizeVariants)
+            _formErrors["variants"] = "Select Color, Size, or both.";
+
+        // Pricing is owned by Adjust Price once a product exists — do not validate/edit prices here.
+        if (_hasVariants && _useDifferentPrices && !_isEditMode)
         {
-            // PriceAdjustment holds absolute amount while editing (no starting price).
+            // Create flow: PriceAdjustment holds absolute amount while editing.
             if (_formVariants.Any(v => v.PriceAdjustment <= 0))
                 _formErrors["variants"] = "Each variant price must be greater than 0.";
             else
@@ -1681,10 +1747,13 @@
         }
         else
         {
-            if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
-                _formErrors["price"] = "Price must be greater than 0.";
-            else if (price <= 0)
-                _formErrors["price"] = "Price must be greater than 0.";
+            if (!_isEditMode)
+            {
+                if (!decimal.TryParse(_formPriceText, out var price) || price < 0)
+                    _formErrors["price"] = "Price must be greater than 0.";
+                else if (price <= 0)
+                    _formErrors["price"] = "Price must be greater than 0.";
+            }
 
             if (_hasVariants)
             {
@@ -1703,6 +1772,9 @@
         else if (ProductService.SkuExists(_formSku, _editProductId))
             _formErrors["sku"] = "This SKU already exists.";
 
+        if (requireImages && _previewImages.Count == 0)
+            _formErrors["images"] = "Product image is required.";
+
         return _formErrors.Count == 0;
     }
 
@@ -1719,6 +1791,8 @@
 
     private async Task SaveProduct()
     {
+        if (_formSaving) return;
+
         EnsureSku();
         if (!ValidateForm(requireImages: false))
         {
@@ -1726,9 +1800,17 @@
             return;
         }
 
+        _formSaving = true;
         try
         {
-            await PersistProductAsync(_formStatus);
+            var ok = await PersistProductAsync(_formStatus);
+            if (!ok)
+            {
+                Toast.Show(_formErrors.Values.FirstOrDefault() ?? "Product could not be saved.");
+                return;
+            }
+
+            _formDirty = false;
             Toast.Show("Product added successfully.");
             await CloseProductModalAsync();
         }
@@ -1738,26 +1820,36 @@
                 ? "Product could not be saved."
                 : ex.Message);
         }
+        finally
+        {
+            _formSaving = false;
+        }
     }
 
     private async Task SaveEditedProduct()
     {
-        if (!_isEditMode)
+        if (!_isEditMode || _formSaving)
             return;
 
         // Edit keeps existing image if present; only require an image when none is set.
         if (!ValidateForm(requireImages: _previewImages.Count == 0))
+        {
+            Toast.Show(_formErrors.Values.FirstOrDefault() ?? "Please complete the required fields.");
             return;
+        }
 
+        _formSaving = true;
         try
         {
             var ok = await PersistProductAsync(_formStatus);
             if (!ok)
             {
-                Toast.Show("Product could not be updated.");
+                Toast.Show(_formErrors.Values.FirstOrDefault() ?? "Product could not be updated.");
                 return;
             }
 
+            // Clear dirty before close so Cancel/back never shows discard after a successful save.
+            _formDirty = false;
             Toast.Show("Product updated successfully.");
             await CloseProductModalAsync();
         }
@@ -1767,16 +1859,23 @@
                 ? "Product could not be updated."
                 : ex.Message);
         }
+        finally
+        {
+            _formSaving = false;
+        }
     }
 
     private async Task SaveDraft()
     {
+        if (_formSaving) return;
+
         // Draft allows incomplete fields except a usable name when possible;
         // still validate core fields so the catalog stays coherent.
         if (string.IsNullOrWhiteSpace(_formName))
         {
             _formErrors.Clear();
             _formErrors["name"] = "Product name is required.";
+            Toast.Show("Product name is required.");
             return;
         }
 
@@ -1784,6 +1883,7 @@
         {
             _formErrors.Clear();
             _formErrors["category"] = "Please select a category.";
+            Toast.Show("Please select a category.");
             return;
         }
 
@@ -1791,6 +1891,7 @@
         {
             _formErrors.Clear();
             _formErrors["category"] = "Please select a valid category.";
+            Toast.Show("Please select a valid category.");
             return;
         }
 
@@ -1800,6 +1901,7 @@
         {
             _formErrors.Clear();
             _formErrors["sku"] = "This SKU already exists.";
+            Toast.Show("This SKU already exists.");
             return;
         }
 
@@ -1814,6 +1916,7 @@
             {
                 _formErrors.Clear();
                 _formErrors["price"] = "Price cannot be negative.";
+                Toast.Show("Price cannot be negative.");
                 return;
             }
 
@@ -1821,6 +1924,7 @@
             {
                 _formErrors.Clear();
                 _formErrors["stock"] = "Stock quantity cannot be negative.";
+                Toast.Show("Stock quantity cannot be negative.");
                 return;
             }
         }
@@ -1831,13 +1935,22 @@
             {
                 _formErrors.Clear();
                 _formErrors["variants"] = variantError;
+                Toast.Show(variantError);
                 return;
             }
         }
 
+        _formSaving = true;
         try
         {
-            await PersistProductAsync("Draft");
+            var ok = await PersistProductAsync("Draft");
+            if (!ok)
+            {
+                Toast.Show(_formErrors.Values.FirstOrDefault() ?? "Draft could not be saved.");
+                return;
+            }
+
+            _formDirty = false;
             Toast.Show("Product saved as draft.");
             await CloseProductModalAsync();
         }
@@ -1846,6 +1959,10 @@
             Toast.Show(string.IsNullOrWhiteSpace(ex.Message)
                 ? "Draft could not be saved."
                 : ex.Message);
+        }
+        finally
+        {
+            _formSaving = false;
         }
     }
 
@@ -1863,10 +1980,34 @@
 
         if (hasVariants)
         {
-            stock = variants.Sum(v => Math.Max(0, v.StockQuantity));
-            if (_useDifferentPrices)
+            if (!_useColorVariants && !_useSizeVariants)
             {
-                // While editing, PriceAdjustment holds absolute variant prices.
+                _formErrors["variants"] = "Select Color, Size, or both.";
+                Toast.Show("Select Color, Size, or both.");
+                return false;
+            }
+
+            if (!_useColorVariants)
+            {
+                foreach (var variant in variants)
+                {
+                    variant.ColorName = null;
+                    variant.ColorHex = null;
+                }
+            }
+
+            if (!_useSizeVariants)
+            {
+                foreach (var variant in variants)
+                    variant.Size = string.Empty;
+            }
+
+            stock = variants.Sum(v => Math.Max(0, v.StockQuantity));
+            // Edit: keep loaded price_adjustment deltas; UpdateAsync preserves products.price.
+            // Pricing changes go through Adjust Price only.
+            if (!_isEditMode && _useDifferentPrices)
+            {
+                // Create flow: PriceAdjustment holds absolute variant prices.
                 // Persist as products.price = min absolute, with deltas on each variant.
                 var absolutePrices = variants
                     .Select(v => v.PriceAdjustment)
@@ -1879,7 +2020,7 @@
                     ProductVariantLogic.SetAbsolutePrice(variant, price, absolute);
                 }
             }
-            else
+            else if (!_isEditMode)
             {
                 ProductVariantLogic.ApplySamePriceMode(variants);
             }
@@ -1925,6 +2066,7 @@
                 : SplitColors(_formColors),
             Sizes = variants.Select(v => v.Size).Where(s => !string.IsNullOrWhiteSpace(s)).ToList(),
             Variants = variants,
+            SizeGuideId = hasVariants && _useSizeVariants ? _sizeGuideId : null,
             CreatedAt = DateTime.Now
         };
 

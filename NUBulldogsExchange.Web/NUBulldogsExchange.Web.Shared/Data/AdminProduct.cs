@@ -21,6 +21,7 @@ public class AdminProduct
     public List<string> Colors { get; set; } = [];
     public List<string> Sizes { get; set; } = [];
     public List<ProductVariant> Variants { get; set; } = [];
+    public string? SizeGuideId { get; set; }
     public bool HasVariants => Variants.Count > 0;
     public bool HasSizeVariants => Variants.Any(v => !string.IsNullOrWhiteSpace(v.Size));
     public bool HasColorVariants => Variants.Any(v => !string.IsNullOrWhiteSpace(v.ColorName));
@@ -65,6 +66,7 @@ public class AdminProduct
         Colors = [.. Colors],
         Sizes = [.. Sizes],
         Variants = Variants.Select(v => v.Clone()).ToList(),
+        SizeGuideId = SizeGuideId,
         CreatedAt = CreatedAt
     };
 
@@ -93,6 +95,7 @@ public class AdminProduct
         Colors = [.. product.Colors],
         Sizes = [.. product.Sizes],
         Variants = product.Variants.Select(v => v.Clone()).ToList(),
+        SizeGuideId = string.IsNullOrWhiteSpace(product.SizeGuideId) ? null : product.SizeGuideId.Trim(),
         CreatedAt = product.CreatedAt ?? default
     };
 }

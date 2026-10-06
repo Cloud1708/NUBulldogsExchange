@@ -1,0 +1,318 @@
+@namespace NUBulldogsExchange.Web.Shared.Components.Admin
+@using System.Globalization
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminSizeGuideService Guides
+@inject ToastService Toast
+
+@if (IsOpen)
+{
+    <div class="admin-modal-backdrop size-guide-editor-backdrop" @onclick="Cancel">
+        <div class="admin-modal admin-product-modal size-guide-editor-modal" role="dialog" aria-modal="true" @onclick:stopPropagation="true">
+            <header class="admin-product-modal-header">
+                <h2>@(_isEdit ? "Edit Size Guide" : "Create Size Guide")</h2>
+                <button type="button" class="admin-product-modal-close" aria-label="Close" @onclick="Cancel">
+                    <Icon Name="x" Size="18" />
+                </button>
+            </header>
+
+            <div class="admin-product-modal-body">
+                <div class="admin-product-modal-grid">
+                    <label class="admin-field admin-field-full">
+                        <span>Guide Name *</span>
+                        <input type="text" value="@_name" @oninput="e => _name = e.Value?.ToString() ?? string.Empty" placeholder="NU Apparel Standard" />
+                    </label>
+                    <label class="admin-field">
+                        <span>Sizing Standard *</span>
+                        <select value="@_standard" @onchange="OnStandardChanged">
+                            @foreach (var option in SizeGuideCatalog.Standards)
+                            {
+                                <option value="@option.Key">@option.Label</option>
+                            }
+                        </select>
+                    </label>
+                    <label class="admin-field">
+                        <span>Measurement Unit *</span>
+                        <select value="@_unit" @onchange="e => _unit = e.Value?.ToString() ?? SizeGuideCatalog.Inches">
+                            @foreach (var option in SizeGuideCatalog.Units)
+                            {
+                                <option value="@option.Key">@option.Label</option>
+                            }
+                        </select>
+                    </label>
+                </div>
+
+                <div class="size-guide-editor-table-block">
+                    <div class="size-guide-editor-table-head">
+                        <strong>Measurements</strong>
+                        <div class="size-guide-editor-table-actions">
+                            <button type="button" class="btn btn-outline-navy" @onclick="AddSize">+ Add Size</button>
+                            <button type="button" class="btn btn-outline-navy" @onclick="AddColumn">+ Add Measurement Column</button>
+                        </div>
+                    </div>
+
+                    <div class="size-guide-editor-chips">
+                        @foreach (var size in SizeGuideCatalog.SuggestedSizes)
+                        {
+                            var exists = _rows.Any(r => r.Size.Equals(size, StringComparison.OrdinalIgnoreCase));
+                            <button type="button"
+                                    class="admin-variant-chip @(exists ? "is-selected" : "")"
+                                    disabled="@exists"
+                                    @onclick="() => AddSuggestedSize(size)">@size</button>
+                        }
+                    </div>
+
+                    <div class="size-guide-table-wrap size-guide-editor-scroll">
+                        <table class="size-guide-editor-table">
+                            <thead>
+                                <tr>
+                                    <th>Size</th>
+                                    @for (var i = 0; i < _columns.Count; i++)
+                                    {
+                                        var colIndex = i;
+                                        <th>
+                                            <input type="text"
+                                                   value="@_columns[colIndex].Name"
+                                                   @oninput="e => OnColumnName(colIndex, e)"
+                                                   placeholder="Chest" />
+                                            <button type="button" class="size-guide-icon-btn" title="Remove column" @onclick="() => RemoveColumn(colIndex)">
+                                                <Icon Name="trash" Size="13" />
+                                            </button>
+                                        </th>
+                                    }
+                                    <th class="size-guide-actions-col">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @for (var r = 0; r < _rows.Count; r++)
+                                {
+                                    var rowIndex = r;
+                                    <tr>
+                                        <td>
+                                            <input type="text"
+                                                   value="@_rows[rowIndex].Size"
+                                                   @oninput="e => OnRowSize(rowIndex, e)"
+                                                   placeholder="M" />
+                                        </td>
+                                        @for (var c = 0; c < _columns.Count; c++)
+                                        {
+                                            var col = _columns[c];
+                                            var valueText = ValueText(_rows[rowIndex], col.Id);
+                                            <td>
+                                                <input type="number"
+                                                       min="0"
+                                                       step="0.1"
+                                                       value="@valueText"
+                                                       @oninput="e => OnCell(rowIndex, col.Id, e)"
+                                                       placeholder="0" />
+                                            </td>
+                                        }
+                                        <td class="size-guide-actions-col">
+                                            <button type="button" class="size-guide-icon-btn" title="Remove size" @onclick="() => RemoveRow(rowIndex)">
+                                                <Icon Name="trash" Size="14" />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    <small class="ar-hint">Add a custom size or measurement name in the empty fields. Values are stored in the selected unit — they are not converted.</small>
+                </div>
+
+                <label class="admin-field admin-field-full">
+                    <span>Notes (Optional)</span>
+                    <textarea rows="3" value="@_notes" @oninput="e => _notes = e.Value?.ToString() ?? string.Empty"
+                              placeholder="This size guide follows Philippine (PH) sizing. Measurements may vary by 1–2 inches depending on product style and fit."></textarea>
+                </label>
+
+                @if (!string.IsNullOrWhiteSpace(_error))
+                {
+                    <em class="admin-size-variants-error">@_error</em>
+                }
+            </div>
+
+            <footer class="admin-product-modal-footer">
+                <button type="button" class="btn btn-outline-navy" @onclick="Cancel">Cancel</button>
+                <button type="button" class="btn btn-navy" @onclick="Save">Save Size Guide</button>
+            </footer>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public SizeGuide? Editing { get; set; }
+    [Parameter] public EventCallback OnCancel { get; set; }
+    [Parameter] public EventCallback<SizeGuide> OnSaved { get; set; }
+
+    private bool _isEdit;
+    private string _id = string.Empty;
+    private string _name = string.Empty;
+    private string _standard = SizeGuideCatalog.Philippines;
+    private string _unit = SizeGuideCatalog.Inches;
+    private string _notes = string.Empty;
+    private string? _error;
+    private List<SizeGuideColumn> _columns = [];
+    private List<SizeGuideRow> _rows = [];
+
+    private bool _wasOpen;
+
+    protected override void OnParametersSet()
+    {
+        if (!IsOpen)
+        {
+            _wasOpen = false;
+            return;
+        }
+
+        if (_wasOpen) return;
+        _wasOpen = true;
+        LoadDraft(Editing);
+    }
+
+    private void LoadDraft(SizeGuide? source)
+    {
+        var draft = source?.Clone() ?? SizeGuideCatalog.NewDraft();
+        _isEdit = !string.IsNullOrWhiteSpace(source?.Id);
+        _id = draft.Id;
+        _name = draft.Name;
+        _standard = string.IsNullOrWhiteSpace(draft.SizingStandard) ? SizeGuideCatalog.Philippines : draft.SizingStandard;
+        _unit = string.IsNullOrWhiteSpace(draft.MeasurementUnit) ? SizeGuideCatalog.Inches : draft.MeasurementUnit;
+        _notes = draft.Notes ?? string.Empty;
+        _columns = draft.Columns.Select(c => c.Clone()).ToList();
+        _rows = draft.Rows.Select(r => r.Clone()).ToList();
+        _error = null;
+        if (_columns.Count == 0)
+            _columns.Add(SizeGuideCatalog.NewColumn("Chest"));
+        if (_rows.Count == 0)
+            _rows.Add(new SizeGuideRow { Size = "S" });
+    }
+
+    private void OnStandardChanged(ChangeEventArgs e)
+    {
+        var next = e.Value?.ToString() ?? SizeGuideCatalog.Philippines;
+        _standard = next;
+        if (string.IsNullOrWhiteSpace(_notes) || _notes.Contains("Philippine (PH) sizing", StringComparison.OrdinalIgnoreCase)
+            || _notes.Contains("This size guide follows", StringComparison.OrdinalIgnoreCase))
+        {
+            _notes = SizeGuideCatalog.StandardNote(next, _unit);
+        }
+    }
+
+    private void AddSuggestedSize(string size)
+    {
+        if (_rows.Any(r => r.Size.Equals(size, StringComparison.OrdinalIgnoreCase)))
+            return;
+        _rows.Add(new SizeGuideRow { Size = size });
+    }
+
+    private void AddSize()
+    {
+        _rows.Add(new SizeGuideRow());
+    }
+
+    private void AddColumn()
+    {
+        _columns.Add(SizeGuideCatalog.NewColumn(string.Empty));
+    }
+
+    private void RemoveRow(int index)
+    {
+        if (index < 0 || index >= _rows.Count) return;
+        if (_rows.Count <= 1) return;
+        _rows.RemoveAt(index);
+    }
+
+    private void RemoveColumn(int index)
+    {
+        if (index < 0 || index >= _columns.Count) return;
+        if (_columns.Count <= 1) return;
+        var id = _columns[index].Id;
+        _columns.RemoveAt(index);
+        foreach (var row in _rows)
+            row.Values.Remove(id);
+    }
+
+    private void OnColumnName(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= _columns.Count) return;
+        _columns[index].Name = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnRowSize(int index, ChangeEventArgs e)
+    {
+        if (index < 0 || index >= _rows.Count) return;
+        _rows[index].Size = e.Value?.ToString() ?? string.Empty;
+    }
+
+    private void OnCell(int rowIndex, string columnId, ChangeEventArgs e)
+    {
+        if (rowIndex < 0 || rowIndex >= _rows.Count) return;
+        var raw = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            _rows[rowIndex].Values[columnId] = null;
+            return;
+        }
+
+        if (decimal.TryParse(raw, NumberStyles.Number, CultureInfo.InvariantCulture, out var value)
+            || decimal.TryParse(raw, NumberStyles.Number, CultureInfo.CurrentCulture, out value))
+        {
+            _rows[rowIndex].Values[columnId] = value;
+        }
+    }
+
+    private static string ValueText(SizeGuideRow row, string columnId) =>
+        row.Values.TryGetValue(columnId, out var value) && value is not null
+            ? SizeGuideCatalog.FormatValue(value)
+            : string.Empty;
+
+    private async Task Save()
+    {
+        var guide = new SizeGuide
+        {
+            Id = _id,
+            Name = _name.Trim(),
+            SizingStandard = _standard,
+            MeasurementUnit = _unit,
+            Notes = _notes.Trim(),
+            Columns = _columns.Select(c => c.Clone()).ToList(),
+            Rows = _rows.Select(r => r.Clone()).ToList()
+        };
+        _error = SizeGuideCatalog.Validate(guide);
+        if (_error is not null)
+            return;
+
+        try
+        {
+            var saved = await Guides.SaveAsync(guide);
+            Toast.Show(_isEdit ? "Size guide updated." : "Size guide saved.");
+            await OnSaved.InvokeAsync(saved);
+            Reset();
+        }
+        catch (Exception ex)
+        {
+            _error = string.IsNullOrWhiteSpace(ex.Message)
+                ? "Size guide could not be saved."
+                : ex.Message;
+        }
+    }
+
+    private async Task Cancel()
+    {
+        Reset();
+        await OnCancel.InvokeAsync();
+    }
+
+    private void Reset()
+    {
+        _columns = [];
+        _rows = [];
+        _error = null;
+        _name = string.Empty;
+        _notes = string.Empty;
+        _id = string.Empty;
+        _isEdit = false;
+    }
+}

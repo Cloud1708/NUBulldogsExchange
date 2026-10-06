@@ -17,6 +17,8 @@ public class Product
     public List<string> Colors { get; set; } = [];
     public List<string> Sizes { get; set; } = [];
     public List<ProductVariant> Variants { get; set; } = [];
+    /// <summary>Nullable FK to a reusable Size Guide template. Empty when unassigned.</summary>
+    public string? SizeGuideId { get; set; }
     public bool HasVariants => Variants.Count > 0;
     public bool HasSizeVariants => Variants.Any(v => !string.IsNullOrWhiteSpace(v.Size));
     public bool HasColorVariants => Variants.Any(v => !string.IsNullOrWhiteSpace(v.ColorName));

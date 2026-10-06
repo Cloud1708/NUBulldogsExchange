@@ -11,6 +11,33 @@
         <span>This product has variants</span>
     </label>
 
+    @if (HasVariants)
+    {
+        <div class="admin-variant-type">
+            <span class="admin-variant-type-label">Variant Type</span>
+            <div class="admin-variant-type-options">
+                <label class="admin-size-variants-toggle">
+                    <input type="checkbox"
+                           checked="@UseColorVariants"
+                           disabled="@Disabled"
+                           @onchange="OnUseColorChanged" />
+                    <span>Color</span>
+                </label>
+                <label class="admin-size-variants-toggle">
+                    <input type="checkbox"
+                           checked="@UseSizeVariants"
+                           disabled="@Disabled"
+                           @onchange="OnUseSizeChanged" />
+                    <span>Size</span>
+                </label>
+            </div>
+            @if (!UseColorVariants && !UseSizeVariants)
+            {
+                <em class="admin-size-variants-error">Select Color, Size, or both.</em>
+            }
+        </div>
+    }
+
     @if (!HasVariants)
     {
         <label class="admin-field admin-product-stock-field">
@@ -75,6 +102,12 @@
                     }
                 </label>
             }
+            else if (PriceInputsReadOnly)
+            {
+                <div class="admin-variant-price-hint">
+                    Prices are read-only here. Use <strong>Adjust Price</strong> to change variant pricing.
+                </div>
+            }
             else
             {
                 <div class="admin-variant-price-hint">
@@ -120,6 +153,8 @@
                                 @onclick="CloseGenerator">×</button>
                     </div>
 
+                    @if (UseColorVariants)
+                    {
                     <div class="admin-variant-builder-block">
                         <span class="admin-variant-builder-label">Colors</span>
                         <div class="admin-variant-chip-row">
@@ -157,7 +192,10 @@
                             </div>
                         }
                     </div>
+                    }
 
+                    @if (UseSizeVariants)
+                    {
                     <div class="admin-variant-builder-block">
                         <span class="admin-variant-builder-label">Sizes</span>
                         <div class="admin-variant-chip-row">
@@ -194,6 +232,7 @@
                             </div>
                         }
                     </div>
+                    }
 
                     @if (!string.IsNullOrWhiteSpace(_generatorError))
                     {
@@ -204,7 +243,7 @@
                         <button type="button" class="btn btn-outline-navy" @onclick="CloseGenerator">Cancel</button>
                         <button type="button"
                                 class="btn btn-navy"
-                                disabled="@(_selectedColors.Count == 0 && _selectedSizes.Count == 0)"
+                                disabled="@((!UseColorVariants || _selectedColors.Count == 0) && (!UseSizeVariants || _selectedSizes.Count == 0))"
                                 @onclick="GenerateVariants">
                             Generate Variants
                         </button>
@@ -212,10 +251,16 @@
                 </div>
             }
 
-            <div class="admin-size-variants-table admin-unified-variants-table admin-priced-variants-table" role="table">
+            <div class="admin-size-variants-table admin-unified-variants-table admin-priced-variants-table @VariantTableClass" role="table">
                 <div class="admin-unified-variants-row is-header" role="row">
-                    <span role="columnheader">Color</span>
-                    <span role="columnheader">Size</span>
+                    @if (UseColorVariants)
+                    {
+                        <span role="columnheader">Color</span>
+                    }
+                    @if (UseSizeVariants)
+                    {
+                        <span role="columnheader">Size</span>
+                    }
                     <span role="columnheader">SKU</span>
                     <span role="columnheader">Price</span>
                     <span role="columnheader">Stock</span>
@@ -229,29 +274,35 @@
                     var row = Variants[index];
                     var displayPrice = DisplayPriceFor(row);
                     <div class="admin-unified-variants-row" role="row">
-                        <div class="admin-unified-color-cell">
-                            <input type="text"
-                                   value="@row.ColorName"
-                                   placeholder="Navy or #0B1F3A"
-                                   disabled="@Disabled"
-                                   list="@_colorListId"
-                                   @oninput="e => OnColorNameChanged(index, e)" />
-                            @if (!string.IsNullOrWhiteSpace(row.ColorName) || !string.IsNullOrWhiteSpace(row.ColorHex))
-                            {
-                                <input type="color"
-                                       class="admin-variant-row-color-picker"
-                                       value="@ColorInputValue(row.ColorHex, row.ColorName)"
+                        @if (UseColorVariants)
+                        {
+                            <div class="admin-unified-color-cell">
+                                <input type="text"
+                                       value="@row.ColorName"
+                                       placeholder="Navy or #0B1F3A"
                                        disabled="@Disabled"
-                                       title="Pick color"
-                                       @oninput="e => OnColorHexPickerChanged(index, e)" />
-                            }
-                        </div>
-                        <input type="text"
-                               value="@row.Size"
-                               placeholder="S"
-                               disabled="@Disabled"
-                               list="@_sizeListId"
-                               @oninput="e => OnSizeChanged(index, e)" />
+                                       list="@_colorListId"
+                                       @oninput="e => OnColorNameChanged(index, e)" />
+                                @if (!string.IsNullOrWhiteSpace(row.ColorName) || !string.IsNullOrWhiteSpace(row.ColorHex))
+                                {
+                                    <input type="color"
+                                           class="admin-variant-row-color-picker"
+                                           value="@ColorInputValue(row.ColorHex, row.ColorName)"
+                                           disabled="@Disabled"
+                                           title="Pick color"
+                                           @oninput="e => OnColorHexPickerChanged(index, e)" />
+                                }
+                            </div>
+                        }
+                        @if (UseSizeVariants)
+                        {
+                            <input type="text"
+                                   value="@row.Size"
+                                   placeholder="S"
+                                   disabled="@Disabled"
+                                   list="@_sizeListId"
+                                   @oninput="e => OnSizeChanged(index, e)" />
+                        }
                         <span class="admin-variant-sku-readonly" title="Auto-generated from base SKU, color, and size">
                             @(string.IsNullOrWhiteSpace(row.Sku) ? "—" : row.Sku)
                         </span>
@@ -334,6 +385,11 @@
     [Parameter] public bool PriceModeLocked { get; set; }
     [Parameter] public bool PriceInputsReadOnly { get; set; }
 
+    [Parameter] public bool UseColorVariants { get; set; } = true;
+    [Parameter] public EventCallback<bool> UseColorVariantsChanged { get; set; }
+    [Parameter] public bool UseSizeVariants { get; set; } = true;
+    [Parameter] public EventCallback<bool> UseSizeVariantsChanged { get; set; }
+
     private readonly string _radioGroup = $"pricing-{Guid.NewGuid():N}";
     private readonly string _colorListId = $"colors-{Guid.NewGuid():N}";
     private readonly string _sizeListId = $"sizes-{Guid.NewGuid():N}";
@@ -348,6 +404,12 @@
     private bool _generatorOpen;
     private string? _generatorError;
     private bool _differentPriceAbsolutesReady;
+
+    private string VariantTableClass =>
+        UseColorVariants && UseSizeVariants ? "is-both"
+        : UseColorVariants ? "is-color-only"
+        : UseSizeVariants ? "is-size-only"
+        : "is-both";
 
     private int TotalStock =>
         Variants.Sum(v => Math.Max(0, v.StockQuantity));
@@ -365,7 +427,8 @@
         if (_anchoredBasePrice <= 0 && ResolvedBasePrice > 0)
             _anchoredBasePrice = ResolvedBasePrice;
 
-        if (UseDifferentPrices)
+        // Edit mode keeps DB deltas (price_adjustment); pricing is changed via Adjust Price.
+        if (UseDifferentPrices && !PriceInputsReadOnly)
             EnsureAbsoluteVariantPrices();
         else
             _differentPriceAbsolutesReady = false;
@@ -411,17 +474,20 @@
 
     /// <summary>
     /// Same-price: shared base price.
-    /// Different-price: PriceAdjustment holds the absolute sell price while editing.
+    /// Create + different-price: PriceAdjustment holds the absolute sell price while editing.
+    /// Edit (read-only): PriceAdjustment is the DB delta; resolve against product base price.
     /// </summary>
     private decimal DisplayPriceFor(ProductVariant row)
     {
+        var basePrice = ResolvedBasePrice;
+        if (basePrice <= 0 && _anchoredBasePrice > 0)
+            basePrice = _anchoredBasePrice;
+
         if (!UseDifferentPrices)
-        {
-            var basePrice = ResolvedBasePrice;
-            if (basePrice <= 0 && _anchoredBasePrice > 0)
-                basePrice = _anchoredBasePrice;
             return basePrice;
-        }
+
+        if (PriceInputsReadOnly)
+            return ProductVariantLogic.ResolvePrice(basePrice, row);
 
         return row.PriceAdjustment > 0 ? row.PriceAdjustment : 0m;
     }
@@ -447,7 +513,46 @@
         _generatorError = null;
         if (enabled && Variants.Count == 0)
             Variants.Add(NewRow());
+        if (enabled)
+        {
+            if (!UseColorVariants && !UseSizeVariants)
+            {
+                UseColorVariants = true;
+                UseSizeVariants = true;
+                await UseColorVariantsChanged.InvokeAsync(true);
+                await UseSizeVariantsChanged.InvokeAsync(true);
+            }
+        }
         await HasVariantsChanged.InvokeAsync(enabled);
+        await NotifyVariantsAsync();
+    }
+
+    private async Task OnUseColorChanged(ChangeEventArgs e)
+    {
+        var enabled = e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
+        UseColorVariants = enabled;
+        if (!enabled)
+        {
+            foreach (var variant in Variants)
+            {
+                variant.ColorName = null;
+                variant.ColorHex = null;
+            }
+        }
+        await UseColorVariantsChanged.InvokeAsync(enabled);
+        await NotifyVariantsAsync();
+    }
+
+    private async Task OnUseSizeChanged(ChangeEventArgs e)
+    {
+        var enabled = e.Value is bool b ? b : bool.TryParse(e.Value?.ToString(), out var parsed) && parsed;
+        UseSizeVariants = enabled;
+        if (!enabled)
+        {
+            foreach (var variant in Variants)
+                variant.Size = string.Empty;
+        }
+        await UseSizeVariantsChanged.InvokeAsync(enabled);
         await NotifyVariantsAsync();
     }
 
@@ -733,11 +838,19 @@
     private async Task GenerateVariants()
     {
         _generatorError = null;
-        var colors = _selectedColors.Select(c => c.Trim()).Where(c => c.Length > 0).ToList();
-        var sizes = _selectedSizes.Select(s => s.Trim()).Where(s => s.Length > 0).ToList();
+        var colors = UseColorVariants
+            ? _selectedColors.Select(c => c.Trim()).Where(c => c.Length > 0).ToList()
+            : [];
+        var sizes = UseSizeVariants
+            ? _selectedSizes.Select(s => s.Trim()).Where(s => s.Length > 0).ToList()
+            : [];
         if (colors.Count == 0 && sizes.Count == 0)
         {
-            _generatorError = "Select at least one color or size.";
+            _generatorError = UseColorVariants && UseSizeVariants
+                ? "Select at least one color or size."
+                : UseColorVariants
+                    ? "Select at least one color."
+                    : "Select at least one size.";
             return;
         }
 

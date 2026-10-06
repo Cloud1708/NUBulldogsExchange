@@ -146,8 +146,16 @@ else
                     {
                         <div class="pdp-option">
                             <div class="pdp-option-head">
-                                <span>Select Size</span>
-                                <button type="button" class="pdp-size-guide-link" @onclick="() => _showSizeGuide = true">Size Guide</button>
+                                <span>Size</span>
+                                @if (_assignedGuide is not null)
+                                {
+                                    <div class="pdp-size-guide-head">
+                                        <button type="button" class="pdp-size-guide-link" @onclick="() => _showSizeGuide = true">
+                                            Size Guide
+                                        </button>
+                                        <span class="size-guide-badge is-region">@SizeGuideCatalog.StandardBadge(_assignedGuide.SizingStandard)</span>
+                                    </div>
+                                }
                             </div>
                             <div class="pdp-sizes">
                                 @foreach (var variant in VisibleSizeVariants)
@@ -397,37 +405,14 @@ else
         </div>
     </section>
 
-    @if (_showSizeGuide)
+    @if (_showSizeGuide && _assignedGuide is not null)
     {
         <div class="pdp-modal-backdrop" @onclick="() => _showSizeGuide = false">
-            <div class="pdp-modal" @onclick:stopPropagation="true">
-                <div class="pdp-modal-head">
-                    <h3>Size Guide</h3>
-                    <button type="button" class="pdp-modal-close" @onclick="() => _showSizeGuide = false" aria-label="Close">
-                        <Icon Name="x" Size="18" />
-                    </button>
-                </div>
-                @if (_product.Section == "apparel")
-                {
-                    <table class="pdp-size-table">
-                        <thead>
-                            <tr><th>Size</th><th>Chest (in)</th><th>Length (in)</th></tr>
-                        </thead>
-                        <tbody>
-                            <tr><td>XS</td><td>34–36</td><td>26</td></tr>
-                            <tr><td>S</td><td>36–38</td><td>27</td></tr>
-                            <tr><td>M</td><td>38–40</td><td>28</td></tr>
-                            <tr><td>L</td><td>40–42</td><td>29</td></tr>
-                            <tr><td>XL</td><td>42–44</td><td>30</td></tr>
-                            <tr><td>XXL</td><td>44–46</td><td>31</td></tr>
-                        </tbody>
-                    </table>
-                }
-                else
-                {
-                    <p class="pdp-modal-note">This item is offered in <strong>One Size</strong> and is designed for a universal fit.</p>
-                }
-            </div>
+            <SizeGuideDialog Guide="_assignedGuide"
+                             ShowSubtitle="true"
+                             ShowHowToMeasure="true"
+                             CssClass="is-customer"
+                             OnClose="() => _showSizeGuide = false" />
         </div>
     }
 
@@ -454,6 +439,7 @@ else
 
     private bool _showSizeGuide;
     private int _loadedProductId;
+    private SizeGuide? _assignedGuide;
 
     private bool HasColors =>
         _product?.Variants.Any(v => v.IsActive && !string.IsNullOrWhiteSpace(v.ColorName)) == true;
@@ -541,6 +527,7 @@ else
     protected override async Task OnParametersSetAsync()
     {
         LoadProduct();
+        await LoadAssignedGuideAsync();
         await LoadReviewsAsync();
     }
 
@@ -553,6 +540,7 @@ else
         {
             _related = [];
             _displayReviews = [];
+            _assignedGuide = null;
             _loadedProductId = 0;
             return;
         }
@@ -568,6 +556,28 @@ else
         }
 
         _displayReviews = [.. _product.ProductReviews];
+    }
+
+    private async Task LoadAssignedGuideAsync()
+    {
+        if (_product is null || !HasSizes || string.IsNullOrWhiteSpace(_product.SizeGuideId))
+        {
+            _assignedGuide = null;
+            _showSizeGuide = false;
+            return;
+        }
+
+        try
+        {
+            _assignedGuide = await Db.GetSizeGuideByIdAsync(_product.SizeGuideId);
+        }
+        catch
+        {
+            _assignedGuide = null;
+        }
+
+        if (_assignedGuide is null)
+            _showSizeGuide = false;
     }
 
     private async Task LoadReviewsAsync()

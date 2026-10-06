@@ -1,0 +1,89 @@
+@namespace NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+
+@if (Guide is not null)
+{
+    <div class="size-guide-dialog @CssClass" @onclick:stopPropagation="true">
+        <div class="size-guide-dialog-head">
+            <div>
+                <h3>Size Guide — @Guide.Name</h3>
+                @if (ShowSubtitle)
+                {
+                    <p>Find your best fit using the measurements below.</p>
+                }
+            </div>
+            @if (OnClose.HasDelegate)
+            {
+                <button type="button" class="pdp-modal-close" @onclick="OnClose" aria-label="Close">
+                    <Icon Name="x" Size="18" />
+                </button>
+            }
+        </div>
+
+        <div class="size-guide-badges">
+            <span class="size-guide-badge is-region">@SizeGuideCatalog.StandardCustomerLabel(Guide.SizingStandard)</span>
+            <span class="size-guide-badge is-unit">@SizeGuideCatalog.UnitLabel(Guide.MeasurementUnit)</span>
+        </div>
+
+        <div class="size-guide-table-wrap">
+            <table class="pdp-size-table size-guide-table">
+                <thead>
+                    <tr>
+                        <th>Size</th>
+                        @foreach (var column in Guide.Columns)
+                        {
+                            <th>@column.Name</th>
+                        }
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var row in Guide.Rows)
+                    {
+                        <tr>
+                            <td>@row.Size</td>
+                            @foreach (var column in Guide.Columns)
+                            {
+                                var hasValue = row.Values.TryGetValue(column.Id, out var value);
+                                <td>@(hasValue ? SizeGuideCatalog.FormatValue(value) : "—")</td>
+                            }
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+
+        @if (ShowHowToMeasure)
+        {
+            <div class="size-guide-howto">
+                <h4>How to Measure</h4>
+                <div class="size-guide-howto-grid">
+                    @foreach (var column in Guide.Columns)
+                    {
+                        var instruction = SizeGuideCatalog.HowToMeasure(column.Name);
+                        <article>
+                            <strong>@column.Name</strong>
+                            @if (!string.IsNullOrWhiteSpace(instruction))
+                            {
+                                <p>@instruction</p>
+                            }
+                        </article>
+                    }
+                </div>
+            </div>
+        }
+
+        <p class="size-guide-note">
+            @(string.IsNullOrWhiteSpace(Guide.Notes)
+                ? SizeGuideCatalog.StandardNote(Guide.SizingStandard, Guide.MeasurementUnit)
+                : Guide.Notes)
+        </p>
+    </div>
+}
+
+@code {
+    [Parameter] public SizeGuide? Guide { get; set; }
+    [Parameter] public bool ShowSubtitle { get; set; }
+    [Parameter] public bool ShowHowToMeasure { get; set; }
+    [Parameter] public EventCallback OnClose { get; set; }
+    [Parameter] public string? CssClass { get; set; }
+}

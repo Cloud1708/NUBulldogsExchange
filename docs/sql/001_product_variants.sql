@@ -82,7 +82,7 @@ CREATE POLICY product_variants_admin_all
         EXISTS (
             SELECT 1
             FROM public.users_with_roles u
-            WHERE u.id = auth.uid()
+            WHERE u.id::text = auth.uid()::text
               AND lower(u.role) IN ('admin', 'staff')
         )
     )
@@ -90,10 +90,13 @@ CREATE POLICY product_variants_admin_all
         EXISTS (
             SELECT 1
             FROM public.users_with_roles u
-            WHERE u.id = auth.uid()
+            WHERE u.id::text = auth.uid()::text
               AND lower(u.role) IN ('admin', 'staff')
         )
     );
+
+-- If Edit Product still fails with RLS on product_variants, re-run:
+--   docs/sql/024_product_variants_admin_rls_fix.sql
 
 -- 6) Checkout RPC note:
 -- Update place_checkout_order to:

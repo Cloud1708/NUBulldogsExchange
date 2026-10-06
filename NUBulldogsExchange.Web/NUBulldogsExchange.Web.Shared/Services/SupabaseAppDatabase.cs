@@ -312,6 +312,137 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         return response.IsSuccessStatusCode;
     }
 
+    public async Task<List<SizeGuide>> GetSizeGuidesAsync()
+    {
+        try
+        {
+            return await GetListAsync<SizeGuide>("rest/v1/size_guides?select=*&order=name.asc");
+        }
+        catch (Exception ex) when (IsMissingSizeGuideSchema(ex.Message))
+        {
+            return [];
+        }
+    }
+
+    public async Task<SizeGuide?> GetSizeGuideByIdAsync(string id)
+    {
+        if (string.IsNullOrWhiteSpace(id))
+            return null;
+        try
+        {
+            var rows = await GetListAsync<SizeGuide>(
+                $"rest/v1/size_guides?select=*&id=eq.{Uri.EscapeDataString(id.Trim())}&limit=1");
+            return rows.FirstOrDefault();
+        }
+        catch (Exception ex) when (IsMissingSizeGuideSchema(ex.Message))
+        {
+            return null;
+        }
+    }
+
+    public async Task<SizeGuide> UpsertSizeGuideAsync(SizeGuide guide)
+    {
+        RequireAuth();
+        var error = SizeGuideCatalog.Validate(guide);
+        if (error is not null)
+            throw new InvalidOperationException(error);
+
+        guide.Name = guide.Name.Trim();
+        guide.SizingStandard = string.IsNullOrWhiteSpace(guide.SizingStandard)
+            ? SizeGuideCatalog.Philippines
+            : guide.SizingStandard.Trim().ToLowerInvariant();
+        guide.MeasurementUnit = string.IsNullOrWhiteSpace(guide.MeasurementUnit)
+            ? SizeGuideCatalog.Inches
+            : guide.MeasurementUnit.Trim().ToLowerInvariant();
+        guide.Notes = string.IsNullOrWhiteSpace(guide.Notes) ? null : guide.Notes.Trim();
+        guide.Columns = guide.Columns
+            .Where(c => !string.IsNullOrWhiteSpace(c.Name))
+            .Select(c => new SizeGuideColumn
+            {
+                Id = string.IsNullOrWhiteSpace(c.Id) ? Guid.NewGuid().ToString("N") : c.Id.Trim(),
+                Name = c.Name.Trim()
+            })
+            .ToList();
+        guide.Rows = guide.Rows
+            .Where(r => !string.IsNullOrWhiteSpace(r.Size))
+            .Select(r => new SizeGuideRow
+            {
+                Size = r.Size.Trim(),
+                Values = r.Values
+                    .Where(kv => guide.Columns.Any(c => c.Id.Equals(kv.Key, StringComparison.OrdinalIgnoreCase)))
+                    .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.OrdinalIgnoreCase)
+            })
+            .ToList();
+        guide.UpdatedAt = DateTime.UtcNow;
+
+        var isNew = string.IsNullOrWhiteSpace(guide.Id);
+        if (isNew)
+        {
+            guide.Id = Guid.NewGuid().ToString();
+            guide.CreatedAt = DateTime.UtcNow;
+        }
+
+        var body = new Dictionary<string, object?>
+        {
+            ["id"] = guide.Id,
+            ["name"] = guide.Name,
+            ["sizing_standard"] = guide.SizingStandard,
+            ["measurement_unit"] = guide.MeasurementUnit,
+            ["notes"] = guide.Notes,
+            ["columns"] = guide.Columns,
+            ["rows"] = guide.Rows,
+            ["updated_at"] = guide.UpdatedAt
+        };
+        if (isNew)
+            body["created_at"] = guide.CreatedAt;
+
+        try
+        {
+            var rows = isNew
+                ? await SendForListAsync<SizeGuide>(HttpMethod.Post, "rest/v1/size_guides", body, "return=representation")
+                : await SendForListAsync<SizeGuide>(
+                    HttpMethod.Patch,
+                    $"rest/v1/size_guides?id=eq.{Uri.EscapeDataString(guide.Id)}",
+                    body,
+                    "return=representation");
+            return rows.FirstOrDefault() ?? guide;
+        }
+        catch (Exception ex) when (IsMissingSizeGuideSchema(ex.Message))
+        {
+            throw new InvalidOperationException(
+                "Size guides are not set up yet. Run docs/sql/023_size_guides.sql in the Supabase SQL Editor, then try again.");
+        }
+    }
+
+    public async Task<bool> DeleteSizeGuideAsync(string id)
+    {
+        RequireAuth();
+        if (string.IsNullOrWhiteSpace(id))
+            return false;
+        try
+        {
+            using var response = await SendAsync(
+                HttpMethod.Delete,
+                $"rest/v1/size_guides?id=eq.{Uri.EscapeDataString(id.Trim())}");
+            return response.IsSuccessStatusCode;
+        }
+        catch (Exception ex) when (IsMissingSizeGuideSchema(ex.Message))
+        {
+            return false;
+        }
+    }
+
+    private static bool IsMissingSizeGuideSchema(string? message)
+    {
+        var lower = (message ?? string.Empty).ToLowerInvariant();
+        return lower.Contains("size_guides")
+            && (lower.Contains("does not exist")
+                || lower.Contains("could not find")
+                || lower.Contains("schema cache")
+                || lower.Contains("pgrst205")
+                || lower.Contains("relation"));
+    }
+
     public async Task<List<ProductReview>> GetProductReviewsAsync(int productId)
     {
         var rows = await GetListAsync<ProductReviewRow>(
@@ -608,6 +739,14 @@ public sealed class SupabaseAppDatabase : IAppDatabase
                 "return=minimal");
             await EnsureSuccessAsync(sizeRetry);
             return;
+        }
+
+        if (body.Contains("row-level security", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("rls", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "Unable to save product variants (database permission). " +
+                "Run docs/sql/024_product_variants_admin_rls_fix.sql in the Supabase SQL Editor, then try again.");
         }
 
         await EnsureSuccessAsync(insert);
@@ -3473,6 +3612,7 @@ public sealed class SupabaseAppDatabase : IAppDatabase
             ["images"] = images,
             ["colors"] = colors,
             ["sizes"] = sizes,
+            ["size_guide_id"] = string.IsNullOrWhiteSpace(p.SizeGuideId) ? null : p.SizeGuideId.Trim(),
             ["status"] = status,
             ["in_stock"] = p.Stock > 0 && p.IsPublished,
             ["is_published"] = p.IsPublished,

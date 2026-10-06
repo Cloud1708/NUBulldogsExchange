@@ -35,6 +35,13 @@ public interface IAppDatabase
     Task ReplaceProductVariantsAsync(int productId, IReadOnlyList<ProductVariant> variants);
     Task UpdateProductVariantStockAsync(int productId, int variantId, int stockQuantity);
 
+    // Reusable size guides (WEB). Defaults keep Mobile/HTTP implementations compiling.
+    Task<List<SizeGuide>> GetSizeGuidesAsync() => Task.FromResult(new List<SizeGuide>());
+    Task<SizeGuide?> GetSizeGuideByIdAsync(string id) => Task.FromResult<SizeGuide?>(null);
+    Task<SizeGuide> UpsertSizeGuideAsync(SizeGuide guide) =>
+        Task.FromException<SizeGuide>(new InvalidOperationException("Size guides are not available."));
+    Task<bool> DeleteSizeGuideAsync(string id) => Task.FromResult(false);
+
     // Categories
     Task<List<AdminCategory>> GetCategoriesAsync();
     Task<AdminCategory> UpsertCategoryAsync(AdminCategory category);

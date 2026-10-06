@@ -114,7 +114,16 @@
                                               UseDifferentPrices="_useDifferentPrices"
                                               UseDifferentPricesChanged="OnPricingModeChanged"
                                               PriceModeLocked="IsEdit"
-                                              PriceInputsReadOnly="IsEdit" />
+                                              PriceInputsReadOnly="IsEdit"
+                                              UseColorVariants="_useColorVariants"
+                                              UseColorVariantsChanged="OnUseColorChanged"
+                                              UseSizeVariants="_useSizeVariants"
+                                              UseSizeVariantsChanged="OnUseSizeChanged" />
+
+                    <SizeGuidePicker Visible="@(_hasVariants && _useSizeVariants)"
+                                     SelectedId="_sizeGuideId"
+                                     SelectedIdChanged="OnSizeGuideChanged"
+                                     ProductSizes="_formSizeNames" />
                 </div>
 
                 @if (!_hasVariants)
@@ -190,10 +199,21 @@
     private string _description = string.Empty;
     private string _colors = string.Empty;
     private bool _hasVariants;
+    private bool _useColorVariants = true;
+    private bool _useSizeVariants = true;
     private bool _useDifferentPrices;
     private List<ProductVariant> _variants = [];
+    private string? _sizeGuideId;
     private int _sold;
     private readonly Dictionary<string, string> _errors = new(StringComparer.Ordinal);
+
+    private IReadOnlyList<string> _formSizeNames =>
+        _variants
+            .Select(v => v.Size)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Select(s => s.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
 
     private IEnumerable<string> FormCategoryNames =>
         CategoryService.All
@@ -226,8 +246,11 @@
             _description = string.Empty;
             _colors = string.Empty;
             _hasVariants = false;
+            _useColorVariants = true;
+            _useSizeVariants = true;
             _useDifferentPrices = false;
             _variants = [];
+            _sizeGuideId = null;
             return;
         }
 
@@ -250,8 +273,16 @@
         _description = product.Description;
         _colors = string.Join(", ", product.Colors);
         _hasVariants = product.HasVariants;
+        _useColorVariants = product.HasColorVariants || !product.HasSizeVariants;
+        _useSizeVariants = product.HasSizeVariants || !product.HasColorVariants;
+        if (product.HasVariants && !product.HasColorVariants && !product.HasSizeVariants)
+        {
+            _useColorVariants = true;
+            _useSizeVariants = true;
+        }
         _useDifferentPrices = ProductVariantLogic.HasVariablePricing(product.Variants);
         _variants = product.Variants.Select(v => v.Clone()).ToList();
+        _sizeGuideId = product.HasSizeVariants ? product.SizeGuideId : null;
     }
 
     private Task OnBasePriceTextChanged(string value)
@@ -286,6 +317,28 @@
         _hasVariants = value;
         _errors.Remove(nameof(_stock));
         _errors.Remove("variants");
+        if (!value)
+            _sizeGuideId = null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnUseColorChanged(bool value)
+    {
+        _useColorVariants = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnUseSizeChanged(bool value)
+    {
+        _useSizeVariants = value;
+        if (!value)
+            _sizeGuideId = null;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSizeGuideChanged(string? id)
+    {
+        _sizeGuideId = string.IsNullOrWhiteSpace(id) ? null : id;
         return Task.CompletedTask;
     }
 
@@ -361,14 +414,17 @@
         else if (!FormCategoryNames.Any(c => c.Equals(_category, StringComparison.OrdinalIgnoreCase)) &&
                  !CategoryService.All.Any(c => c.Name.Equals(_category, StringComparison.OrdinalIgnoreCase)))
             _errors[nameof(_category)] = "Please select a valid category.";
-        if (_price <= 0)
+        // On edit, pricing is managed via Adjust Price — only require price when creating.
+        if (!IsEdit && _price <= 0)
             _errors[nameof(_price)] = "Price must be greater than 0.";
 
         if (_hasVariants)
         {
+            if (!_useColorVariants && !_useSizeVariants)
+                _errors["variants"] = "Select Color, Size, or both.";
             var variantError = ProductSizeVariantEditor.Validate(
                 _variants,
-                requirePositivePrices: _useDifferentPrices,
+                requirePositivePrices: _useDifferentPrices && !IsEdit,
                 productPrice: _price);
             if (variantError is not null)
                 _errors["variants"] = variantError;
@@ -392,7 +448,23 @@
 
         if (hasVariants)
         {
-            if (_useDifferentPrices)
+            if (!_useColorVariants)
+            {
+                foreach (var variant in variants)
+                {
+                    variant.ColorName = null;
+                    variant.ColorHex = null;
+                }
+            }
+
+            if (!_useSizeVariants)
+            {
+                foreach (var variant in variants)
+                    variant.Size = string.Empty;
+            }
+
+            // Edit: keep loaded price_adjustment deltas; UpdateAsync preserves products.price.
+            if (!IsEdit && _useDifferentPrices)
             {
                 foreach (var variant in variants)
                 {
@@ -402,7 +474,7 @@
                     ProductVariantLogic.SetAbsolutePrice(variant, _price, absolute);
                 }
             }
-            else
+            else if (!IsEdit)
             {
                 ProductVariantLogic.ApplySamePriceMode(variants);
             }
@@ -429,7 +501,8 @@
                     .ToList()
                 : SplitList(_colors),
             Sizes = variants.Select(v => v.Size).Where(s => !string.IsNullOrWhiteSpace(s)).ToList(),
-            Variants = variants
+            Variants = variants,
+            SizeGuideId = hasVariants && _useSizeVariants ? _sizeGuideId : null
         };
 
         if (IsEdit)

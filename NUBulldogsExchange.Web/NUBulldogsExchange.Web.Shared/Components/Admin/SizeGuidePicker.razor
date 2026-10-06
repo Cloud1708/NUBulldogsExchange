@@ -1,0 +1,172 @@
+@namespace NUBulldogsExchange.Web.Shared.Components.Admin
+@using NUBulldogsExchange.Web.Shared.Components
+@using NUBulldogsExchange.Web.Shared.Data
+@using NUBulldogsExchange.Web.Shared.Services
+@inject AdminSizeGuideService Guides
+@implements IDisposable
+
+@if (Visible)
+{
+    <section class="size-guide-picker" aria-label="Size Guide">
+        <div class="size-guide-picker-head">
+            <div>
+                <strong>Size Guide (Optional)</strong>
+                <p>Assign a size guide to help customers find the right fit.</p>
+            </div>
+        </div>
+
+        <div class="size-guide-picker-row">
+            <label class="admin-field size-guide-picker-select">
+                <select value="@SelectedId" @onchange="OnSelectChanged" aria-label="Size guide">
+                    <option value="">No Size Guide</option>
+                    @foreach (var guide in Guides.All)
+                    {
+                        <option value="@guide.Id">@guide.Name</option>
+                    }
+                </select>
+            </label>
+            <button type="button"
+                    class="btn btn-outline-navy"
+                    disabled="@string.IsNullOrWhiteSpace(SelectedId)"
+                    @onclick="() => _previewOpen = true">
+                Preview Size Guide
+            </button>
+        </div>
+
+        @if (Selected is not null)
+        {
+            <div class="size-guide-picker-meta">
+                <span class="size-guide-badge is-region">@SizeGuideCatalog.StandardBadge(Selected.SizingStandard)</span>
+                <span class="size-guide-badge is-unit">@SizeGuideCatalog.UnitLabel(Selected.MeasurementUnit)</span>
+            </div>
+        }
+
+        <div class="size-guide-picker-create">
+            <button type="button" class="btn btn-outline-navy" @onclick="OpenCreate">+ Create New Size Guide</button>
+            @if (Selected is not null)
+            {
+                <button type="button" class="btn btn-outline-navy" @onclick="OpenEdit">Edit Guide</button>
+            }
+        </div>
+
+        @if (Selected is not null)
+        {
+            <article class="size-guide-compact">
+                <header>
+                    <strong>@Selected.Name</strong>
+                    <span>@SizeGuideCatalog.StandardLabel(Selected.SizingStandard) · @SizeGuideCatalog.UnitLabel(Selected.MeasurementUnit)</span>
+                </header>
+                <div class="size-guide-table-wrap">
+                    <table class="pdp-size-table size-guide-table">
+                        <thead>
+                            <tr>
+                                <th>Size</th>
+                                @foreach (var column in Selected.Columns)
+                                {
+                                    <th>@column.Name</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in Selected.Rows)
+                            {
+                                <tr>
+                                    <td>@row.Size</td>
+                                    @foreach (var column in Selected.Columns)
+                                    {
+                                        var hasValue = row.Values.TryGetValue(column.Id, out var value);
+                                        <td>@(hasValue ? SizeGuideCatalog.FormatValue(value) : "—")</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(Selected.Notes))
+                {
+                    <p>@Selected.Notes</p>
+                }
+            </article>
+        }
+
+        @if (MissingSizes.Count > 0)
+        {
+            <em class="admin-size-variants-error">
+                This product contains sizes that are not included in the selected Size Guide: @string.Join(", ", MissingSizes).
+            </em>
+        }
+    </section>
+}
+
+<SizeGuideEditorModal IsOpen="_editorOpen"
+                      Editing="_editing"
+                      OnCancel="CloseEditor"
+                      OnSaved="OnGuideSaved" />
+
+@if (_previewOpen && Selected is not null)
+{
+    <div class="pdp-modal-backdrop size-guide-preview-backdrop" @onclick="() => _previewOpen = false">
+        <SizeGuideDialog Guide="Selected"
+                         ShowSubtitle="true"
+                         OnClose="() => _previewOpen = false" />
+    </div>
+}
+
+@code {
+    [Parameter] public bool Visible { get; set; }
+    [Parameter] public string? SelectedId { get; set; }
+    [Parameter] public EventCallback<string?> SelectedIdChanged { get; set; }
+    [Parameter] public IReadOnlyList<string> ProductSizes { get; set; } = [];
+
+    private bool _editorOpen;
+    private bool _previewOpen;
+    private SizeGuide? _editing;
+
+    private SizeGuide? Selected => Guides.GetById(SelectedId);
+
+    private IReadOnlyList<string> MissingSizes =>
+        Selected is null ? [] : SizeGuideCatalog.MissingSizes(Selected, ProductSizes);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Guides.OnChange += Refresh;
+        await Guides.EnsureLoadedAsync();
+    }
+
+    private async Task OnSelectChanged(ChangeEventArgs e)
+    {
+        var id = e.Value?.ToString();
+        SelectedId = string.IsNullOrWhiteSpace(id) ? null : id;
+        await SelectedIdChanged.InvokeAsync(SelectedId);
+    }
+
+    private void OpenCreate()
+    {
+        _editing = null;
+        _editorOpen = true;
+    }
+
+    private void OpenEdit()
+    {
+        _editing = Selected?.Clone();
+        _editorOpen = true;
+    }
+
+    private void CloseEditor()
+    {
+        _editorOpen = false;
+        _editing = null;
+    }
+
+    private async Task OnGuideSaved(SizeGuide saved)
+    {
+        _editorOpen = false;
+        _editing = null;
+        SelectedId = saved.Id;
+        await SelectedIdChanged.InvokeAsync(saved.Id);
+    }
+
+    private void Refresh() => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Guides.OnChange -= Refresh;
+}

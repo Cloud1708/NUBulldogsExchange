@@ -66,6 +66,7 @@ builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<OrderService>();
 builder.Services.AddScoped<NotificationService>();
 builder.Services.AddScoped<AdminProductService>();
+builder.Services.AddScoped<AdminSizeGuideService>();
 builder.Services.AddScoped<AdminCategoryService>();
 builder.Services.AddScoped<AdminOrderService>();
 builder.Services.AddScoped<AdminSettingsService>();

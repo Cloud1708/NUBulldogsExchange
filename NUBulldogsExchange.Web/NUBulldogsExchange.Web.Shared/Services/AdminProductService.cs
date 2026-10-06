@@ -255,6 +255,7 @@ public class AdminProductService
         existing.Colors = [.. product.Colors];
         existing.Sizes = [.. product.Sizes];
         existing.Variants = product.Variants?.Select(v => v.Clone()).ToList() ?? [];
+        existing.SizeGuideId = string.IsNullOrWhiteSpace(product.SizeGuideId) ? null : product.SizeGuideId.Trim();
         NormalizeVariantState(existing);
         await PersistAsync(existing);
         await _db.ReplaceProductVariantsAsync(existing.Id, existing.Variants);
@@ -637,6 +638,7 @@ public class AdminProductService
         target.Colors = [.. product.Colors];
         target.Sizes = [.. product.Sizes];
         target.Variants = product.Variants.Select(v => v.Clone()).ToList();
+        target.SizeGuideId = string.IsNullOrWhiteSpace(product.SizeGuideId) ? null : product.SizeGuideId.Trim();
         target.Section = ResolveSection(product.Category);
     }
 
@@ -672,6 +674,12 @@ public class AdminProductService
                 .Select(v => v.ColorName!.Trim())
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
+            if (!product.HasSizeVariants)
+                product.SizeGuideId = null;
+        }
+        else
+        {
+            product.SizeGuideId = null;
         }
     }
 
@@ -705,6 +713,7 @@ public class AdminProductService
             ? product.Variants.Where(v => v.IsActive && !string.IsNullOrWhiteSpace(v.Size)).Select(v => v.Size).ToList()
             : [],
         Variants = product.Variants.Select(v => v.Clone()).ToList(),
+        SizeGuideId = string.IsNullOrWhiteSpace(product.SizeGuideId) ? null : product.SizeGuideId.Trim(),
         Rating = 0,
         Reviews = 0,
         Section = ResolveSection(product.Category),
