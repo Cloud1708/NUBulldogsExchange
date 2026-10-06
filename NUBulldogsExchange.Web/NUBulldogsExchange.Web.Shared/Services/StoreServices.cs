@@ -744,13 +744,18 @@ public class NotificationService
 
 public class AuthService
 {
+    public const string PasswordResetGenericMessage =
+        "If an account exists for this email, a verification code has been sent.";
+
     private const string StorageKey = "nube-user";
     private static readonly JsonSerializerOptions JsonOptions = new() { PropertyNameCaseInsensitive = true };
     private readonly IAppDatabase _db;
+    private readonly IAppEmailSender _email;
 
-    public AuthService(IAppDatabase db)
+    public AuthService(IAppDatabase db, IAppEmailSender? email = null)
     {
         _db = db;
+        _email = email ?? new NullAppEmailSender();
     }
 
     public event Action? OnChange;
@@ -817,6 +822,80 @@ public class AuthService
             SetUser(result.User, result.SessionToken, rememberMe);
         return result;
     }
+
+    public async Task<PasswordResetSendResult> SendPasswordResetCodeAsync(string email)
+    {
+        if (!AuthValidation.IsValidEmail(email))
+        {
+            return new PasswordResetSendResult
+            {
+                Success = false,
+                Error = "Enter a valid email address."
+            };
+        }
+
+        var issued = await _db.IssuePasswordResetCodeAsync(email);
+        if (!issued.Success)
+        {
+            return new PasswordResetSendResult
+            {
+                Success = false,
+                Error = string.IsNullOrWhiteSpace(issued.Error)
+                    ? "Unable to send a verification code. Please try again."
+                    : issued.Error
+            };
+        }
+
+        if (issued.Issued && !string.IsNullOrWhiteSpace(issued.PlainCode))
+        {
+            try
+            {
+                var (subject, html, text) = PasswordResetCodeEmail.Build(
+                    issued.RecipientName ?? string.Empty,
+                    issued.PlainCode,
+                    Math.Max(1, issued.ExpiresInSeconds / 60));
+                await _email.SendAsync(
+                    AuthValidation.NormalizeEmail(email),
+                    issued.RecipientName ?? string.Empty,
+                    subject,
+                    html,
+                    text);
+            }
+            catch (Exception mailEx)
+            {
+                var detail = string.IsNullOrWhiteSpace(mailEx.Message)
+                    ? "Check Mail SMTP settings and try again."
+                    : mailEx.Message;
+                if (detail.Length > 160)
+                    detail = detail[..160].Trim() + "…";
+                return new PasswordResetSendResult
+                {
+                    Success = false,
+                    Error = $"Unable to send the verification email. {detail}"
+                };
+            }
+        }
+
+        return new PasswordResetSendResult
+        {
+            Success = true,
+            Message = PasswordResetGenericMessage,
+            ExpiresInSeconds = issued.ExpiresInSeconds > 0
+                ? issued.ExpiresInSeconds
+                : PasswordResetCrypto.CodeTtlSeconds,
+            ResendCooldownSeconds = PasswordResetCrypto.ResendCooldownSeconds
+        };
+    }
+
+    public Task<PasswordResetVerifyResult> VerifyPasswordResetCodeAsync(string email, string code) =>
+        _db.VerifyPasswordResetCodeAsync(email, code);
+
+    public Task<AuthResult> ResetPasswordWithTokenAsync(
+        string email,
+        string resetToken,
+        string newPassword,
+        string confirmPassword) =>
+        _db.ResetPasswordWithTokenAsync(email, resetToken, newPassword, confirmPassword);
 
     public void Logout() => _ = LogoutAsync();
 

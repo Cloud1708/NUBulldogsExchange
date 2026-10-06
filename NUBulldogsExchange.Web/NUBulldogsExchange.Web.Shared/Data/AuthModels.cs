@@ -108,4 +108,61 @@ public static class AuthValidation
             : new string(value.Where(char.IsDigit).ToArray());
 
     public static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
+
+    /// <summary>Mask a local-part for UI display, e.g. ch512291@gmail.com → ch******@gmail.com.</summary>
+    public static string MaskEmail(string? email)
+    {
+        if (string.IsNullOrWhiteSpace(email) || !IsValidEmail(email))
+            return string.Empty;
+
+        email = NormalizeEmail(email);
+        var at = email.IndexOf('@');
+        var local = email[..at];
+        var domain = email[(at + 1)..];
+        var keep = Math.Min(2, local.Length);
+        var stars = Math.Max(4, local.Length - keep);
+        return local[..keep] + new string('*', stars) + "@" + domain;
+    }
+
+    public static bool HasUpperAndLower(string? password) =>
+        !string.IsNullOrEmpty(password) && password.Any(char.IsUpper) && password.Any(char.IsLower);
+
+    public static bool HasDigit(string? password) =>
+        !string.IsNullOrEmpty(password) && password.Any(char.IsDigit);
+
+    public static bool HasSpecial(string? password) =>
+        !string.IsNullOrEmpty(password) && password.Any(ch => !char.IsLetterOrDigit(ch));
+
+    public static bool MeetsPasswordPolicy(string? password) =>
+        !string.IsNullOrEmpty(password) && password.Length >= MinPasswordLength;
+}
+
+public sealed class PasswordResetIssueResult
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    /// <summary>True only when a new OTP was generated. Never send this flag to the UI.</summary>
+    public bool Issued { get; set; }
+    /// <summary>Plaintext OTP for the email sender only. Never bind this in Razor.</summary>
+    public string? PlainCode { get; set; }
+    public string? RecipientName { get; set; }
+    public int ExpiresInSeconds { get; set; } = 600;
+}
+
+public sealed class PasswordResetSendResult
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public string Message { get; set; } =
+        "If an account exists for this email, a verification code has been sent.";
+    public int ExpiresInSeconds { get; set; } = 600;
+    public int ResendCooldownSeconds { get; set; } = 60;
+}
+
+public sealed class PasswordResetVerifyResult
+{
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+    public string? ResetToken { get; set; }
+    public bool RequireNewCode { get; set; }
 }

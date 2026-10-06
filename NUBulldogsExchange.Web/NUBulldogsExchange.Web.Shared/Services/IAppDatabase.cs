@@ -78,6 +78,28 @@ public interface IAppDatabase
     Task<AuthResult> ChangePasswordAsync(string sessionToken, ChangePasswordRequest request);
     Task<AuthResult> CompleteForcedPasswordChangeAsync(string sessionToken, ForcedPasswordChangeRequest request);
 
+    /// <summary>
+    /// Issues a hashed 6-digit reset code when an account exists.
+    /// Callers must email <see cref="PasswordResetIssueResult.PlainCode"/> and never expose it to the UI.
+    /// Default is a no-op so Mobile/HTTP implementations keep compiling.
+    /// </summary>
+    Task<PasswordResetIssueResult> IssuePasswordResetCodeAsync(string email) =>
+        Task.FromResult(new PasswordResetIssueResult { Success = true, Issued = false });
+
+    Task<PasswordResetVerifyResult> VerifyPasswordResetCodeAsync(string email, string code) =>
+        Task.FromResult(new PasswordResetVerifyResult
+        {
+            Success = false,
+            Error = "Invalid verification code. Please try again."
+        });
+
+    Task<AuthResult> ResetPasswordWithTokenAsync(
+        string email,
+        string resetToken,
+        string newPassword,
+        string confirmPassword) =>
+        Task.FromResult(new AuthResult { Success = false, Error = "Password reset is not available." });
+
     // Customers
     Task<List<AdminCustomer>> GetCustomersAsync();
     Task<AdminCustomer?> GetCustomerByIdAsync(string id);

@@ -1902,6 +1902,489 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         }
     }
 
+    public async Task<PasswordResetIssueResult> IssuePasswordResetCodeAsync(string email)
+    {
+        if (!AuthValidation.IsValidEmail(email))
+            return new PasswordResetIssueResult { Success = false, Error = "Enter a valid email address." };
+
+        if (!_options.HasServiceRoleKey)
+        {
+            return new PasswordResetIssueResult
+            {
+                Success = false,
+                Error = "Password reset is not configured on the server."
+            };
+        }
+
+        var normalized = AuthValidation.NormalizeEmail(email);
+        var now = DateTime.UtcNow;
+        var service = _options.ServiceRoleKey!;
+
+        try
+        {
+            // Service-role calls must send the service key as BOTH apikey and Bearer.
+            var user = await FindPasswordResetUserAsync(normalized, service);
+            if (user is null || string.IsNullOrWhiteSpace(user.Id))
+                return new PasswordResetIssueResult { Success = true, Issued = false };
+
+            if (!Guid.TryParse(user.Id, out _))
+                return new PasswordResetIssueResult { Success = true, Issued = false };
+
+            var hourAgo = now.AddHours(-1).ToString("o");
+            List<PasswordResetCodeRow> recent;
+            try
+            {
+                recent = await GetListAsync<PasswordResetCodeRow>(
+                    $"rest/v1/password_reset_codes?select=id,last_sent_at,created_at,consumed_at&email=eq.{Esc(normalized)}&created_at=gte.{Uri.EscapeDataString(hourAgo)}&order=created_at.desc",
+                    service,
+                    service);
+            }
+            catch (Exception tableEx)
+            {
+                return PasswordResetSetupError(tableEx.Message);
+            }
+
+            if (recent.Count >= PasswordResetCrypto.MaxSendsPerHour)
+                return new PasswordResetIssueResult { Success = true, Issued = false };
+
+            var lastSent = recent
+                .Select(r => r.LastSentAt)
+                .Where(t => t != default)
+                .Select(t => t.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(t, DateTimeKind.Utc) : t.ToUniversalTime())
+                .DefaultIfEmpty(DateTime.MinValue)
+                .Max();
+            if (lastSent > DateTime.MinValue &&
+                (now - lastSent).TotalSeconds < PasswordResetCrypto.ResendCooldownSeconds)
+            {
+                return new PasswordResetIssueResult
+                {
+                    Success = false,
+                    Error = $"Please wait {PasswordResetCrypto.ResendCooldownSeconds} seconds before requesting another code."
+                };
+            }
+
+            await ConsumeOpenResetCodesAsync(normalized, service, now);
+
+            var code = PasswordResetCrypto.GenerateNumericCode();
+            var expiresAt = now.AddSeconds(PasswordResetCrypto.CodeTtlSeconds);
+            var row = new Dictionary<string, object?>
+            {
+                ["email"] = normalized,
+                ["auth_user_id"] = user.Id,
+                ["code_hash"] = PasswordResetCrypto.HashCode(normalized, code),
+                // PostgREST is picky about DateTime JSON; send explicit UTC ISO strings.
+                ["expires_at"] = expiresAt.ToString("o"),
+                ["attempt_count"] = 0,
+                ["last_sent_at"] = now.ToString("o"),
+                ["created_at"] = now.ToString("o")
+            };
+
+            using var insert = await SendAsync(
+                HttpMethod.Post,
+                "rest/v1/password_reset_codes",
+                row,
+                "return=minimal",
+                bearerOverride: service,
+                apikeyOverride: service);
+            await EnsureSuccessAsync(insert);
+
+            var name = $"{user.FirstName} {user.LastName}".Trim();
+            return new PasswordResetIssueResult
+            {
+                Success = true,
+                Issued = true,
+                PlainCode = code,
+                RecipientName = string.IsNullOrWhiteSpace(name) ? null : name,
+                ExpiresInSeconds = PasswordResetCrypto.CodeTtlSeconds
+            };
+        }
+        catch (Exception ex)
+        {
+            return PasswordResetSetupError(ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Resolve auth user id + display name for password reset without leaking existence to the UI.
+    /// Prefers Auth Admin API (no public.users GRANT required), then public.users / users_with_roles.
+    /// </summary>
+    private async Task<PasswordResetUserRef?> FindPasswordResetUserAsync(string normalizedEmail, string service)
+    {
+        var fromAuth = await TryFindPasswordResetUserViaAuthAdminAsync(normalizedEmail, service);
+        if (fromAuth is not null)
+            return fromAuth;
+
+        try
+        {
+            var rows = await GetListAsync<UserRow>(
+                $"rest/v1/users?select=id,email,first_name,last_name&email=eq.{Esc(normalizedEmail)}&limit=1",
+                service,
+                service);
+            var row = rows.FirstOrDefault();
+            if (row is not null && !string.IsNullOrWhiteSpace(row.Id))
+                return new PasswordResetUserRef(row.Id, row.FirstName, row.LastName);
+        }
+        catch (Exception ex) when (
+            ex.Message.Contains("permission denied", StringComparison.OrdinalIgnoreCase))
+        {
+            // Fall through to view / clearer setup error below.
+        }
+
+        try
+        {
+            var rows = await GetListAsync<UserWithRoleRow>(
+                $"rest/v1/users_with_roles?select=id,email,first_name,last_name&email=eq.{Esc(normalizedEmail)}&limit=1",
+                service,
+                service);
+            var row = rows.FirstOrDefault();
+            if (row is not null && !string.IsNullOrWhiteSpace(row.Id))
+                return new PasswordResetUserRef(row.Id, row.FirstName, row.LastName);
+        }
+        catch (Exception ex) when (
+            ex.Message.Contains("permission denied", StringComparison.OrdinalIgnoreCase) ||
+            ex.Message.Contains("users", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                "permission denied for table users. Run docs/sql/026_password_reset_users_grant.sql in the Supabase SQL Editor, then try again.");
+        }
+
+        return null;
+    }
+
+    private async Task<PasswordResetUserRef?> TryFindPasswordResetUserViaAuthAdminAsync(
+        string normalizedEmail,
+        string service)
+    {
+        try
+        {
+            // GoTrue admin list; filter client-side for an exact email match.
+            using var response = await SendAsync(
+                HttpMethod.Get,
+                $"auth/v1/admin/users?page=1&per_page=1000",
+                bearerOverride: service,
+                apikeyOverride: service);
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            var json = await response.Content.ReadAsStringAsync();
+            if (string.IsNullOrWhiteSpace(json))
+                return null;
+
+            using var doc = JsonDocument.Parse(json);
+            if (!doc.RootElement.TryGetProperty("users", out var users) ||
+                users.ValueKind != JsonValueKind.Array)
+            {
+                return null;
+            }
+
+            foreach (var item in users.EnumerateArray())
+            {
+                var email = item.TryGetProperty("email", out var emailProp)
+                    ? emailProp.GetString()
+                    : null;
+                if (!string.Equals(email, normalizedEmail, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var id = item.TryGetProperty("id", out var idProp) ? idProp.GetString() : null;
+                if (string.IsNullOrWhiteSpace(id))
+                    return null;
+
+                string? first = null;
+                string? last = null;
+                if (item.TryGetProperty("user_metadata", out var meta) &&
+                    meta.ValueKind == JsonValueKind.Object)
+                {
+                    if (meta.TryGetProperty("first_name", out var f))
+                        first = f.GetString();
+                    if (meta.TryGetProperty("last_name", out var l))
+                        last = l.GetString();
+                }
+
+                return new PasswordResetUserRef(id, first, last);
+            }
+        }
+        catch
+        {
+            // Fall back to PostgREST user tables.
+        }
+
+        return null;
+    }
+
+    private sealed record PasswordResetUserRef(string Id, string? FirstName, string? LastName);
+
+    private static PasswordResetIssueResult PasswordResetSetupError(string? message)
+    {
+        message ??= string.Empty;
+        if (message.Contains("password_reset_codes", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("schema cache", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("PGRST", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("does not exist", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("relation", StringComparison.OrdinalIgnoreCase))
+        {
+            return new PasswordResetIssueResult
+            {
+                Success = false,
+                Error = "Password reset is not set up yet. Run docs/sql/025_password_reset_codes.sql in the Supabase SQL Editor, then try again."
+            };
+        }
+
+        if (message.Contains("permission denied", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("table users", StringComparison.OrdinalIgnoreCase))
+        {
+            return new PasswordResetIssueResult
+            {
+                Success = false,
+                Error = "Password reset cannot read accounts yet. Run docs/sql/026_password_reset_users_grant.sql in the Supabase SQL Editor, then try again."
+            };
+        }
+
+        if (message.Contains("Invalid API key", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("JWT", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("401", StringComparison.OrdinalIgnoreCase) ||
+            message.Contains("403", StringComparison.OrdinalIgnoreCase))
+        {
+            return new PasswordResetIssueResult
+            {
+                Success = false,
+                Error = "Password reset is not configured on the server. Check Supabase:ServiceRoleKey in Web.Web appsettings."
+            };
+        }
+
+        // Keep enough detail for admins without leaking internal stack traces.
+        var detail = message.Length > 180 ? message[..180].Trim() + "…" : message.Trim();
+        return new PasswordResetIssueResult
+        {
+            Success = false,
+            Error = string.IsNullOrWhiteSpace(detail)
+                ? "Unable to send a verification code. Please try again."
+                : $"Unable to send a verification code. {detail}"
+        };
+    }
+
+    public async Task<PasswordResetVerifyResult> VerifyPasswordResetCodeAsync(string email, string code)
+    {
+        var digits = AuthValidation.DigitsOnly(code);
+        if (!AuthValidation.IsValidEmail(email) || digits.Length != PasswordResetCrypto.CodeLength)
+        {
+            return new PasswordResetVerifyResult
+            {
+                Success = false,
+                Error = "Invalid verification code. Please try again."
+            };
+        }
+
+        if (!_options.HasServiceRoleKey)
+        {
+            return new PasswordResetVerifyResult
+            {
+                Success = false,
+                Error = "Password reset is not configured on the server."
+            };
+        }
+
+        var normalized = AuthValidation.NormalizeEmail(email);
+        var service = _options.ServiceRoleKey!;
+        var now = DateTime.UtcNow;
+
+        try
+        {
+            var rows = await GetListAsync<PasswordResetCodeRow>(
+                $"rest/v1/password_reset_codes?select=*&email=eq.{Esc(normalized)}&consumed_at=is.null&order=created_at.desc&limit=1",
+                service,
+                service);
+            var row = rows.FirstOrDefault();
+            if (row is null)
+            {
+                return new PasswordResetVerifyResult
+                {
+                    Success = false,
+                    Error = "Invalid verification code. Please try again."
+                };
+            }
+
+            if (row.ExpiresAt.ToUniversalTime() <= now)
+            {
+                await PatchResetCodeAsync(row.Id, new Dictionary<string, object?> { ["consumed_at"] = now }, service);
+                return new PasswordResetVerifyResult
+                {
+                    Success = false,
+                    Error = "Verification code expired.",
+                    RequireNewCode = true
+                };
+            }
+
+            if (row.AttemptCount >= PasswordResetCrypto.MaxVerifyAttempts)
+            {
+                await PatchResetCodeAsync(row.Id, new Dictionary<string, object?> { ["consumed_at"] = now }, service);
+                return new PasswordResetVerifyResult
+                {
+                    Success = false,
+                    Error = "This verification code can no longer be used. Please request a new code.",
+                    RequireNewCode = true
+                };
+            }
+
+            var expected = PasswordResetCrypto.HashCode(normalized, digits);
+            if (!PasswordResetCrypto.FixedEquals(expected, row.CodeHash))
+            {
+                var attempts = row.AttemptCount + 1;
+                var patch = new Dictionary<string, object?> { ["attempt_count"] = attempts };
+                if (attempts >= PasswordResetCrypto.MaxVerifyAttempts)
+                    patch["consumed_at"] = now;
+                await PatchResetCodeAsync(row.Id, patch, service);
+
+                if (attempts >= PasswordResetCrypto.MaxVerifyAttempts)
+                {
+                    return new PasswordResetVerifyResult
+                    {
+                        Success = false,
+                        Error = "This verification code can no longer be used. Please request a new code.",
+                        RequireNewCode = true
+                    };
+                }
+
+                return new PasswordResetVerifyResult
+                {
+                    Success = false,
+                    Error = "Invalid verification code. Please try again."
+                };
+            }
+
+            var resetToken = PasswordResetCrypto.NewResetToken();
+            await PatchResetCodeAsync(row.Id, new Dictionary<string, object?>
+            {
+                ["verified_at"] = now,
+                ["reset_token_hash"] = PasswordResetCrypto.HashSecret(resetToken),
+                ["expires_at"] = now.AddSeconds(PasswordResetCrypto.CodeTtlSeconds)
+            }, service);
+
+            return new PasswordResetVerifyResult
+            {
+                Success = true,
+                ResetToken = resetToken
+            };
+        }
+        catch
+        {
+            return new PasswordResetVerifyResult
+            {
+                Success = false,
+                Error = "Unable to verify the code. Please try again."
+            };
+        }
+    }
+
+    public async Task<AuthResult> ResetPasswordWithTokenAsync(
+        string email,
+        string resetToken,
+        string newPassword,
+        string confirmPassword)
+    {
+        if (!AuthValidation.IsValidEmail(email) || string.IsNullOrWhiteSpace(resetToken))
+            return Fail("This reset session is no longer valid. Please request a new code.");
+
+        if (!AuthValidation.MeetsPasswordPolicy(newPassword))
+            return Fail($"Password must be at least {AuthValidation.MinPasswordLength} characters.");
+
+        if (!string.Equals(newPassword, confirmPassword, StringComparison.Ordinal))
+            return Fail("Passwords do not match.");
+
+        if (!_options.HasServiceRoleKey)
+            return Fail("Password reset is not configured on the server.");
+
+        var normalized = AuthValidation.NormalizeEmail(email);
+        var service = _options.ServiceRoleKey!;
+        var tokenHash = PasswordResetCrypto.HashSecret(resetToken);
+        var now = DateTime.UtcNow;
+
+        try
+        {
+            var rows = await GetListAsync<PasswordResetCodeRow>(
+                $"rest/v1/password_reset_codes?select=*&email=eq.{Esc(normalized)}&consumed_at=is.null&verified_at=not.is.null&order=created_at.desc&limit=5",
+                service,
+                service);
+            var row = rows.FirstOrDefault(r =>
+                PasswordResetCrypto.FixedEquals(r.ResetTokenHash, tokenHash));
+            if (row is null)
+                return Fail("This reset session is no longer valid. Please request a new code.");
+
+            if (row.ExpiresAt.ToUniversalTime() <= now)
+            {
+                await PatchResetCodeAsync(row.Id, new Dictionary<string, object?> { ["consumed_at"] = now }, service);
+                return Fail("This reset session has expired. Please request a new code.");
+            }
+
+            using var update = await SendAsync(
+                HttpMethod.Put,
+                $"auth/v1/admin/users/{row.AuthUserId}",
+                new { password = newPassword },
+                bearerOverride: service,
+                apikeyOverride: service);
+            await EnsureSuccessAsync(update);
+
+            await PatchResetCodeAsync(row.Id, new Dictionary<string, object?> { ["consumed_at"] = now }, service);
+            await ConsumeOpenResetCodesAsync(normalized, service, now);
+            await TryRevokeAuthSessionsAsync(row.AuthUserId, service);
+
+            return new AuthResult { Success = true };
+        }
+        catch (Exception ex)
+        {
+            return Fail(CleanAuthError(ex.Message, "Unable to reset your password. Please try again."));
+        }
+    }
+
+    private async Task ConsumeOpenResetCodesAsync(string email, string serviceKey, DateTime now)
+    {
+        using var response = await SendAsync(
+            HttpMethod.Patch,
+            $"rest/v1/password_reset_codes?email=eq.{Esc(email)}&consumed_at=is.null",
+            new Dictionary<string, object?> { ["consumed_at"] = now.ToUniversalTime().ToString("o") },
+            "return=minimal",
+            bearerOverride: serviceKey,
+            apikeyOverride: serviceKey);
+        await EnsureSuccessAsync(response);
+    }
+
+    private async Task PatchResetCodeAsync(string id, Dictionary<string, object?> body, string serviceKey)
+    {
+        var normalized = new Dictionary<string, object?>(body.Count, StringComparer.Ordinal);
+        foreach (var pair in body)
+        {
+            normalized[pair.Key] = pair.Value is DateTime dt
+                ? dt.ToUniversalTime().ToString("o")
+                : pair.Value;
+        }
+
+        using var response = await SendAsync(
+            HttpMethod.Patch,
+            $"rest/v1/password_reset_codes?id=eq.{Esc(id)}",
+            normalized,
+            "return=minimal",
+            bearerOverride: serviceKey,
+            apikeyOverride: serviceKey);
+        await EnsureSuccessAsync(response);
+    }
+
+    private async Task TryRevokeAuthSessionsAsync(string authUserId, string serviceKey)
+    {
+        try
+        {
+            using var response = await SendAsync(
+                HttpMethod.Post,
+                $"auth/v1/admin/users/{authUserId}/logout",
+                new { },
+                bearerOverride: serviceKey,
+                apikeyOverride: serviceKey);
+            _ = response.StatusCode;
+        }
+        catch
+        {
+            // Optional: password is already updated.
+        }
+    }
+
     // ========================================================
     // Customers
     // ========================================================
@@ -3401,12 +3884,16 @@ public sealed class SupabaseAppDatabase : IAppDatabase
         return auth;
     }
 
-    private async Task<List<T>> GetListAsync<T>(string path, string? bearerOverride = null)
+    private async Task<List<T>> GetListAsync<T>(
+        string path,
+        string? bearerOverride = null,
+        string? apikeyOverride = null)
     {
         using var response = await SendAsync(
             HttpMethod.Get,
             path,
-            bearerOverride: bearerOverride);
+            bearerOverride: bearerOverride,
+            apikeyOverride: apikeyOverride);
         await EnsureSuccessAsync(response);
 
         var json = await response.Content.ReadAsStringAsync();
@@ -3779,6 +4266,21 @@ public sealed class SupabaseAppDatabase : IAppDatabase
     {
         public string Id { get; set; } = string.Empty;
         public string? Email { get; set; }
+    }
+
+    private sealed class PasswordResetCodeRow
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string AuthUserId { get; set; } = string.Empty;
+        public string CodeHash { get; set; } = string.Empty;
+        public string? ResetTokenHash { get; set; }
+        public DateTime ExpiresAt { get; set; }
+        public DateTime? VerifiedAt { get; set; }
+        public DateTime? ConsumedAt { get; set; }
+        public int AttemptCount { get; set; }
+        public DateTime LastSentAt { get; set; }
+        public DateTime CreatedAt { get; set; }
     }
 
     private sealed class UserRow
